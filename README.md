@@ -36,7 +36,7 @@ Make sure your veteran umas are cleared and have no career in progress. Plenty o
 
 In cmd, cd file location then main.py. Bot will open steam and launch the game close in loading screen, paste the provided address in your browser and sign in using your Steam info, it will ask for a code sent to your email, provide that, and you're in. 
 
-Recommended to use an alt Steam account. Make sure your veteran umas are cleared and have no career in progress. Rest should be self-explanatory.
+Recommended to use an alt Steam account. Make sure you have no (non-MANT) careers in progress. Rest should be self-explanatory.
 
 # Running multiple bots!
 
