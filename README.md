@@ -10,6 +10,8 @@
 
 T500 to T10 in 4 days btw.
 
+Join our discord: https://discord.gg/wpbd3hTBDc
+
 # ! Instalation for dummies:
 
 You will need the latest version of python and C++ Build Tools:
