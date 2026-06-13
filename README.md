@@ -62,6 +62,10 @@ Launch first bot until you're in web UI, switch steam accounts, repeat the proce
 
 Daily reset will cause the bots to crash, you must set everything up manually then. 
 
+# Future updates.
+
+We will be working towards updating the bot as we see fit and will be porting it over to new scenarios, if you would like to contribute, get in touch with us though discord. Clank responsibly and thank you all. 
+
 
 
 
