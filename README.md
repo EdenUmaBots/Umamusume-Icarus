@@ -12,7 +12,15 @@ T500 to T10 in 4 days btw.
 
 # ! Instalation for dummies:
 
-Need python 3.19 or below + tools.
+You will need the latest version of python and C++ Build Tools:
+
+https://www.python.org/downloads/
+
+https://visualstudio.microsoft.com/visual-cpp-build-tools/
+
+For C++ Tools, this is what you need, just check that box. <img width="1221" height="625" alt="image" src="https://github.com/user-attachments/assets/28610cb3-650d-43c9-bf09-4505a62272de" />
+
+Now.
 
 Download Eden bot.
 
@@ -43,24 +51,6 @@ Ensure you have multiple seperate folders and keep track. Each bot must have it'
 Launch first bot until you're in web UI, switch steam accounts, repeat the process. Turn on each bot simoultaneously. First bot acts as an anchor, if this crashes, all bots will crash. We found that we were able to comfortably run 3 accounts at the same time, could try more.
 
 Daily reset will cause the bots to crash, you must set everything up manually then. 
-
-# That's it! If at any point you struggle here, ask Chatgpt for help, if you want to edit the bot, use Claude. Don't bother me, I am not involved with the game anymore. 
-
-# Tips and Tricks:
-
-Use burner accounts, they are 5 bucks on g2g(dot)com, use the bot to make two umas for TT, takes 10mins. Now you can use this in your club. 
-
-This and the android bot can be run on a bare metal, gpu enabled virtual machine. databasemart(dot)com provides cheap options, you will need a GPU Dedicated server, some of them can run 10+ accounts. 
-
-Cap your fans to 30-50M if you care don't want to get banned but at this point who gaf.
-
-2-3 accounts running full time should be enough for T10, 4+ is needed for rank 1. 
-
-
-<img width="1415" height="928" alt="image" src="https://github.com/user-attachments/assets/0bb28922-f882-4b05-8240-6973a2d6b011" />
-
-
-
 
 
 
