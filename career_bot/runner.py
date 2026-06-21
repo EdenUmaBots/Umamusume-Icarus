@@ -24,6 +24,7 @@ from career_bot.race_intelligence import record_race_outcome
 from career_bot.running_style import resolve_running_style_for_race
 from career_bot import trackblazer
 from career_bot import style_adaptation
+from career_bot import event_outcomes as event_kb
 
 
 STRATEGIES = {
@@ -65,6 +66,8 @@ class CareerRunner:
         self.stop_requested = False
         self.pause_requested = False
         self.burn_clocks = False
+        self.carats_enabled = False          # spend carats on retries once clocks run out
+        self.max_clocks_per_career = 0       # 0 = unlimited; per-career paid-clock budget
         self.loop_index = 1
         self.loop_target = 1
         self.race_planner = RacePlanner(base_dir)
@@ -73,6 +76,15 @@ class CareerRunner:
         self.discord_logger = None
         self.metrics = self._load_lifetime_metrics()
         self.current_run_recorded = False
+        # v7.6.2: native event-outcome capture. SweepyCL already receives
+        # chara_info before/after every event choice, so it records outcomes
+        # from its own runs into the KB — no Frida/dumper needed. main.py sets
+        # this from settings before each start; default on.
+        self.native_event_capture = True
+        # #6 — goal-aware training lookahead (pace-to-target urgency in the
+        # goal-aware scorer). main.py sets this from settings before each start;
+        # default OFF so nothing changes unless the user opts in.
+        self.goal_lookahead = False
         self.status = {
             "running": False,
             "paused": False,
@@ -212,31 +224,16 @@ class CareerRunner:
             if isinstance(value, dict):
                 candidates.append(value)
 
-        # v6.7.6: resolve the just-finished entry from the trained_chara list
-        # using ``trained_chara_id`` and surface its factor / skill data ahead
-        # of the catch-all walk below so it wins the merge.
-        try:
-            common = None
-            if isinstance(data, dict):
-                common = data.get("single_mode_finish_common")
-            if isinstance(common, dict):
-                wanted_id = common.get("trained_chara_id")
-                tc_list = common.get("trained_chara") or []
-                if wanted_id and isinstance(tc_list, list):
-                    for entry in tc_list:
-                        if not isinstance(entry, dict):
-                            continue
-                        # Different shapes use different id keys; check the
-                        # most common ones.
-                        for id_key in ("trained_chara_id", "id"):
-                            if entry.get(id_key) == wanted_id:
-                                candidates.insert(0, entry)  # priority over the catch-all
-                                break
-                        else:
-                            continue
-                        break
-        except Exception:
-            pass
+        # v6.7.10: resolve the just-finished trainee deterministically from
+        # ``single_mode_finish_common.trained_chara``.  This list contains the
+        # user's ENTIRE roster (~121 entries, each with inherited factor arrays
+        # and nested ``succession_chara_array`` ancestors).  The finished career
+        # is identified by matching the running career's trainee id; if no id
+        # matches we fall back to ``trained_chara[0]`` (API convention puts the
+        # finished trainee first).  We never use a longest-array heuristic.
+        finished_entry = self._resolve_finished_trained_chara(data, fallback_chara)
+        if isinstance(finished_entry, dict):
+            candidates.insert(0, finished_entry)  # priority over the catch-all
 
         stat_keys = {"speed", "stamina", "power", "guts", "wiz", "wit"}
         final_keys = {
@@ -263,7 +260,159 @@ class CareerRunner:
                     # Final response values are usually more authoritative than
                     # the pre-finish home snapshot for these exact keys.
                     merged[key] = value
+
+        # v6.7.10: the trainee's OWN earned sparks live in the finished entry's
+        # ``factor_id_array``/``factor_info_array``.  Read them from the
+        # deterministically resolved finished entry ONLY (excluding inherited
+        # ancestor ``succession_chara_array`` subtrees), not from a
+        # longest-array-anywhere heuristic that grabbed roster/ancestor sets.
+        inherited_ids = list((fallback_chara or {}).get("factor_id_array") or [])
+        # v1.5: pass the full finish ``data`` so the extractor can read the
+        # newly-earned spark fields (single_mode_finish_common.gained_factor_info_array
+        # / earned_factor_id_array), falling back to the resolved entry's array
+        # minus inherited. Reading the roster entry's factor_id_array directly was
+        # the inherited (identical-every-career) set.
+        gained_ids, gained_info, factor_debug = self._extract_gained_factors(
+            data, inherited_ids
+        )
+        if gained_ids:
+            merged["factor_id_array"] = gained_ids
+            if gained_info:
+                merged["factor_info_array"] = gained_info
+        if factor_debug:
+            merged["_finish_factor_debug"] = factor_debug
         return merged
+
+    def _resolve_finished_trained_chara(self, data, fallback_chara=None):
+        """Return the just-finished trainee's entry from the finish payload's
+        ``single_mode_finish_common.trained_chara`` list, or ``None``.
+
+        Selection is deterministic:
+          1. Prefer the entry whose ``card_id``/``chara_id`` matches the running
+             career's trainee (taken from ``fallback_chara`` -- the live
+             ``chara_info`` of the career that just finished).
+          2. Otherwise fall back to ``trained_chara[0]`` -- the API convention
+             places the finished trainee first.
+
+        Never uses a longest-array heuristic; never inspects roster siblings or
+        ancestor ``succession_chara_array`` subtrees.
+        """
+        try:
+            common = data.get("single_mode_finish_common") if isinstance(data, dict) else None
+            if not isinstance(common, dict):
+                return None
+            tc_list = common.get("trained_chara")
+            if not isinstance(tc_list, list) or not tc_list:
+                return None
+
+            fb = fallback_chara or {}
+            wanted = set()
+            for key in ("card_id", "chara_id"):
+                val = fb.get(key)
+                if isinstance(val, (int, float)) and int(val) > 0:
+                    wanted.add(int(val))
+            # The top-level ``trained_chara_id`` is sometimes 0/unreliable, so we
+            # treat it only as an additional hint, never as the sole authority.
+            tcid = common.get("trained_chara_id")
+            if isinstance(tcid, (int, float)) and int(tcid) > 0:
+                wanted.add(int(tcid))
+
+            if wanted:
+                for entry in tc_list:
+                    if not isinstance(entry, dict):
+                        continue
+                    for id_key in ("card_id", "chara_id", "trained_chara_id", "id"):
+                        ev = entry.get(id_key)
+                        if isinstance(ev, (int, float)) and int(ev) in wanted:
+                            return entry
+
+            # Fall back to the first entry (finished trainee comes first).
+            for entry in tc_list:
+                if isinstance(entry, dict):
+                    return entry
+        except Exception:
+            pass
+        return None
+
+    def _extract_gained_factors(self, finish_data, inherited_ids):
+        """Return the just-finished trainee's NEWLY-EARNED factor (spark) ids.
+
+        v1.5 fix: ``single_mode_finish_common.trained_chara[*].factor_id_array``
+        is the trainee's INHERITED parent-spark set -- identical every career for
+        a fixed parent pair, which is why Career History showed the same sparks
+        every run.  The sparks EARNED this run live in sibling fields of
+        ``single_mode_finish_common``:
+          * ``gained_factor_info_array`` -- list of ``{factor_id: N, ...}`` dicts
+          * ``earned_factor_id_array``   -- plain int id list
+        We read those FIRST.  Only if neither is present do we fall back to the
+        resolved trainee entry's ``factor_id_array`` MINUS the inherited set, so a
+        stale roster slot can never produce the identical-every-career artifact.
+
+        ``finish_data`` may be the full finish ``data`` dict (containing
+        ``single_mode_finish_common``) or that common block directly.  Returns
+        ``(ids, info_array_or_None, debug_dict)``; ``debug_dict`` is stamped onto
+        the summary as ``_finish_factor_debug`` so the populated field can be
+        confirmed from a live run.
+        """
+        inherited = set(int(x) for x in (inherited_ids or []) if isinstance(x, (int, float)))
+        seen = {}
+
+        def _ids_from(value):
+            if isinstance(value, list):
+                if value and all(isinstance(v, (int, float)) for v in value):
+                    return [int(v) for v in value]
+                # list of {factor_id: N} dicts
+                return [int(v.get("factor_id")) for v in value
+                        if isinstance(v, dict) and isinstance(v.get("factor_id"), (int, float))]
+            return []
+
+        if not isinstance(finish_data, dict):
+            return [], None, None
+        common = finish_data.get("single_mode_finish_common")
+        container = common if isinstance(common, dict) else finish_data
+
+        # 1. PREFERRED: the sparks actually earned this career.
+        info = None
+        gfi = container.get("gained_factor_info_array")
+        earned = _ids_from(gfi) if isinstance(gfi, list) else []
+        if earned:
+            seen["gained_factor_info_array"] = earned[:8]
+            if gfi and isinstance(gfi[0], dict):
+                info = gfi
+        if not earned:
+            efa = container.get("earned_factor_id_array")
+            earned = _ids_from(efa)
+            if earned:
+                seen["earned_factor_id_array"] = earned[:8]
+        if earned:
+            return earned, info, {"inherited_factor_ids": sorted(inherited), "factor_arrays_seen": seen}
+
+        # 2. FALLBACK: resolved trainee entry's own array, minus inherited sparks.
+        entry = None
+        if self is not None:
+            try:
+                resolved = self._resolve_finished_trained_chara(finish_data, None)
+                if isinstance(resolved, dict):
+                    entry = resolved
+            except Exception:
+                entry = None
+        if entry is None:
+            tc = container.get("trained_chara")
+            if isinstance(tc, list) and tc and isinstance(tc[0], dict):
+                entry = tc[0]
+        if isinstance(entry, dict):
+            raw_ids = _ids_from(entry.get("factor_id_array"))
+            new_ids = [i for i in raw_ids if i not in inherited]
+            if new_ids:
+                seen["trained_chara.factor_id_array(minus inherited)"] = new_ids[:8]
+                info_val = entry.get("factor_info_array")
+                if isinstance(info_val, list) and info_val and isinstance(info_val[0], dict):
+                    info = [f for f in info_val
+                            if not (isinstance(f, dict) and int(f.get("factor_id") or 0) in inherited)] or info_val
+                return new_ids, info, {"inherited_factor_ids": sorted(inherited), "factor_arrays_seen": seen}
+
+        debug = {"inherited_factor_ids": sorted(inherited), "factor_arrays_seen": seen} if seen else None
+        return [], None, debug
 
     def _compact_final_chara(self, chara=None):
         """Small in-memory career summary for the dashboard history modal.
@@ -320,6 +469,10 @@ class CareerRunner:
             "title": pick("chara_title", "title", "card_name", default=""),
             "race_count": pick("race_count", "race_num", "race_entry_count", "total_race_count", default=0),
             "win_count": pick("win_count", "win_num", "race_win_count", "total_win_count", default=0),
+            # v6.8: diagnostic for the per-run sparks fix -- lists every
+            # factor-bearing key found in the finish payload so the exact
+            # earned-spark field can be confirmed from one finished career.
+            "_finish_factor_debug": chara.get("_finish_factor_debug"),
         }
 
     def _record_completed_run_metrics(self, chara=None):
@@ -373,7 +526,8 @@ class CareerRunner:
         if self.report:
             add_event(self.report, row)
 
-    def start(self, client, preset, initial_result, max_steps=2500, burn_clocks=False, dev_mode=False):        
+    def start(self, client, preset, initial_result, max_steps=2500, burn_clocks=False, dev_mode=False,
+              carats_enabled=False, max_clocks_per_career=0):
         with self.lock:
             if self.status["running"]:
                 raise RuntimeError("Career runner already active")
@@ -384,6 +538,8 @@ class CareerRunner:
             self.stop_requested = False
             self.pause_requested = False
             self.burn_clocks = burn_clocks
+            self.carats_enabled = bool(carats_enabled)
+            self.max_clocks_per_career = int(max_clocks_per_career or 0)
             self.dev_mode = dev_mode
             self.current_run_recorded = False
             self.metrics["runs_started"] = int(self.metrics.get("runs_started") or 0) + 1
@@ -407,6 +563,7 @@ class CareerRunner:
                 "items_bought": 0,
                 "items_used": 0,
                 "clocks_used": 0,
+                "carat_retries_used": 0,
                 "burn_clocks_requested": bool(burn_clocks),
                 "clock_retry_policy": {
                     "user_enabled": bool(burn_clocks),
@@ -435,6 +592,7 @@ class CareerRunner:
             }
             self.report = new_report(preset, scenario_id)
             try:
+                _mc_start = (preset or {}).get("mant_config") or {}
                 self.report["runtime_settings"] = {
                     "burn_clocks": bool(burn_clocks),
                     "clock_retry_policy": {
@@ -442,6 +600,10 @@ class CareerRunner:
                         "enabled": bool(burn_clocks),
                         "source": "career_start",
                     },
+                    # Record the active engine + stat-focus so logs are unambiguous
+                    # about which mode produced the result (A/B clarity).
+                    "decision_mode": str(_mc_start.get("decision_mode") or "trackblazer"),
+                    "stat_focus_mode": str(_mc_start.get("stat_focus_mode") or "balanced"),
                     "run_id": self.status.get("run_id"),
                     "loop_index": self.status.get("loop_index"),
                     "loop_target": self.status.get("loop_target"),
@@ -583,6 +745,69 @@ class CareerRunner:
         race_progress_guard = {"turn": None, "count": 0}
         command_guard = {"turn": None, "count": 0}
         try:
+            # v7.2 — Per-turn hot-reload of preset and settings. Cached so
+            # the file is only re-read when a new turn begins, not on every
+            # iteration of the inner loop. Refreshes:
+            #   - the preset (extra_race_list, mant_config overrides, etc.)
+            #   - the userdata-level settings.json (turn_delay, tp_recovery)
+            # so the user can adjust UI controls mid-career and have the
+            # changes pick up on the very next turn — no stop/restart needed.
+            _hot_reload_state = {"last_turn_reloaded": -1, "store": None, "preset_name": None}
+            try:
+                from career_bot.config_store import ConfigStore as _ConfigStoreCls
+                _userdata_for_run = os.environ.get("SWEEPYCL_USERDATA_DIR") or os.environ.get("SWEEPYCLAUDE_USERDATA_DIR") or getattr(self, "userdata_dir", None) or self.base_dir
+                _hot_reload_state["store"] = _ConfigStoreCls(self.base_dir, userdata_dir=_userdata_for_run)
+                _hot_reload_state["preset_name"] = (preset or {}).get("name") or ""
+            except Exception as _hot_reload_exc:
+                self._log("hot_reload_init", 0, f"could not init: {_hot_reload_exc}")
+
+            def _maybe_hot_reload_preset(current_turn, current_preset):
+                """Reload the preset from disk if turn changed. Returns the
+                preset to use this iteration (either fresh or unchanged)."""
+                store = _hot_reload_state.get("store")
+                name = _hot_reload_state.get("preset_name")
+                if not store or not name:
+                    return current_preset
+                if current_turn == _hot_reload_state["last_turn_reloaded"]:
+                    return current_preset
+                try:
+                    fresh = store.read_one(name)
+                except Exception as exc:
+                    self._log("hot_reload_skip", current_turn, f"read_one failed: {exc}")
+                    return current_preset
+                if not fresh:
+                    return current_preset
+                # CRITICAL: preserve the runtime-only fields the per-run setup
+                # injected on top of the saved preset. extra_race_list_source
+                # was set in main.py based on the start-of-run UI state and
+                # MUST NOT be overwritten by what's on disk (which may differ
+                # if the user is editing). Same for runtime overrides we know
+                # the runner cares about.
+                preserve_keys = (
+                    "extra_race_list_source",
+                    "race_planner_mode",
+                    "_runtime_overrides",
+                    "skill_spending_strategy",
+                )
+                for k in preserve_keys:
+                    if k in current_preset:
+                        fresh[k] = current_preset[k]
+                # If the user is in manual mode AND has edited their race list,
+                # the disk has the new list and we want to use it. If they're
+                # in smart mode, the runtime extra_race_list was authored by
+                # the smart solver replanning and should be preserved.
+                if str(current_preset.get("extra_race_list_source") or "").lower() == "smart":
+                    fresh["extra_race_list"] = current_preset.get("extra_race_list", [])
+                changed = []
+                for k in fresh:
+                    if k in preserve_keys: continue
+                    if fresh.get(k) != current_preset.get(k):
+                        changed.append(k)
+                if changed:
+                    self._log("hot_reload_preset", current_turn, f"reloaded {len(changed)} field(s): {', '.join(changed[:6])}")
+                _hot_reload_state["last_turn_reloaded"] = current_turn
+                return fresh
+
             for i in range(max_steps):
                 if self._should_stop():
                     break
@@ -597,6 +822,8 @@ class CareerRunner:
                     if hasattr(client, "wait_turn_delay"):
                         client.wait_turn_delay()
                     last_turn = turn
+                    # v7.2 — Hot-reload the preset at every new turn boundary.
+                    preset = _maybe_hot_reload_preset(turn, preset)
                 
                 self._heartbeat(turn)
                 self._mark(turn=turn)
@@ -977,29 +1204,80 @@ class CareerRunner:
                 print(f"state snapshot write failed: {exc}", flush=True)
 
 
+    # Server-side "try again later" codes/phrases. When these persist it's the
+    # game server (maintenance / overload / recovery), not a fault in the bot,
+    # so the runner rides it out instead of failing the career.
+    # 394 is auth/session-invalid (a stale Steam ticket), NOT a server-side
+    # maintenance/overload condition -- it is recovered by re-login (which now
+    # mints a fresh ticket), so it is intentionally NOT a server-wait token (no
+    # 5-minute "waiting for server" backoff / UI banner).
+    _SERVER_WAIT_TOKENS = (
+        "208", "503", "502", "504",
+        "maintenance", "Service Unavailable", "Gateway Timeout", "Bad Gateway",
+    )
+
     def _is_recoverable_error(self, exc):
         text = str(exc)
         return any(token in text for token in (
             "Network error", "timeout", "timed out", "Connection",
             "HTTP 502", "HTTP 503", "HTTP 504", "Gateway Timeout", "Bad Gateway", "Service Unavailable",
             "status=502", "status=503", "status=504",
-            "201", "202", "205", "208", "214", "StateRecoveryError",
+            "201", "202", "205", "208", "214", "394", "StateRecoveryError",
             "daily reset", "maintenance",
         ))
 
+    def _interruptible_sleep(self, total):
+        """Sleep up to ``total`` seconds but wake immediately on a stop request."""
+        end = time.time() + max(0.0, float(total))
+        while time.time() < end:
+            if self._should_stop():
+                return
+            time.sleep(min(1.0, max(0.0, end - time.time())))
+
     def _recover_with_backoff(self, client, strategy, exc):
+        """Recover from a transient error. For server-side "try again later"
+        conditions (maintenance/overload) this keeps waiting with escalating,
+        interruptible backoff until the server responds again — riding out a
+        maintenance window instead of crashing the career. Returns the fresh
+        state, or ``None`` if a stop was requested while waiting (the main loop
+        breaks on its own stop check). A genuinely fatal error is re-raised.
+        """
         detail = str(exc)
-        with self.lock:
-            self.status["recoveries"] = int(self.status.get("recoveries") or 0) + 1
-            recovery_no = self.status["recoveries"]
-        delay = min(90, 5 * (2 ** min(4, recovery_no - 1)))
-        self._log("recover", self.snapshot().get("turn", 0), f"{detail}; retrying after {delay}s")
-        dna_sleep(delay, delay)
-        state = self._fresh_career_state(client, strategy)
-        with self.lock:
-            self.status["same_turn_count"] = 0
-            self.status["last_seen_at"] = time.time()
-        return state
+        attempt = 0
+        while not self._should_stop():
+            attempt += 1
+            is_server = any(t in detail for t in self._SERVER_WAIT_TOKENS)
+            with self.lock:
+                self.status["recoveries"] = int(self.status.get("recoveries") or 0) + 1
+                if is_server:
+                    self.status["waiting_for_server"] = True
+                    self.status["server_wait_reason"] = detail[:160]
+            # Server waits ride out longer (cap 5 min); other transient errors
+            # use the original shorter cap so normal hiccups recover quickly.
+            cap = 300 if is_server else 90
+            delay = min(cap, 5 * (2 ** min(6, attempt - 1)))
+            note = " (waiting for server / maintenance)" if is_server else ""
+            self._log("recover", self.snapshot().get("turn", 0), f"{detail}; retrying after {delay}s{note}")
+            self._interruptible_sleep(delay)
+            if self._should_stop():
+                return None
+            try:
+                state = self._fresh_career_state(client, strategy)
+            except Exception as exc2:
+                if self._is_recoverable_error(exc2):
+                    detail = str(exc2)
+                    continue  # still down — keep waiting
+                with self.lock:
+                    self.status["waiting_for_server"] = False
+                    self.status["server_wait_reason"] = ""
+                raise
+            with self.lock:
+                self.status["same_turn_count"] = 0
+                self.status["last_seen_at"] = time.time()
+                self.status["waiting_for_server"] = False
+                self.status["server_wait_reason"] = ""
+            return state
+        return None
 
     def _update_analytics(self, chara):
         chara = chara or {}
@@ -1034,6 +1312,9 @@ class CareerRunner:
         with self.lock:
             self.status["steps"] += 1
             self.status["last_action"] = action
+            if self.status.get("waiting_for_server"):
+                self.status["waiting_for_server"] = False
+                self.status["server_wait_reason"] = ""
 
     def _mark(self, **values):
         with self.lock:
@@ -1389,7 +1670,7 @@ class CareerRunner:
         # (e.g. wrong context) are also surfaced so failures are visible.
         try:
             current_turn = int((payload or {}).get("current_turn") or 0)
-            items_line = self._items_used_reason_line(current_turn)
+            items_line = self._items_used_reason_line(current_turn, action)
             if items_line:
                 reasons.append(items_line)
         except Exception:
@@ -1405,37 +1686,66 @@ class CareerRunner:
                 deduped.append(r)
         return deduped
 
-    # v6.7.10: category mapping for item reasoning surfaced to the user.
-    # Adding a new item here only requires extending this dict; nothing
-    # else in the reasoning path changes.
-    _ITEM_REASON_BY_NAME = {
-        # Training-failure protection
-        "Good Luck Charm": "training failure protection",
-        "Charm": "training failure protection",
-        # Energy / HP recovery
-        "Energy Drink": "HP recovery",
-        "Energy Drink Max": "HP recovery (large)",
-        "Vita Juice": "HP recovery",
-        "Royal Vita Juice": "HP recovery (large)",
-        "Royal Kale Juice": "HP recovery (max)",
-        # Mood
-        "Cupcake": "mood boost",
-        "Sweet Cupcake": "mood boost (large)",
-        # Race buffs
-        "Megaphone": "race buff (cheer)",
-        "Reflective Megaphone": "race buff (skill activation)",
-        "Reset Whistle": "training-list reset",
-        # Training capacity
-        "Master Hammer": "training capacity boost",
-        "Artisan Hammer": "training capacity boost",
-        "Glow Stick": "training intensity boost",
-        # Ailment cures
-        "Healthy Manju": "cure status ailment",
-        "Pure Manju": "cure status ailment (strong)",
-        "Aroma Bath": "cure status ailment",
-        # Skill / event utility
-        "Wristlet Anklet": "race entry guarantee",
+    # v6.7.10: item reasoning is keyed by item_id (matching items.py
+    # ITEM_NAMES), NOT display strings -- the old display-name keys did not
+    # match the canonical names, so nearly every used item fell through to the
+    # bogus "selected by item manager" default.  Each ``last_use_selected``
+    # entry carries an ``item_id`` we look up here.
+    #
+    # Training-effectiveness boost items (Notepad/Manual/Scroll) are
+    # stat-specific; the stat is derived from the id's last digit.
+    _ITEM_STAT_BY_LAST_DIGIT = {
+        1: "Speed", 2: "Stamina", 3: "Power", 4: "Guts", 5: "Wit",
     }
+
+    def _item_reason_for_id(self, item_id):
+        """Map an item_id to a human reason string, keyed by the canonical
+        items.py id ranges.  Falls back to an id-category description so the
+        old ``selected by item manager`` artifact never appears."""
+        try:
+            iid = int(item_id)
+        except Exception:
+            return "training item"
+        # Training-effectiveness boosts: 1001-1005 (Notepad), 1101-1105
+        # (Manual), 1201-1205 (Scroll).
+        if 1001 <= iid <= 1205:
+            stat = self._ITEM_STAT_BY_LAST_DIGIT.get(iid % 10, "")
+            return f"training effectiveness boost ({stat})" if stat else "training effectiveness boost"
+        # Energy recovery: Vita 2001-2003, Energy Drink MAX 2201-2202.
+        if 2001 <= iid <= 2003 or 2201 <= iid <= 2202:
+            return "energy recovery"
+        # Max-energy recovery: Royal Kale Juice 2101.
+        if iid == 2101:
+            return "max-energy recovery"
+        # Mood boost: Cupcake 2301-2302.
+        if 2301 <= iid <= 2302:
+            return "mood boost"
+        # Mood + energy snack: Yummy Cat Food 3001, Grilled Carrots 3101.
+        if iid in (3001, 3101):
+            return "mood + energy (snack)"
+        # Training boost (megaphone): 8001-8003 — boosts TRAINING stat gain over
+        # several turns. NOT a race item (the cleat hammers below are the race buff).
+        if 8001 <= iid <= 8003:
+            return "training boost (megaphone)"
+        # Race buff (hammer): 11001-11002 — boosts RACE stat gain.
+        if 11001 <= iid <= 11002:
+            return "race buff (hammer)"
+        # Fan boost (glow sticks): 11003.
+        if iid == 11003:
+            return "fan boost (glow sticks)"
+        # Training-failure protection: Good-Luck Charm 10001.
+        if iid == 10001:
+            return "training-failure protection (charm)"
+        # Training reroll: Reset Whistle 7001.
+        if iid == 7001:
+            return "training reroll (whistle)"
+        # Id-category fallback so the artifact string never appears.
+        category = iid // 1000
+        if category in (1, 5, 9):
+            return "training item"
+        if category in (8, 11):
+            return "race item"
+        return "consumable"
 
     # v6.7.11: solver-setting precedence helpers.  Smart Race Solver
     # Settings panel writes to ``preset.trackblazer_solver_settings``,
@@ -1487,11 +1797,18 @@ class CareerRunner:
         except Exception:
             return int(default_int)
 
-    def _items_used_reason_line(self, current_turn):
+    def _items_used_reason_line(self, current_turn, action=None):
         """Build a single reasoning line describing what items the item
         manager USED this turn and why.  Returns "" if no items were
         used.  v6.7.10."""
         try:
+            # On a RACE turn the item manager only holds a train-vs-race PREVIEW
+            # selection (e.g. megaphones for a training that didn't happen); it is
+            # NOT consumed. The actual race items (cleat hammers / glow sticks) are
+            # applied + logged in the pre-race path. Don't surface the unconsumed
+            # training preview as "items used" on race turns.
+            if str(action or "").strip().lower() == "race":
+                return ""
             mgr = getattr(self, "item_manager", None)
             if not mgr:
                 return ""
@@ -1533,7 +1850,7 @@ class CareerRunner:
                 if not name:
                     continue
                 count = int(entry.get("use_num") or 1)
-                why = self._ITEM_REASON_BY_NAME.get(name, "selected by item manager")
+                why = self._item_reason_for_id(entry.get("item_id"))
                 if count > 1:
                     parts.append(f"{name} x{count} ({why})")
                 else:
@@ -1686,6 +2003,11 @@ class CareerRunner:
         self._debug("turn", state, {
             "owned_skills": self._debug_owned_skills(state),
             "inventory": self._debug_inventory(state),
+            # Live on-screen race list (program_ids the game is offering this turn).
+            # Diagnostic: lets us compare the solver's planned race program_ids
+            # (wanted) against what's actually available, to find why marquee G1s
+            # (Japan Cup / Arima) fall into the missing-race substitute path.
+            "race_condition_array": data.get("race_condition_array") or [],
             "server_skill_tips_raw": chara.get("skill_tips_array") or [],
             "server_owned_skill_raw": chara.get("skill_array") or [],
             "skill_rows_enriched": self._debug_skill_options(state, preset),
@@ -1959,6 +2281,9 @@ class CareerRunner:
             payload = {"event_id": event.get("event_id"), "chara_id": event.get("chara_id", 0), "choice_number": choice, "current_turn": turn}
             if choice is None:
                 payload = {"event_id": event.get("event_id"), "_event": event, "_current_turn": turn}
+            # v7.6.2: snapshot chara_info before the choice so we can record the
+            # event's outcome natively from the bot's own API traffic.
+            before_chara = (data.get("chara_info") or {}) if self.native_event_capture else None
             try:
                 current = self._event(client, strategy, payload)
             except Exception as exc:
@@ -1966,6 +2291,8 @@ class CareerRunner:
                     self._log("event_drain_recover", turn, str(exc))
                     return self._recover_with_backoff(client, strategy, exc)
                 raise
+            if self.native_event_capture and choice is not None:
+                self._capture_event_outcome(event, choice, before_chara, current)
 
         data = current.get("data") or {}
         events = data.get("unchecked_event_array") or []
@@ -1978,13 +2305,124 @@ class CareerRunner:
             return self._fresh_career_state(client, strategy, drain_events=False)
         return current
 
+    def _capture_event_outcome(self, event, choice_index, before_chara, after_state):
+        """v7.6.2: record an event outcome from the bot's own API traffic.
+
+        Native alternative to the external Frida dumper — diffs chara_info
+        before/after the choice and writes it to the event-outcome KB, keyed by
+        story_id. Must never break a run, so all failures are swallowed.
+        """
+        try:
+            story_id = str((event or {}).get("story_id") or "").strip()
+            if not story_id:
+                return
+            after_chara = ((after_state or {}).get("data") or {}).get("chara_info") or {}
+            if not before_chara or not after_chara:
+                return
+            # Resolve the 1-based select_index of the chosen option (the KB keys
+            # outcomes by select_index, not the 0-based choice index).
+            choices = ((event.get("event_contents_info") or {}).get("choice_array") or [])
+            select_index = None
+            if isinstance(choice_index, int) and 0 <= choice_index < len(choices):
+                select_index = (choices[choice_index] or {}).get("select_index")
+            if select_index is None:
+                select_index = (choice_index or 0) + 1
+            event_name = (
+                ((event.get("event_contents_info") or {}).get("title") if isinstance(event.get("event_contents_info"), dict) else "")
+                or event.get("title")
+                or event.get("event_title")
+                or event.get("name")
+                or ""
+            )
+            event_kb.record_observation(
+                self.base_dir,
+                story_id=story_id,
+                select_index=select_index,
+                before=before_chara,
+                after=after_chara,
+                event_name=event_name,
+            )
+        except Exception:
+            pass
+
+    def _non_retryable_path(self):
+        return runtime_output_root(self.base_dir) / "non_retryable_races.json"
+
+    def _load_non_retryable(self):
+        """Program ids the game has refused to continue (server 205/2507).
+
+        v1.5: learned across careers and persisted so the bot stops wasting a
+        retry attempt -- and logging an error -- on races the game won't let it
+        re-run (the junior/classic mandatory G1s, the Twinkle Star finale, etc.).
+        """
+        cached = getattr(self, "_non_retryable_set", None)
+        if cached is not None:
+            return cached
+        ids = set()
+        try:
+            path = self._non_retryable_path()
+            if path.exists():
+                data = json.loads(path.read_text(encoding="utf-8")) or {}
+                for pid in (data.get("non_retryable_program_ids") or []):
+                    try:
+                        ids.add(int(pid))
+                    except Exception:
+                        continue
+        except Exception:
+            ids = set()
+        self._non_retryable_set = ids
+        return ids
+
+    def _mark_non_retryable(self, program_id, error_code=""):
+        try:
+            pid = int(program_id or 0)
+        except Exception:
+            return
+        if pid <= 0:
+            return
+        ids = self._load_non_retryable()
+        if pid in ids:
+            return
+        ids.add(pid)
+        try:
+            path = self._non_retryable_path()
+            path.parent.mkdir(parents=True, exist_ok=True)
+            payload = {"non_retryable_program_ids": sorted(ids),
+                       "note": "Program ids the game rejected race-continue on (205/2507); retries are skipped for these. Delete this file to relearn."}
+            path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+        except Exception:
+            pass
+
+    def _free_continue_count(self, home_info):
+        """Usable free race continues.
+
+        v1.5 fix: the game exposes the standing free-continue pool in
+        ``free_continue_num`` (with a ``free_continue_time`` refresh stamp), NOT
+        ``available_free_continue_num`` -- which is 0 on the Trackblazer races
+        that don't grant a per-race free continue.  Reading only the latter made
+        Icarus believe it had zero free retries and fall back to PAID clocks,
+        which those races reject (error 205) -- so 3 free continues sat unused
+        all run.  Use whichever field reports more.
+        """
+        if not isinstance(home_info, dict):
+            return 0
+        try:
+            a = int(home_info.get("available_free_continue_num", 0) or 0)
+        except Exception:
+            a = 0
+        try:
+            b = int(home_info.get("free_continue_num", 0) or 0)
+        except Exception:
+            b = 0
+        return max(a, b)
+
     def _get_clocks_left(self, root, max_clocks=5):
         data = root.get("data") or {}
 
         home_info = data.get("home_info")
         if isinstance(home_info, dict) and "available_continue_num" in home_info:
             std = int(home_info.get("available_continue_num", 0))
-            free = int(home_info.get("available_free_continue_num", 0))
+            free = self._free_continue_count(home_info)
             continue_type = 1 if free > 0 else 2
             return {
                 "source": "data.home_info.available_continue_num",
@@ -2251,7 +2689,9 @@ class CareerRunner:
         if str((preset or {}).get("extra_race_list_source") or "").strip().lower() != "smart":
             return None
         cfg = dict((preset or {}).get("mant_config") or {})
-        if cfg.get("enable_live_smart_replan", True) is False:
+        # v1.5: honor the "Live Schedule Re-Planning" UI toggle
+        # (trackblazer_solver_settings) via _solver_setting; mant_config still wins.
+        if self._solver_setting(preset, "enable_live_smart_replan", True) is False:
             return None
         if int(turn or 0) >= 72:
             return None
@@ -2319,6 +2759,22 @@ class CareerRunner:
             preset_targets = (preset or {}).get("trackblazer_target_epithets") or []
             actual_targets = list(preset_targets) if preset_targets else list(profile_targets)
             actual_target_source = "preset" if preset_targets else target_source
+            # Race agenda (preset.trackblazer_race_agenda): merge its curated
+            # epithet bundle into the solver targets so the schedule commits to a
+            # full agenda instead of eroding to minimal fan-only racing after
+            # race losses.  Agenda epithets are additive to any explicit targets.
+            agenda_id = (preset or {}).get("trackblazer_race_agenda") or ""
+            agenda_targets, agenda_forced = trackblazer.resolve_agenda_epithets(self.base_dir, agenda_id)
+            if agenda_targets or agenda_forced:
+                actual_targets = trackblazer._merge_epithet_lists(actual_targets, agenda_targets)
+                actual_target_source = (
+                    f"agenda:{agenda_id}" if actual_target_source in ("none", "auto")
+                    else f"{actual_target_source}+agenda:{agenda_id}"
+                )
+            forced_epithets = trackblazer._merge_epithet_lists(
+                (preset or {}).get("trackblazer_forced_epithets") or profile.forced_epithets,
+                agenda_forced,
+            )
             with self.lock:
                 self.status["epithet_target_source"] = {
                     "source": actual_target_source,
@@ -2342,7 +2798,7 @@ class CareerRunner:
                 # bottleneck for the user's "race count won't go above
                 # ~30" issue.  Now the UI knobs are honored.
                 fan_bonus=float(self._solver_setting(preset, "fan_bonus", 0)),
-                max_races_in_row=int(self._solver_setting(preset, "max_races_in_row", 2)),
+                max_races_in_row=int(self._solver_setting(preset, "max_races_in_row", 5)),
                 include_op=bool(self._solver_setting(preset, "include_op", False)),
                 floor=self._solver_aptitude_floor(preset, default_int=6),
                 solver=str(cfg.get("solver") or "auto"),
@@ -2350,7 +2806,7 @@ class CareerRunner:
                 training_blocks=(preset or {}).get("training_blocks") or [],
                 manual_locks=(preset or {}).get("manual_locks") or {},
                 target_epithets=actual_targets,
-                forced_epithets=(preset or {}).get("trackblazer_forced_epithets") or profile.forced_epithets,
+                forced_epithets=forced_epithets,
                 preferred_distances=cfg.get("preferred_distances") or (preset or {}).get("preferred_distances") or profile.preferred_distances,
                 distance_preference_mode=str(self._solver_setting(preset, "distance_preference_mode", "balanced")),
                 current_turn=next_turn,
@@ -2515,6 +2971,13 @@ class CareerRunner:
         style = resolve_running_style_for_race(preset, bucket, turn, default=None)
         return int(style or 0)
 
+    def _style_adaptation_enabled(self, preset):
+        # The style-adaptation system is removed from the live race path by
+        # default: the bot uses the preset running_style directly. Re-enable it
+        # only if explicitly requested via mant_config.enable_style_adaptation.
+        cfg = ((preset or {}).get("mant_config") or {})
+        return bool(cfg.get("enable_style_adaptation", False))
+
     def _race_grade_for_retry(self, program_id):
         if not self.race_planner:
             return ""
@@ -2524,6 +2987,20 @@ class CareerRunner:
             return tb_rules.normalize_grade(info.get("grade") or info.get("race_instance_id"))
         except Exception:
             return ""
+
+    def _is_debut_race(self, program_id, turn=0):
+        """True if this is the debut (Make Debut / Maiden) race -- the one the
+        user can reserve free continues for. Matched by race name (the program
+        id varies by trainee/route), via the race planner's program metadata."""
+        try:
+            if self.race_planner and program_id:
+                info = self.race_planner._program_info(int(program_id)) or {}
+                name = str(info.get("name") or self.race_planner.label(program_id) or "").lower()
+                if "make debut" in name or "maiden" in name or "debut" in name:
+                    return True
+        except Exception:
+            pass
+        return False
 
     def _race_retry_policy(self, preset, program_id, turn, attempts, *, free_clocks_available=0, is_mandatory=False):
         """Explain whether race continue retries are allowed for this race.
@@ -2569,6 +3046,12 @@ class CareerRunner:
         if cfg.get("disable_race_retries", False):
             policy["disabled_reason"] = "preset_disable_race_retries"
             return policy
+        # v1.5: skip races the game has previously refused to continue (205/2507),
+        # learned across careers -- don't waste an attempt + error log on them.
+        if (cfg.get("enable_non_retryable_learning", True) and not is_mandatory
+                and int(program_id or 0) in self._load_non_retryable()):
+            policy["disabled_reason"] = "race_known_non_retryable"
+            return policy
         try:
             max_retries = int(cfg.get("max_retries_per_race") if cfg.get("max_retries_per_race") is not None else 5)
         except Exception:
@@ -2577,14 +3060,21 @@ class CareerRunner:
         if int(attempts or 0) >= max(0, max_retries):
             policy["disabled_reason"] = "max_retries_reached"
             return policy
-        allowed = cfg.get("retry_race_grades") or ["G1", "G2", "G3"]
+        allowed = cfg.get("retry_race_grades") or ["G1"]   # android-style: G1 only (after debut)
         if isinstance(allowed, str):
             allowed = [part.strip() for part in allowed.split(",") if part.strip()]
         allowed_set = {str(item).upper() for item in allowed}
         policy["allowed_grades"] = sorted(allowed_set)
-        # v6.7.12: mandatory races bypass the grade filter -- a forced
-        # race must be retried regardless of its grade.
-        if allowed_set and policy["grade"] and policy["grade"] not in allowed_set and not is_mandatory:
+        # User spec: the Debut/Maiden race is ALWAYS retried on a loss, bypassing
+        # the grade filter; every other non-mandatory race must be in the allowed
+        # grades (default G1-only). Mandatory races also bypass the filter.
+        is_debut = False
+        try:
+            is_debut = bool(self._is_debut_race(program_id, turn))
+        except Exception:
+            is_debut = False
+        policy["is_debut"] = is_debut
+        if not is_debut and allowed_set and policy["grade"] and policy["grade"] not in allowed_set and not is_mandatory:
             policy["disabled_reason"] = "grade_not_allowed"
             return policy
         # v6.7.12: mandatory-race paid-clock rescue.  A mandatory race
@@ -2596,6 +3086,19 @@ class CareerRunner:
             policy["mandatory_clock_rescue"] = True
             if not self.burn_clocks:
                 policy["disabled_reason"] = "paid_clocks_via_mandatory_rescue"
+            return policy
+        # v1.5: graded extra-race retries default ON, decoupled from the Burn
+        # Clocks toggle -- mirroring android, whose free "Try Again" re-runs any
+        # lost G1/G2/G3 extra race by default (the main reason its win rate is
+        # ~95% vs Icarus's ~83%).  At this point the race is retry-eligible
+        # (grade allowed) and NOT mandatory; allow paid+free clocks up to
+        # max_retries_per_race.  Disable via mant_config.retry_extra_races=false
+        # (then it falls back to the Burn-Clocks/free-only behaviour below).
+        if cfg.get("retry_extra_races", True) and not is_mandatory:
+            policy["enabled"] = True
+            policy["extra_race_retry"] = True
+            if not self.burn_clocks:
+                policy["disabled_reason"] = "paid_clocks_via_extra_race_retry"
             return policy
         # v6.7.10: at this point retries are allowed in principle.  Now
         # decide WHICH kinds (free, paid, or both) are usable.
@@ -2652,40 +3155,28 @@ class CareerRunner:
         base_running_style = self._running_style_for_race(preset, program_id, current_turn)
         style_decision = {}
         running_style = base_running_style
-        try:
-            race_summary_for_style = self._race_program_summary(program_id, rank=None, turn=current_turn)
-            race_summary_for_style["performance_hint"] = self._official_performance_hint(
-                program_id,
-                chara=((state or {}).get("data") or {}).get("chara_info") or {},
-                running_style=base_running_style,
-            )
-            style_context = style_adaptation.build_style_context(
-                self.base_dir,
-                state or {},
-                {**(preset or {}), "burn_clocks": bool(self.burn_clocks)},
-                race_summary_for_style,
-                base_running_style,
-                current_turn,
-            )
-            style_context["run_id"] = self.status.get("run_id") or style_context.get("run_id") or ""
-            style_decision = style_adaptation.decide_style(self.base_dir, style_context)
-            style_adaptation.record_decision(self.base_dir, style_decision)
-            running_style = int(style_decision.get("applied_style") or base_running_style or 0)
-            self._debug("style_adaptation_decision", state, {
-                "decision_id": style_decision.get("decision_id"),
-                "mode": style_decision.get("mode"),
-                "base_user_style": style_decision.get("base_user_style"),
-                "recommended_style": style_decision.get("recommended_style"),
-                "applied_style": style_decision.get("applied_style"),
-                "style_changed": style_decision.get("style_changed"),
-                "confidence": style_decision.get("confidence"),
-                "expected_reward_delta": style_decision.get("expected_reward_delta"),
-                "reason_flags": (style_decision.get("reason_flags") or [])[:8],
-            })
-            with self.lock:
-                self.status["last_style_adaptation"] = {
-                    "turn": int(current_turn or 0),
-                    "program_id": int(program_id or 0),
+        if self._style_adaptation_enabled(preset):
+            try:
+                race_summary_for_style = self._race_program_summary(program_id, rank=None, turn=current_turn)
+                race_summary_for_style["performance_hint"] = self._official_performance_hint(
+                    program_id,
+                    chara=((state or {}).get("data") or {}).get("chara_info") or {},
+                    running_style=base_running_style,
+                )
+                style_context = style_adaptation.build_style_context(
+                    self.base_dir,
+                    state or {},
+                    {**(preset or {}), "burn_clocks": bool(self.burn_clocks)},
+                    race_summary_for_style,
+                    base_running_style,
+                    current_turn,
+                )
+                style_context["run_id"] = self.status.get("run_id") or style_context.get("run_id") or ""
+                style_decision = style_adaptation.decide_style(self.base_dir, style_context)
+                style_adaptation.record_decision(self.base_dir, style_decision)
+                running_style = int(style_decision.get("applied_style") or base_running_style or 0)
+                self._debug("style_adaptation_decision", state, {
+                    "decision_id": style_decision.get("decision_id"),
                     "mode": style_decision.get("mode"),
                     "base_user_style": style_decision.get("base_user_style"),
                     "recommended_style": style_decision.get("recommended_style"),
@@ -2693,11 +3184,27 @@ class CareerRunner:
                     "style_changed": style_decision.get("style_changed"),
                     "confidence": style_decision.get("confidence"),
                     "expected_reward_delta": style_decision.get("expected_reward_delta"),
-                }
-        except Exception as exc:
-            self._log("style_adaptation_failed", current_turn, str(exc))
-            running_style = base_running_style
+                    "reason_flags": (style_decision.get("reason_flags") or [])[:8],
+                })
+                with self.lock:
+                    self.status["last_style_adaptation"] = {
+                        "turn": int(current_turn or 0),
+                        "program_id": int(program_id or 0),
+                        "mode": style_decision.get("mode"),
+                        "base_user_style": style_decision.get("base_user_style"),
+                        "recommended_style": style_decision.get("recommended_style"),
+                        "applied_style": style_decision.get("applied_style"),
+                        "style_changed": style_decision.get("style_changed"),
+                        "confidence": style_decision.get("confidence"),
+                        "expected_reward_delta": style_decision.get("expected_reward_delta"),
+                    }
+            except Exception as exc:
+                self._log("style_adaptation_failed", current_turn, str(exc))
+                running_style = base_running_style
 
+        # NOTE: race_entry's running_style param is IGNORED by the server. The style
+        # is set via single_mode_free/change_running_style, which is only valid AFTER
+        # race_entry and BEFORE race_start (see below) -> doing it here would 102.
         try:
             if running_style in (1, 2, 3, 4):
                 entry = client.race_entry(program_id=program_id, current_turn=current_turn, running_style=running_style)
@@ -2729,6 +3236,23 @@ class CareerRunner:
                 entry = self._drain_events(client, strategy, entry)
         
         race_start_info = (entry.get("data") or {}).get("race_start_info") or {}
+        # STEP 3 (Trackblazer engine): prediction gate. Only race if our in-game
+        # prediction is strong (double-star). For an optional race with a weak
+        # prediction, back out (race_out) + reject it so the strategy re-decides
+        # this turn (skips the rejected race -> picks another or trains).
+        if payload.get("_trackblazer_prediction_gate") and not payload.get("_forced_race") and race_start_info:
+            from career_bot.scenarios.mant_trackblazer import trackblazer_is_strong_prediction
+            gate_chara = ((state or {}).get("data") or {}).get("chara_info") or {}
+            if not trackblazer_is_strong_prediction(race_start_info, gate_chara, preset):
+                self._log("trackblazer_prediction_skip", current_turn, f"{program_id} weak prediction -> back out + re-decide")
+                try:
+                    client.race_out(current_turn=current_turn)
+                except Exception as exc:
+                    if not any(e in str(exc) for e in ("102", "201", "StateRecoveryError")):
+                        raise
+                if self.race_planner:
+                    self.race_planner.reject(current_turn, program_id)
+                return self._fresh_career_state(client, strategy)
         if style_decision.get("decision_id") and race_start_info:
             try:
                 style_obs = style_adaptation.record_observation(self.base_dir, style_decision.get("decision_id"), race_start_info, state=state)
@@ -2739,6 +3263,20 @@ class CareerRunner:
                 })
             except Exception as exc:
                 self._log("style_adaptation_observation_failed", current_turn, str(exc))
+
+        # Set the running style now that the race is entered (valid window:
+        # after race_entry, before race_start). Only when it differs from the
+        # trainee's current persistent style. program_id identifies the entered race.
+        if running_style in (1, 2, 3, 4):
+            try:
+                _crs_chara = ((state or {}).get("data") or {}).get("chara_info") or {}
+                _cur_style = int(_crs_chara.get("race_running_style") or 0)
+                if _cur_style != running_style:
+                    client.change_running_style(current_turn=current_turn, running_style=running_style, program_id=program_id)
+                    self._log("change_running_style", current_turn, f"{_cur_style} -> {running_style}")
+            except Exception as exc:
+                self._log("change_running_style_failed", current_turn, str(exc))
+
         is_short = 1
         try:
             res = client.race_start(is_short=is_short, current_turn=current_turn)
@@ -2755,9 +3293,28 @@ class CareerRunner:
 
         home_info = (state.get("data") or {}).get("home_info") or {}
         std_clocks = int(home_info.get("available_continue_num", 0))
-        free_clocks = int(home_info.get("available_free_continue_num", 0))
+        free_clocks = self._free_continue_count(home_info)
+        # v1.5: option to reserve the limited free continues for the debut race
+        # only. On any other race the bot would just burn the one free retry (or
+        # trip the game's continue-refused error). Paid clocks still follow the
+        # normal retry policy (burn_clocks / retry_extra_races).
+        if (((preset or {}).get("mant_config") or {}).get("free_retries_debut_only", False)
+                and free_clocks > 0 and not self._is_debut_race(program_id, current_turn)):
+            free_clocks = 0
         clocks_available_before = std_clocks + free_clocks
         retry_events = []
+
+        # Carats (opt-in) + the per-career clock budget come from the Burn-Clocks
+        # UI (the single source of truth), set at career start — NOT the preset.
+        # When out of free + standard clocks, spend carats to continue
+        # (continue_type 2) IF carats are enabled. Never in free_only mode.
+        carat_on = bool(self.carats_enabled)
+        carat_cap = 0   # carats unlimited when enabled; PAID CLOCKS are what's
+                        # bounded, via max_clocks_per_career below.
+        carat_used_career = int(self.status.get("carat_retries_used") or 0)
+        carat_used_here = 0
+        clock_budget = int(self.max_clocks_per_career or 0)   # 0 = unlimited paid clocks/career
+        paid_clocks_used = 0
 
         retry_attempts = 0
         retry_policy = self._race_retry_policy(
@@ -2765,10 +3322,25 @@ class CareerRunner:
             free_clocks_available=free_clocks,
             is_mandatory=is_mandatory_race,
         )
-        while rank > 1 and (std_clocks > 0 or free_clocks > 0) and retry_policy.get("enabled"):
+
+        def _carats_available():
+            if not carat_on or retry_policy.get("free_only"):
+                return False
+            return carat_cap <= 0 or (carat_used_career + carat_used_here) < carat_cap
+
+        while rank > 1 and retry_policy.get("enabled") and (
+                std_clocks > 0 or free_clocks > 0 or _carats_available()):
             # v6.7.10: in free_only mode, abort the loop the moment free
             # clocks run out -- paid clocks must not be spent.
             if retry_policy.get("free_only") and free_clocks <= 0:
+                break
+            # Per-career PAID-clock budget (max clocks per career): once hit, stop
+            # spending standard clocks. Free continues and carats are not counted
+            # against it; carats (if enabled) may still continue past the cap.
+            if clock_budget > 0 and free_clocks <= 0 and paid_clocks_used >= clock_budget:
+                std_clocks = 0
+            using_carat = free_clocks <= 0 and std_clocks <= 0
+            if using_carat and not _carats_available():
                 break
             retry_attempts += 1
             clocks_left = std_clocks + free_clocks
@@ -2791,12 +3363,13 @@ class CareerRunner:
                 new_home_info = cont_data.get("home_info")
                 if isinstance(new_home_info, dict):
                     std_clocks = int(new_home_info.get("available_continue_num", 0))
-                    free_clocks = int(new_home_info.get("available_free_continue_num", 0))
+                    free_clocks = self._free_continue_count(new_home_info)
                 else:
                     if free_clocks > 0:
                         free_clocks -= 1
-                    else:
+                    elif std_clocks > 0:
                         std_clocks -= 1
+                    # else: carat-funded retry -- no clock to decrement
 
                 if strategy:
                     if cont_data.get("unchecked_event_array"):
@@ -2811,11 +3384,21 @@ class CareerRunner:
                     "standard_clocks_after": int(std_clocks),
                     "free_clocks_after": int(free_clocks),
                     "success": int(rank or 99) == 1,
+                    "carat_retry": bool(using_carat),
                 })
+                if using_carat:
+                    carat_used_here += 1
+                    with self.lock:
+                        self.status["carat_retries_used"] = carat_used_career + carat_used_here
+                    cap_str = "unlimited" if carat_cap <= 0 else str(carat_cap)
+                    self._log("race_carat_retry", current_turn,
+                              f"spent carats for retry ({carat_used_career + carat_used_here}/{cap_str} this career)")
                 retry_events.append(retry_row)
                 self._log("race_rank_retry", current_turn, f"rank {rank} after clock")
                 with self.lock:
                     self.status["clocks_used"] = int(self.status.get("clocks_used") or 0) + 1
+                if continue_type == 2 and not using_carat:
+                    paid_clocks_used += 1   # counts against max_clocks_per_career
                 retry_policy = self._race_retry_policy(
                     preset, program_id, current_turn, retry_attempts,
                     free_clocks_available=free_clocks,
@@ -2833,14 +3416,19 @@ class CareerRunner:
                 # client already retries it internally, so a 208 that
                 # bubbles up here is also terminal for this attempt.
                 err_str = str(e)
-                if "205" in err_str:
+                if "205" in err_str or "2507" in err_str:
+                    code = "2507" if "2507" in err_str else "205"
+                    # v1.5: remember this race rejects continues so future
+                    # careers skip the attempt entirely (the policy early-out).
+                    if (preset or {}).get("mant_config", {}).get("enable_non_retryable_learning", True) is not False:
+                        self._mark_non_retryable(program_id, code)
                     retry_row.update({"error": err_str, "success": False,
                                       "continue_unavailable": True})
                     retry_events.append(retry_row)
                     self._log(
                         "race_continue_unavailable", current_turn,
-                        "server rejected continue (205) -- this race does not "
-                        "support clock retries (e.g. finale); accepting result",
+                        f"server rejected continue ({code}) -- this race does not "
+                        "support retries; recorded as non-retryable, will skip next time",
                     )
                     break
                 retry_row.update({"error": err_str, "success": False})
@@ -2862,7 +3450,7 @@ class CareerRunner:
             "policy": final_retry_policy,
             "available_before": int(clocks_available_before),
             "standard_available_before": int(home_info.get("available_continue_num", 0)),
-            "free_available_before": int(home_info.get("available_free_continue_num", 0)),
+            "free_available_before": self._free_continue_count(home_info),
             "attempts": int(retry_attempts),
             "used": int(len([r for r in retry_events if not r.get("error")])),
             "initial_rank": int(initial_rank or 99),
@@ -3273,6 +3861,10 @@ class CareerRunner:
                 return
 
             cfg = profile.training_scorer_config()
+            cfg.goal_lookahead = bool(getattr(self, "goal_lookahead", False))
+            cfg = training_scorer.adapt_stamina_targets(
+                cfg, chara, enabled=bool(getattr(profile, "adapt_targets_to_inheritance", False)),
+                turn=int(chara.get("turn") or 0))
             scores = training_scorer.score_trainings(home, chara, config=cfg)
             if not scores or scores[0].score <= 0:
                 return  # scorer didn't find anything positive
@@ -3399,6 +3991,10 @@ class CareerRunner:
                     chara_info=chara,
                 )
                 cfg = profile.training_scorer_config()
+                cfg.goal_lookahead = bool(getattr(self, "goal_lookahead", False))
+                cfg = training_scorer.adapt_stamina_targets(
+                    cfg, chara, enabled=bool(getattr(profile, "adapt_targets_to_inheritance", False)),
+                    turn=int(chara.get("turn") or 0))
                 scores = training_scorer.score_trainings(home, chara, config=cfg)
                 hint = {
                     "turn": turn,

@@ -164,38 +164,6 @@ This is also the easiest way to test the new build: rebuild on a
 realistic logs archive, then inspect the new `race_programs_context`
 section in the resulting `advisor_stats.json`.
 
-### Wiring live policy adjustments through the guards
-
-The existing `policy_adjustments.json` plumbing in `ai_advisor` is
-unchanged.  To apply learned adjustments safely, route them through
-`safe_apply` at the call site:
-
-```python
-from career_bot.policy_guards import safe_apply, PolicyGuardConfig
-
-cfg = PolicyGuardConfig(
-    max_adjustment_pct=0.25,
-    min_samples_per_cell=5,
-    drift_kl_threshold=0.5,
-)
-
-decision = safe_apply(
-    heuristic_score=raw_score,
-    requested_adjustment=policy["adjustment"],
-    samples=policy["samples"],
-    config=cfg,
-    recent_posterior=BetaPosterior.from_dict(policy["recent_posterior"]),
-    long_posterior=BetaPosterior.from_dict(policy["long_posterior"]),
-    recent_observations=policy["recent_observations"],
-)
-
-final_score = decision.final_score
-log_reason = decision.reason  # one of: insufficient_samples, drift_detected, clamped, applied
-```
-
-The dashboard can surface `decision.reason` next to each adjustment so
-the user sees exactly when and why policy is being held back.
-
 ## Calibration workflow
 
 Once you've accumulated race predictions with `decision_report.predicted_win_prob`

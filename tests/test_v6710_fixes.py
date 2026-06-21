@@ -33,7 +33,11 @@ class RetryPolicyFreeVsPaidTests(unittest.TestCase):
         return r
 
     def _preset(self, **mant_overrides):
-        return {"mant_config": {**mant_overrides}}
+        # v1.5: these tests exercise the burn_clocks free/paid fallback, which
+        # now applies only when the default-on graded extra-race retry is off.
+        base = {"retry_extra_races": False}
+        base.update(mant_overrides)
+        return {"mant_config": base}
 
     def test_burn_clocks_off_free_clocks_available_allows_retry(self):
         """v6.7.10 fix: burn_clocks=False but free_clocks>0 -> retry
@@ -247,12 +251,15 @@ class ItemsUsedReasoningTests(unittest.TestCase):
         )
 
     def test_charm_use_is_surfaced_with_protection_reason(self):
-        """Charm used -> dashboard reasoning includes 'Charm (training failure protection)'."""
+        """Charm used -> dashboard reasoning includes the charm protection reason.
+
+        v6.7.10: reasons are now keyed by the canonical item_id (10001 =
+        Good-Luck Charm), not display strings."""
         self.runner.item_manager.last_use_selected = [
-            {"name": "Charm", "item_id": 10001, "use_num": 1}
+            {"name": "Good-Luck Charm", "item_id": 10001, "use_num": 1}
         ]
         self.runner.item_manager.last_use_result = {"result": "ok", "turn": 12}
-        self.runner.item_manager.use_attempt_events = [{"turn": 12, "selected": [{"name": "Charm"}]}]
+        self.runner.item_manager.use_attempt_events = [{"turn": 12, "selected": [{"name": "Good-Luck Charm"}]}]
         lines = self.runner._decision_reasoning(
             action="train", facility="Train Speed",
             detail="", stats=self._stats(),
@@ -260,15 +267,18 @@ class ItemsUsedReasoningTests(unittest.TestCase):
         )
         text = "\n".join(lines)
         self.assertIn("Items used this turn", text)
-        self.assertIn("Charm", text)
-        self.assertIn("training failure protection", text)
+        self.assertIn("Good-Luck Charm", text)
+        self.assertIn("training-failure protection (charm)", text)
 
     def test_multiple_items_all_appear_with_their_reasons(self):
-        """Multi-item selections list each with its category reason."""
+        """Multi-item selections list each with its category reason.
+
+        v6.7.10: canonical ids -- 2201 Energy Drink MAX, 2301 Plain Cupcake,
+        10001 Good-Luck Charm."""
         self.runner.item_manager.last_use_selected = [
-            {"name": "Energy Drink", "item_id": 10002, "use_num": 1},
-            {"name": "Cupcake", "item_id": 10003, "use_num": 1},
-            {"name": "Charm", "item_id": 10001, "use_num": 1},
+            {"name": "Energy Drink MAX", "item_id": 2201, "use_num": 1},
+            {"name": "Plain Cupcake", "item_id": 2301, "use_num": 1},
+            {"name": "Good-Luck Charm", "item_id": 10001, "use_num": 1},
         ]
         self.runner.item_manager.last_use_result = {"result": "ok", "turn": 20}
         self.runner.item_manager.use_attempt_events = [{"turn": 20, "selected": []}]
@@ -278,12 +288,12 @@ class ItemsUsedReasoningTests(unittest.TestCase):
             decision=self._decision(20), payload=self._decision(20).payload,
         )
         text = "\n".join(lines)
-        for item in ("Energy Drink", "Cupcake", "Charm"):
+        for item in ("Energy Drink MAX", "Plain Cupcake", "Good-Luck Charm"):
             self.assertIn(item, text)
-        # Reasons
-        self.assertIn("HP recovery", text)
+        # Reasons (canonical id ranges)
+        self.assertIn("energy recovery", text)
         self.assertIn("mood boost", text)
-        self.assertIn("training failure protection", text)
+        self.assertIn("training-failure protection (charm)", text)
 
     def test_no_items_used_emits_no_items_line(self):
         """When the manager didn't select anything, no items line is added."""
@@ -315,10 +325,13 @@ class ItemsUsedReasoningTests(unittest.TestCase):
         self.assertNotIn("Items used this turn", text,
             "stale item state from a prior turn must not be attributed to this turn")
 
-    def test_unknown_item_falls_back_to_generic_reason(self):
-        """An item not in the category mapping still gets surfaced,
-        with a generic 'selected by item manager' tag.  Adding new
-        items to the bot shouldn't crash this code path."""
+    def test_unknown_item_falls_back_to_category_reason(self):
+        """An item not in the explicit id mapping still gets surfaced with an
+        id-category reason -- never the old 'selected by item manager'
+        artifact.  Adding new items to the bot shouldn't crash this path.
+
+        v6.7.10: id 99999 has no canonical category, so it falls back to the
+        generic 'consumable' descriptor."""
         self.runner.item_manager.last_use_selected = [
             {"name": "Mystery Trinket", "item_id": 99999, "use_num": 1}
         ]
@@ -331,7 +344,9 @@ class ItemsUsedReasoningTests(unittest.TestCase):
         )
         text = "\n".join(lines)
         self.assertIn("Mystery Trinket", text)
-        self.assertIn("selected by item manager", text)
+        # The bogus artifact must never appear; a real category reason does.
+        self.assertNotIn("selected by item manager", text)
+        self.assertIn("consumable", text)
 
 
 if __name__ == "__main__":

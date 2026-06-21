@@ -3,7 +3,6 @@
 Covers:
   - career_bot.ai_modeling   (BetaPosterior, hierarchical pooling, scoring)
   - career_bot.calibration   (reliability diagram, ECE, isotonic, PAV fallback)
-  - career_bot.policy_guards (safe_apply with all three guard reasons)
 
 Plus a small contract test for ``career_bot.ai_advisor.race_program_hint``
 to confirm the legacy return shape is preserved across the v1 -> v2 swap.
@@ -32,13 +31,6 @@ from career_bot.calibration import (
     expected_calibration_error,
     extract_race_predictions,
     reliability_diagram,
-)
-from career_bot.policy_guards import (
-    GuardDecision,
-    PolicyGuardConfig,
-    beta_kl_divergence,
-    compute_posterior_drift,
-    safe_apply,
 )
 
 
@@ -332,106 +324,6 @@ class CalibrationTests(unittest.TestCase):
             self.assertEqual(len(preds), 2)
             self.assertEqual(preds[0], (0.7, True))
             self.assertEqual(preds[1], (0.4, False))
-
-
-# ---------------------------------------------------------------------------
-# Policy guards
-# ---------------------------------------------------------------------------
-
-
-class PolicyGuardTests(unittest.TestCase):
-    def test_kl_zero_for_identical_distributions(self):
-        p = BetaPosterior(5, 5)
-        self.assertAlmostEqual(beta_kl_divergence(p, p), 0.0, places=5)
-
-    def test_kl_positive_for_different_distributions(self):
-        p = BetaPosterior(2, 8)
-        q = BetaPosterior(8, 2)
-        self.assertGreater(beta_kl_divergence(p, q), 0.5)
-
-    def test_drift_returns_none_for_tiny_recent_window(self):
-        recent = BetaPosterior.from_prior(0.5, 4.0).update(1, 0)  # 1 real obs
-        long_w = BetaPosterior.from_prior(0.5, 4.0).update(50, 50)
-        self.assertIsNone(
-            compute_posterior_drift(
-                recent, long_w,
-                recent_observations=1,
-                min_recent_samples=3,
-            )
-        )
-
-    def test_drift_returns_kl_with_enough_observations(self):
-        recent = BetaPosterior.from_prior(0.5, 4.0).update(2, 8)
-        long_w = BetaPosterior.from_prior(0.5, 4.0).update(50, 10)
-        kl = compute_posterior_drift(
-            recent, long_w,
-            recent_observations=10,
-            min_recent_samples=3,
-        )
-        self.assertIsNotNone(kl)
-        self.assertGreater(kl, 0)
-
-    def test_safe_apply_blocks_on_insufficient_samples(self):
-        decision = safe_apply(
-            heuristic_score=100.0,
-            requested_adjustment=20.0,
-            samples=2,
-            config=PolicyGuardConfig(min_samples_per_cell=5),
-        )
-        self.assertEqual(decision.reason, "insufficient_samples")
-        self.assertEqual(decision.final_score, 100.0)
-        self.assertEqual(decision.applied_adjustment, 0.0)
-
-    def test_safe_apply_clamps_oversized_adjustment(self):
-        # heuristic=100, pct=0.25 -> bound=25.  Requested +50 should clamp to +25.
-        decision = safe_apply(
-            heuristic_score=100.0,
-            requested_adjustment=50.0,
-            samples=20,
-            config=PolicyGuardConfig(max_adjustment_pct=0.25,
-                                     max_absolute_adjustment=1e9),
-        )
-        self.assertEqual(decision.reason, "clamped")
-        self.assertAlmostEqual(decision.applied_adjustment, 25.0)
-        self.assertAlmostEqual(decision.final_score, 125.0)
-
-    def test_safe_apply_respects_absolute_cap(self):
-        decision = safe_apply(
-            heuristic_score=10000.0,        # 25% of 10k = 2500
-            requested_adjustment=2000.0,
-            samples=20,
-            config=PolicyGuardConfig(max_adjustment_pct=0.25,
-                                     max_absolute_adjustment=50.0),
-        )
-        self.assertEqual(decision.reason, "clamped")
-        self.assertAlmostEqual(decision.applied_adjustment, 50.0)
-
-    def test_safe_apply_freezes_on_drift(self):
-        recent = BetaPosterior.from_prior(0.5, 4.0).update(0, 10)
-        long_w = BetaPosterior.from_prior(0.5, 4.0).update(40, 10)
-        decision = safe_apply(
-            heuristic_score=100.0,
-            requested_adjustment=20.0,
-            samples=50,
-            recent_posterior=recent,
-            long_posterior=long_w,
-            config=PolicyGuardConfig(drift_kl_threshold=0.5),
-        )
-        self.assertEqual(decision.reason, "drift_detected")
-        self.assertEqual(decision.final_score, 100.0)
-        self.assertIsNotNone(decision.drift_kl)
-        self.assertGreater(decision.drift_kl, 0.5)
-
-    def test_safe_apply_passes_through_when_in_bounds(self):
-        decision = safe_apply(
-            heuristic_score=100.0,
-            requested_adjustment=10.0,
-            samples=20,
-            config=PolicyGuardConfig(max_adjustment_pct=0.25),
-        )
-        self.assertEqual(decision.reason, "applied")
-        self.assertAlmostEqual(decision.final_score, 110.0)
-        self.assertAlmostEqual(decision.applied_adjustment, 10.0)
 
 
 # ---------------------------------------------------------------------------

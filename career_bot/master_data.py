@@ -1538,32 +1538,46 @@ def synthesize_scenario_turns_core(base_dir, master_data):
     write_json(data_dir / "scenario_turns_core.json", rows)
     return {"file": "scenario_turns_core.json", "rows": len(rows)}
 
+# Authoritative support_card_effect_table type -> effect mapping.
+# Source: Umamusume Wiki Module:Game/Supports/Data/Effects (getPrettyName),
+# cross-verified against gametora.com card pages (Kitasan Black 30028,
+# Fine Motion 30010, Aoi Kiryuin 10022) — every resolved value matched.
+# The previous map was off-by-one from type 8 onward (it labeled the
+# real "training effectiveness" as initial_speed, real "race bonus" as
+# fan_bonus, etc.), producing impossible deck totals.
 _SUPPORT_EFFECT_LABELS = {
     1: "friendship_bonus",
-    2: "motivation_bonus",
+    2: "mood_effect",
     3: "speed_bonus",
     4: "stamina_bonus",
     5: "power_bonus",
     6: "guts_bonus",
     7: "wit_bonus",
-    8: "initial_speed",
-    9: "initial_stamina",
-    10: "initial_power",
-    11: "initial_guts",
-    12: "initial_wit",
-    13: "initial_bond",
-    14: "race_bonus",
-    15: "fan_bonus",
-    16: "hint_level",
-    17: "hint_rate",
-    18: "specialty_rate",
-    19: "event_recovery_amount",
-    25: "skill_point_bonus",
-    26: "wisdom_recovery_bonus",
-    27: "training_effectiveness",
-    28: "initial_skill_points",
-    30: "event_bonus",
-    31: "failure_rate_down",
+    8: "training_effectiveness",
+    9: "initial_speed",
+    10: "initial_stamina",
+    11: "initial_power",
+    12: "initial_guts",
+    13: "initial_wit",
+    14: "initial_friendship_gauge",
+    15: "race_bonus",
+    16: "fan_bonus",
+    17: "hint_levels",
+    18: "hint_frequency",
+    19: "specialty_priority",
+    20: "max_speed",
+    21: "max_stamina",
+    22: "max_power",
+    23: "max_guts",
+    24: "max_wit",
+    25: "event_recovery",
+    26: "event_effectiveness",
+    27: "failure_protection",
+    28: "energy_cost_reduction",
+    29: "minigame_effectiveness",
+    30: "skill_point_bonus",
+    31: "wit_friendship_recovery",
+    32: "initial_skill_points",
 }
 
 _SKILL_CATEGORY_LABELS = {

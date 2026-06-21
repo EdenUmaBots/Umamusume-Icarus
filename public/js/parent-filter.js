@@ -214,7 +214,21 @@
         body.insertBefore(built, grid);
         reindex(); apply();
         if (observer) observer.disconnect();
-        observer = new MutationObserver(() => { clearTimeout(timer); timer = setTimeout(() => { reindex(); apply(); }, 120); });
+        observer = new MutationObserver((mutations) => {
+            // Ignore tooltip relocations: hovering an owned-parent card moves its
+            // .sparks-tooltip node out to <body>, which would otherwise trigger a
+            // stale reindex that re-parses the card as empty (0 stars) and
+            // reorders/hides it -- the "owned parent vanishes on hover when sorted"
+            // bug. Only react to real card add/removes.
+            const relevant = mutations.some((m) =>
+                [...m.addedNodes, ...m.removedNodes].some((n) =>
+                    n.nodeType === 1 && !(n.classList && n.classList.contains('sparks-tooltip'))
+                )
+            );
+            if (!relevant) return;
+            clearTimeout(timer);
+            timer = setTimeout(() => { reindex(); apply(); }, 120);
+        });
         observer.observe(grid, { childList: true, subtree: true });
         return true;
     }

@@ -676,6 +676,20 @@
     "icon_id": 20013,
     "skill_category": 5
   },
+  "100361": {
+    "name": "trigger:BEAT",
+    "rarity": 5,
+    "group_id": 10036,
+    "grade_value": 340,
+    "need_skill_point": 0,
+    "disable_singlemode": 1,
+    "tags": [
+      401,
+      403
+    ],
+    "icon_id": 20013,
+    "skill_category": 5
+  },
   "100371": {
     "name": "Schwarzes Schwert",
     "rarity": 5,
@@ -5561,6 +5575,20 @@
     "icon_id": 20011,
     "skill_category": 4
   },
+  "201453": {
+    "name": "Moonlit Flash",
+    "rarity": 2,
+    "group_id": 20145,
+    "grade_value": 508,
+    "need_skill_point": 150,
+    "disable_singlemode": 1,
+    "tags": [
+      104,
+      401
+    ],
+    "icon_id": 20012,
+    "skill_category": 4
+  },
   "201461": {
     "name": "End Closer Corners ◎",
     "rarity": 1,
@@ -6667,6 +6695,20 @@
     "icon_id": 20011,
     "skill_category": 4
   },
+  "202181": {
+    "name": "99 Problems",
+    "rarity": 1,
+    "group_id": 20218,
+    "grade_value": -174,
+    "need_skill_point": 0,
+    "disable_singlemode": 1,
+    "tags": [
+      404,
+      405
+    ],
+    "icon_id": 10044,
+    "skill_category": 0
+  },
   "210011": {
     "name": "Burning Spirit SPD",
     "rarity": 2,
@@ -7455,6 +7497,20 @@
     "disable_singlemode": 1,
     "tags": [
       401
+    ],
+    "icon_id": 20011,
+    "skill_category": 5
+  },
+  "900361": {
+    "name": "trigger:BEAT",
+    "rarity": 1,
+    "group_id": 90036,
+    "grade_value": 180,
+    "need_skill_point": 200,
+    "disable_singlemode": 1,
+    "tags": [
+      401,
+      403
     ],
     "icon_id": 20011,
     "skill_category": 5

@@ -43,6 +43,7 @@ SKILL_CONFIG_KEYS = {
     "smart_skill_min_score",
     "learn_skill_list",
     "learn_skill_blacklist",
+    "manual_skill_tiers",
 }
 
 SMART_SOLVER_KEYS = {
@@ -137,6 +138,22 @@ def _default_skill_config():
         "smart_skill_yellow_bonus": 100,
         "smart_skill_green_penalty": 90,
         "smart_skill_min_score": 18,
+        # v7.3 — Manual skill tiers, used when enable_skill_point_check_plan
+        # is False. Keys are tier numbers as strings ("1" highest priority
+        # through "5" lowest). Values are lists of skill NAMES (consistent
+        # with how learn_skill_list / forced_skills store identifiers).
+        # When the plan-check toggle is off AND any tier has skills, the
+        # skill buyer filters candidates to only these skills and orders
+        # them by tier ascending. When all tiers are empty, the buyer
+        # silently falls back to the smart-scorer behavior so disabling
+        # the plan-check toggle never bricks skill purchasing.
+        "manual_skill_tiers": {
+            "1": [],
+            "2": [],
+            "3": [],
+            "4": [],
+            "5": [],
+        },
         "skill_strategy": {
             "forced_skills": [],
             "blacklist": [],
@@ -174,12 +191,40 @@ def _default_solver_config():
     }
 
 
-class ConfigStore:
-    """Split config store used by the post-v5.8 UI.
+def _normalize_skill(cfg):
+    """Return a complete, normalized skill-config dict from any partial source.
 
-    Runtime callers can still use read_one/read_all/write/delete as a PresetStore
-    compatibility shim.  Settings presets live separately from skill and smart
-    solver config on disk; read_one composes them back together for the runner.
+    Backfills defaults, merges the skill_strategy substructure + weights, and
+    ensures all five manual-tier buckets exist as lists.
+    """
+    base = _default_skill_config()
+    out = dict(base)
+    out.update(_only_keys(cfg, SKILL_CONFIG_KEYS))
+    strat = dict(base["skill_strategy"])
+    strat.update(dict(out.get("skill_strategy") or {}))
+    strat["weights"] = {**base["skill_strategy"]["weights"], **dict(strat.get("weights") or {})}
+    out["skill_strategy"] = strat
+    tiers = dict(out.get("manual_skill_tiers") or {})
+    for k in ("1", "2", "3", "4", "5"):
+        if k not in tiers or not isinstance(tiers.get(k), list):
+            tiers[k] = list(tiers.get(k) or [])
+    out["manual_skill_tiers"] = tiers
+    return out
+
+
+class ConfigStore:
+    """v7.6 per-file preset store.
+
+    Each preset is a single self-contained JSON file under ``data/presets/``
+    holding its SETTINGS, SKILL, and SOLVER config together, so a preset's
+    "Configure Skills" choices are specific to that preset (they used to live in
+    one global ``skill_config.json`` shared by every preset). An
+    ``active_preset.json`` pointer names the current preset; skill/solver
+    reads/writes target it. The public method surface (read_settings_presets,
+    save/delete_settings_preset, read/save_skill_config, read/save_solver_config,
+    compose_runtime_preset, read_all/read_one/write/delete) is unchanged, so
+    callers in main.py and the runner are unaffected. Legacy split files
+    (settings_presets.json + global skill/solver) are auto-migrated on first run.
     """
 
     def __init__(self, base_dir, userdata_dir=None):
@@ -197,23 +242,23 @@ class ConfigStore:
         else:
             self.data_dir = self.base_dir / "data"
         self.data_dir.mkdir(parents=True, exist_ok=True)
-        self.settings_path = self.data_dir / "settings_presets.json"
-        self.skill_path = self.data_dir / "skill_config.json"
-        self.solver_path = self.data_dir / "smart_solver_config.json"
-        # Migration source is the legacy in-build location.  v6.7.6
-        # additionally migrates from in-build data/ -> userdata data/ on
-        # first run, so an upgrade can pick up the previous version's
-        # settings_presets.json automatically.
-        self.legacy_preset_dir = self.base_dir / "data" / "presets"
+        self.presets_dir = self.data_dir / "presets"
+        self.active_path = self.data_dir / "active_preset.json"
+        # Legacy (pre-v7.6) split files, used only as one-time migration sources.
+        self.legacy_settings_path = self.data_dir / "settings_presets.json"
+        self.legacy_skill_path = self.data_dir / "skill_config.json"
+        self.legacy_solver_path = self.data_dir / "smart_solver_config.json"
+        self._migrate_marker = self.data_dir / ".presets_migrated_v76"
         self._maybe_migrate_from_build()
-        self.migrate_legacy_presets()
-        self._ensure_files()
+        self.presets_dir.mkdir(parents=True, exist_ok=True)
+        self._migrate_to_per_file()
+        self._ensure_default()
 
+    # ---- internal helpers ----
     def _maybe_migrate_from_build(self):
-        """One-way migration from in-build data/ to userdata/ data/ on
-        first start of a new version.  No-op when data_dir is the
-        in-build location (no migration needed) or when destination
-        already exists (user customized it)."""
+        """One-way copy of the legacy split files from the in-build data/ to
+        the userdata data/ on first start of a new version, so the per-file
+        migration below can pick up the previous version's presets."""
         src_data = self.base_dir / "data"
         if self.data_dir == src_data or not src_data.exists():
             return
@@ -226,156 +271,237 @@ class ConfigStore:
                 except Exception:
                     pass
 
-    def _ensure_files(self):
-        if not self.settings_path.exists():
-            _write_json(self.settings_path, {"active": "Default", "presets": [_default_settings_preset()]})
-        if not self.skill_path.exists():
-            _write_json(self.skill_path, _default_skill_config())
-        if not self.solver_path.exists():
-            _write_json(self.solver_path, _default_solver_config())
+    def _preset_path(self, name):
+        return self.presets_dir / f"{slugify(str(name or 'preset'))}.json"
 
-    def migrate_legacy_presets(self):
-        if not self.legacy_preset_dir.exists():
-            return {"migrated": False, "reason": "no legacy preset directory"}
-        settings_payload = _read_json(self.settings_path, {"active": "", "presets": []})
-        settings_by_name = {str(p.get("name", "")).lower(): p for p in settings_payload.get("presets", []) if p.get("name")}
-        first_skill = None
-        first_solver = None
-        migrated = 0
-        for path in sorted(self.legacy_preset_dir.glob("*.json")):
-            try:
-                raw = json.loads(path.read_text(encoding="utf-8"))
-            except Exception:
-                continue
-            hydrated = hydrate_preset(raw)
-            settings = _default_settings_preset(hydrated.get("name") or path.stem)
-            settings.update(_only_keys(hydrated, SETTING_PRESET_KEYS))
-            settings["name"] = settings.get("name") or path.stem
-            settings_by_name[settings["name"].lower()] = settings
-            if first_skill is None:
-                first_skill = _default_skill_config()
-                first_skill.update(_only_keys(hydrated, SKILL_CONFIG_KEYS))
-                strat = dict(first_skill.get("skill_strategy") or {})
-                strat.setdefault("forced_skills", ((hydrated.get("learn_skill_list") or [[]])[0] if hydrated.get("learn_skill_list") else []))
-                strat.setdefault("blacklist", hydrated.get("learn_skill_blacklist") or [])
-                first_skill["skill_strategy"] = strat
-            if first_solver is None:
-                first_solver = _default_solver_config()
-                first_solver.update(_only_keys(hydrated, SMART_SOLVER_KEYS))
-            try:
-                path.unlink()
-            except Exception:
-                pass
-            migrated += 1
-        settings_payload["presets"] = sorted(settings_by_name.values(), key=lambda p: str(p.get("name", "")).lower())
-        if not settings_payload.get("active") and settings_payload["presets"]:
-            settings_payload["active"] = settings_payload["presets"][0].get("name", "")
-        _write_json(self.settings_path, settings_payload)
-        if first_skill:
-            self.save_skill_config(first_skill)
-        if first_solver:
-            self.save_solver_config(first_solver)
+    def _list_preset_files(self):
+        return sorted(self.presets_dir.glob("*.json"))
+
+    def _full_default_preset(self, name="Default"):
+        full = _default_settings_preset(name)
+        full.update(_default_skill_config())
+        full.update(_default_solver_config())
+        full["name"] = name
+        return full
+
+    def _normalize_full(self, full):
+        """Ensure a full preset dict has normalized skill substructures."""
+        full.update(_normalize_skill(full))
+        return full
+
+    def _read_full_preset(self, path):
+        raw = _read_json(path, {})
+        if not isinstance(raw, dict):
+            raw = {}
+        # Settings are taken from the hydrated/normalized view; skill + solver
+        # keys are read from the RAW dict because hydrate_preset() only knows
+        # about settings fields and would drop the skill/solver layers.
+        hydrated = hydrate_preset(raw) if raw else {}
+        name = raw.get("name") or hydrated.get("name") or Path(path).stem
+        full = self._full_default_preset(name)
+        full.update(_only_keys(hydrated, SETTING_PRESET_KEYS))
+        full.update(_only_keys(raw, SKILL_CONFIG_KEYS))
+        full.update(_only_keys(raw, SMART_SOLVER_KEYS))
+        if raw.get("skill_strategy"):
+            full["skill_strategy"] = raw["skill_strategy"]
+        full["name"] = name
+        return self._normalize_full(full)
+
+    def _active_name(self, presets=None):
+        raw = _read_json(self.active_path, {})
+        active = str((raw or {}).get("active") or "").strip()
+        if presets is None:
+            presets = [self._read_full_preset(p) for p in self._list_preset_files()]
+        names = [str(p.get("name", "")) for p in presets]
+        if active and any(active.lower() == n.lower() for n in names):
+            return active
+        return names[0] if names else "Default"
+
+    def set_active(self, name):
+        name = str(name or "").strip()
+        if not name:
+            return self._active_name()
+        # resolve to a real preset name (match by name/slug) if possible
+        for p in self._list_preset_files():
+            full = self._read_full_preset(p)
+            if str(full.get("name", "")).lower() == name.lower() or self._preset_path(name) == p:
+                name = full.get("name") or name
+                break
+        _write_json(self.active_path, {"active": name})
+        return name
+
+    def _migrate_to_per_file(self):
+        """One-time migration from the legacy split layout (settings_presets.json
+        + global skill_config.json + smart_solver_config.json) to one
+        self-contained file per preset under data/presets/. Idempotent."""
+        if self._migrate_marker.exists():
+            return {"migrated": False, "reason": "already migrated"}
+        existing = self._list_preset_files()
+        if existing:
+            # Pre-existing per-file presets (e.g. ancient pre-v5.8 format): adopt
+            # them, backfilling skill/solver keys so each is self-contained and
+            # normalizing the filename to the preset's slug so lookups match.
+            for path in existing:
+                full = self._read_full_preset(path)
+                target = self._preset_path(full.get("name") or path.stem)
+                _write_json(target, full)
+                if target != path:
+                    try:
+                        path.unlink()
+                    except Exception:
+                        pass
+        elif self.legacy_settings_path.exists():
+            legacy = _read_json(self.legacy_settings_path, {"active": "", "presets": []})
+            skill = _read_json(self.legacy_skill_path, {})
+            solver = _read_json(self.legacy_solver_path, {})
+            for sp in legacy.get("presets", []):
+                if _is_legacy_settings_preset(sp):
+                    continue
+                name = slugify(sp.get("name") or "Default")
+                full = self._full_default_preset(name)
+                full.update(_only_keys(sp, SETTING_PRESET_KEYS))
+                full.update(_only_keys(skill, SKILL_CONFIG_KEYS))
+                if skill.get("skill_strategy"):
+                    full["skill_strategy"] = skill["skill_strategy"]
+                full.update(_only_keys(solver, SMART_SOLVER_KEYS))
+                full["name"] = name
+                _write_json(self._preset_path(name), self._normalize_full(full))
+            active = str(legacy.get("active") or "").strip()
+            if active and active.lower() not in LEGACY_SETTINGS_PRESET_NAMES:
+                self.set_active(slugify(active))
+            # Back up the legacy split files so they aren't re-migrated but stay
+            # recoverable.
+            for p in (self.legacy_settings_path, self.legacy_skill_path, self.legacy_solver_path):
+                try:
+                    if p.exists():
+                        p.rename(p.with_name(p.name + ".premigrate.bak"))
+                except Exception:
+                    pass
         try:
-            if not any(self.legacy_preset_dir.iterdir()):
-                self.legacy_preset_dir.rmdir()
+            self._migrate_marker.write_text("v7.6", encoding="utf-8")
         except Exception:
             pass
-        return {"migrated": True, "count": migrated}
+        return {"migrated": True}
 
+    def _ensure_default(self):
+        if not self._list_preset_files():
+            _write_json(self._preset_path("Default"), self._full_default_preset("Default"))
+        if not self.active_path.exists():
+            self.set_active(self._active_name())
+
+    # ---- settings presets ----
     def read_settings_presets(self):
-        payload = _read_json(self.settings_path, {"active": "", "presets": []})
-        changed = False
         presets = []
-        for p in payload.get("presets", []):
-            if _is_legacy_settings_preset(p):
-                changed = True
+        for path in self._list_preset_files():
+            full = self._read_full_preset(path)
+            if _is_legacy_settings_preset(full):
                 continue
-            clean = _default_settings_preset(p.get("name") or "Default")
-            clean.update(_only_keys(p, SETTING_PRESET_KEYS))
+            clean = _default_settings_preset(full.get("name") or "Default")
+            clean.update(_only_keys(full, SETTING_PRESET_KEYS))
+            clean["name"] = full.get("name") or clean["name"]
             presets.append(clean)
-
-        active = str(payload.get("active") or "").strip()
-        if active.lower() in LEGACY_SETTINGS_PRESET_NAMES:
-            active = ""
-            changed = True
-
-        payload = {"active": active or (presets[0]["name"] if presets else ""), "presets": presets}
-        if not payload["presets"]:
-            payload["presets"] = [_default_settings_preset()]
-            payload["active"] = "Default"
-            changed = True
-        elif not any(str(p.get("name", "")).lower() == str(payload["active"]).lower() for p in payload["presets"]):
-            payload["active"] = payload["presets"][0]["name"]
-            changed = True
-
-        if changed:
-            _write_json(self.settings_path, payload)
-        return payload
+        presets.sort(key=lambda p: str(p.get("name", "")).lower())
+        if not presets:
+            _write_json(self._preset_path("Default"), self._full_default_preset("Default"))
+            presets = [_default_settings_preset()]
+        return {"active": self._active_name(presets), "presets": presets}
 
     def save_settings_preset(self, preset):
-        payload = self.read_settings_presets()
-        clean = _default_settings_preset(str((preset or {}).get("name") or payload.get("active") or "Settings Preset").strip())
-        clean.update(_only_keys(preset, SETTING_PRESET_KEYS))
-        clean["name"] = slugify(clean.get("name") or "Settings Preset")
-        presets = [p for p in payload.get("presets", []) if str(p.get("name", "")).lower() != clean["name"].lower()]
-        presets.append(clean)
-        payload["presets"] = sorted(presets, key=lambda p: p.get("name", "").lower())
-        payload["active"] = clean["name"]
-        _write_json(self.settings_path, payload)
+        name = slugify(str((preset or {}).get("name") or self._active_name() or "Settings Preset").strip() or "Settings Preset")
+        path = self._preset_path(name)
+        full = self._read_full_preset(path) if path.exists() else self._full_default_preset(name)
+        full.update(_only_keys(preset, SETTING_PRESET_KEYS))
+        full["name"] = name
+        _write_json(path, self._normalize_full(full))
+        self.set_active(name)
+        clean = _default_settings_preset(name)
+        clean.update(_only_keys(full, SETTING_PRESET_KEYS))
+        clean["name"] = name
         return clean
 
     def delete_settings_preset(self, name):
-        payload = self.read_settings_presets()
-        payload["presets"] = [p for p in payload.get("presets", []) if str(p.get("name", "")).lower() != str(name or "").lower()]
-        payload["active"] = payload["presets"][0]["name"] if payload["presets"] else ""
-        if not payload["presets"]:
-            payload["presets"] = [_default_settings_preset()]
-            payload["active"] = "Default"
-        _write_json(self.settings_path, payload)
+        target = str(name or "").lower()
+        for path in self._list_preset_files():
+            full = self._read_full_preset(path)
+            if str(full.get("name", "")).lower() == target or path == self._preset_path(name):
+                try:
+                    path.unlink()
+                except Exception:
+                    pass
+        self._ensure_default()
+        self.set_active(self._active_name())
         return True
 
-    def read_skill_config(self):
-        cfg = _default_skill_config()
-        loaded = _read_json(self.skill_path, {})
-        cfg.update(_only_keys(loaded, SKILL_CONFIG_KEYS))
-        strat = _default_skill_config()["skill_strategy"]
-        strat.update(dict(cfg.get("skill_strategy") or {}))
-        strat["weights"] = {**_default_skill_config()["skill_strategy"]["weights"], **dict(strat.get("weights") or {})}
-        cfg["skill_strategy"] = strat
-        return cfg
+    # ---- skill / solver config (operate on the active preset) ----
+    def read_skill_config(self, name=None):
+        name = name or self._active_name()
+        path = self._preset_path(name)
+        full = self._read_full_preset(path) if path.exists() else self._full_default_preset(name)
+        return _normalize_skill(full)
 
-    def save_skill_config(self, config):
-        cfg = self.read_skill_config()
-        cfg.update(_only_keys(config, SKILL_CONFIG_KEYS))
+    def save_skill_config(self, config, name=None):
+        name = name or self._active_name()
+        path = self._preset_path(name)
+        full = self._read_full_preset(path) if path.exists() else self._full_default_preset(name)
+        full.update(_only_keys(config, SKILL_CONFIG_KEYS))
         if "skill_strategy" in (config or {}):
-            strat = dict(cfg.get("skill_strategy") or {})
-            incoming = dict(config.get("skill_strategy") or {})
-            strat.update(incoming)
+            strat = dict(full.get("skill_strategy") or {})
+            strat.update(dict(config.get("skill_strategy") or {}))
             strat["weights"] = {**_default_skill_config()["skill_strategy"]["weights"], **dict(strat.get("weights") or {})}
-            cfg["skill_strategy"] = strat
-        _write_json(self.skill_path, cfg)
-        return cfg
+            full["skill_strategy"] = strat
+        full["name"] = name
+        _write_json(path, self._normalize_full(full))
+        return _normalize_skill(full)
 
-    def read_solver_config(self):
+    def read_solver_config(self, name=None):
+        name = name or self._active_name()
+        path = self._preset_path(name)
+        full = self._read_full_preset(path) if path.exists() else self._full_default_preset(name)
         cfg = _default_solver_config()
-        cfg.update(_only_keys(_read_json(self.solver_path, {}), SMART_SOLVER_KEYS))
+        cfg.update(_only_keys(full, SMART_SOLVER_KEYS))
         return cfg
 
-    def save_solver_config(self, config):
-        cfg = self.read_solver_config()
-        cfg.update(_only_keys(config, SMART_SOLVER_KEYS))
-        _write_json(self.solver_path, cfg)
+    def save_solver_config(self, config, name=None):
+        name = name or self._active_name()
+        path = self._preset_path(name)
+        full = self._read_full_preset(path) if path.exists() else self._full_default_preset(name)
+        full.update(_only_keys(config, SMART_SOLVER_KEYS))
+        full["name"] = name
+        _write_json(path, self._normalize_full(full))
+        cfg = _default_solver_config()
+        cfg.update(_only_keys(full, SMART_SOLVER_KEYS))
         return cfg
+
+    # ---- event-choice overrides (per-preset, key already in SETTING_PRESET_KEYS) ----
+    def read_event_overrides(self, name=None):
+        name = name or self._active_name()
+        path = self._preset_path(name)
+        full = self._read_full_preset(path) if path.exists() else self._full_default_preset(name)
+        ov = full.get("event_overrides")
+        return dict(ov) if isinstance(ov, dict) else {}
+
+    def save_event_overrides(self, overrides, name=None):
+        name = name or self._active_name()
+        path = self._preset_path(name)
+        full = self._read_full_preset(path) if path.exists() else self._full_default_preset(name)
+        full["event_overrides"] = dict(overrides or {})
+        full["name"] = name
+        _write_json(path, self._normalize_full(full))
+        return dict(full.get("event_overrides") or {})
 
     def compose_runtime_preset(self, name=None):
-        settings_payload = self.read_settings_presets()
-        wanted = str(name or settings_payload.get("active") or "").lower()
-        settings = next((p for p in settings_payload["presets"] if p.get("name", "").lower() == wanted), None)
-        settings = settings or settings_payload["presets"][0]
+        name = name or self._active_name()
+        path = self._preset_path(name)
+        full = self._read_full_preset(path) if path.exists() else self._full_default_preset(name)
+        settings = _default_settings_preset(full.get("name") or name)
+        settings.update(_only_keys(full, SETTING_PRESET_KEYS))
+        settings["name"] = full.get("name") or name
         runtime = hydrate_preset(settings)
-        runtime.update(self.read_skill_config())
-        runtime.update(self.read_solver_config())
-        runtime["name"] = settings.get("name") or runtime.get("name") or "runtime"
+        runtime.update(_normalize_skill(full))
+        solver = _default_solver_config()
+        solver.update(_only_keys(full, SMART_SOLVER_KEYS))
+        runtime.update(solver)
+        runtime["name"] = settings["name"]
         return runtime
 
     # PresetStore-compatible methods.
@@ -392,10 +518,21 @@ class ConfigStore:
         return None
 
     def write(self, preset):
-        settings = self.save_settings_preset(preset)
-        self.save_skill_config(preset)
-        self.save_solver_config(preset)
-        return self.compose_runtime_preset(settings.get("name"))
+        name = slugify(str((preset or {}).get("name") or self._active_name() or "Settings Preset").strip() or "Settings Preset")
+        path = self._preset_path(name)
+        full = self._read_full_preset(path) if path.exists() else self._full_default_preset(name)
+        full.update(_only_keys(preset, SETTING_PRESET_KEYS))
+        full.update(_only_keys(preset, SKILL_CONFIG_KEYS))
+        if "skill_strategy" in (preset or {}):
+            strat = dict(full.get("skill_strategy") or {})
+            strat.update(dict(preset.get("skill_strategy") or {}))
+            strat["weights"] = {**_default_skill_config()["skill_strategy"]["weights"], **dict(strat.get("weights") or {})}
+            full["skill_strategy"] = strat
+        full.update(_only_keys(preset, SMART_SOLVER_KEYS))
+        full["name"] = name
+        _write_json(path, self._normalize_full(full))
+        self.set_active(name)
+        return self.compose_runtime_preset(name)
 
     def delete(self, name):
         return self.delete_settings_preset(name)

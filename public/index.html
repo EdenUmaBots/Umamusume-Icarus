@@ -5,18 +5,18 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <script>
         try {
-            const dashboardTheme = localStorage.getItem('sweepy_dashboard_theme') || localStorage.getItem('theme');
-            const cleanDark = dashboardTheme === 'clean-dark';
-            const theme = cleanDark ? 'pink' : (dashboardTheme === 'blue' ? 'blue' : 'pink');
-            document.documentElement.dataset.theme = theme;
-            document.documentElement.dataset.sweepyTheme = cleanDark ? 'clean-dark' : 'neon';
-            document.documentElement.classList.toggle('theme-blue', theme === 'blue');
-            document.documentElement.classList.toggle('theme-clean-dark', cleanDark);
+            let t = (localStorage.getItem('sweepy_dashboard_theme') || localStorage.getItem('theme') || '').toLowerCase();
+            if (t === 'pink') t = 'neon';
+            if (!['icarus', 'icarus-alt', 'neon', 'blue', 'clean-dark'].includes(t)) t = 'icarus';
+            document.documentElement.dataset.sweepyTheme = t;
+            document.documentElement.dataset.theme = (t === 'blue' ? 'blue' : (t === 'neon' ? 'pink' : t));
+            document.documentElement.classList.toggle('theme-blue', t === 'blue');
+            document.documentElement.classList.toggle('theme-clean-dark', t === 'clean-dark');
         } catch (e) {}
     </script>
-    <title>Sweepy改二</title>
-    <link rel="stylesheet" href="styles.css?v=537">
-    <link rel="stylesheet" href="css/shell.css?v=536">
+    <title>Icarus</title>
+    <link rel="stylesheet" href="styles.css?v=547">
+    <link rel="stylesheet" href="css/shell.css?v=537">
 
 </head>
 <body>
@@ -24,42 +24,52 @@
         <div class="loading-shell">
             <div class="loading-art">
                 <div class="loading-broom-aura"></div>
-                <img class="loading-broom" src="/broom.png" alt="">
-                <img class="loading-sweep" src="/sweep.png" alt="">
+                <img class="loading-gif" src="/uma-loading.gif" alt="">
             </div>
-            <div class="loading-text">Girls are preparing<span class="loading-dots"><span>.</span><span>.</span><span>.</span></span></div>
+            <div class="loading-text">Preparing<span class="loading-dots"><span>.</span><span>.</span><span>.</span></span></div>
         </div>
     </div>
     <div id="app">
         <header class="navbar">
             <div class="navbar-title">
-                <h1 id="theme-toggle" class="title">SWEEPY<span>改二</span></h1>
+                <h1 id="theme-toggle" class="title" title="Icarus — click to cycle theme">
+                    <img class="navbar-logo" src="/icarus-logo.png" alt="Icarus">
+                </h1>
             </div>
 
             <div class="navbar-main">
                 <div id="account-strip" class="account-strip"></div>
 
                 <div id="turn-delay-control" class="turn-delay-control">
-                    <div class="delay-group">
-                        <span class="turn-delay-label">DELAY(S)</span>
-                        <input id="turn-delay-min" class="turn-delay-input" type="number" min="0" step="0.1" value="1.6">
-                        <span class="turn-delay-separator">–</span>
-                        <input id="turn-delay-max" class="turn-delay-input" type="number" min="0" step="0.1" value="3.7">
-                    </div>
                     <div class="control-btns">
-                        <button id="tempt-fate-btn" class="btn btn-sm turn-delay-button" type="button">TEMPT FATE</button>
-                        <label class="v6727-bot-speed-control" title="Scales per-endpoint anti-detection delays. Lower = faster career but more bot-obvious traffic. Error-recovery backoffs are NOT scaled.">
-                            <span>SPEED</span>
-                            <select id="v6727-bot-speed-select" class="v6727-bot-speed-select">
-                                <option value="1.0">Realistic ~27 min</option>
-                                <option value="0.5">Brisk ~14 min</option>
-                                <option value="0.25">Fast ~7 min</option>
-                                <option value="0.05">Speedrun ~1.5 min</option>
-                            </select>
-                        </label>
+                        <div class="speed-popover-wrap">
+                            <button id="tempt-fate-btn" class="btn btn-sm turn-delay-button" type="button" title="Tempt Fate: bot speed + custom turn delay">TEMPT FATE ⚙</button>
+                            <div id="tempt-fate-panel" class="tempt-fate-panel" style="display:none;">
+                                <div class="tempt-fate-title">BOT SPEED</div>
+                                <div class="speed-option-group">
+                                    <button class="speed-option" type="button" data-speed="safe"><strong>Safe</strong><em>full delay (your custom range)</em></button>
+                                    <button class="speed-option" type="button" data-speed="fast"><strong>Fast</strong><em>no turn delay</em></button>
+                                    <button class="speed-option" type="button" data-speed="faster"><strong>Faster</strong><em>no turn delay, faster calls</em></button>
+                                    <button class="speed-option" type="button" data-speed="ludicrous"><strong>Ludicrous</strong><em>no delay (max speed)</em></button>
+                                </div>
+                                <div class="tempt-fate-title">CUSTOM DELAY (S)</div>
+                                <div class="delay-group">
+                                    <input id="turn-delay-min" class="turn-delay-input" type="number" min="0" step="0.1" value="1.6">
+                                    <span class="turn-delay-separator">–</span>
+                                    <input id="turn-delay-max" class="turn-delay-input" type="number" min="0" step="0.1" value="3.7">
+                                </div>
+                            </div>
+                        </div>
                         <button id="burn-clocks-btn" class="btn btn-sm turn-delay-button" type="button">BURN CLOCKS: OFF</button>
+                        <div class="retry-popover-wrap">
+                            <button id="retry-options-btn" class="btn btn-sm turn-delay-button" type="button" title="Race-retry options: carats + max clocks per career">RETRY ⚙</button>
+                            <div id="retry-options-panel" class="retry-options-panel" style="display:none;">
+                                <label class="retry-opt-row"><input id="retry-carats-toggle" type="checkbox"> Use carats when clocks run out</label>
+                                <label class="retry-opt-row">Max clocks / career <input id="retry-max-clocks" type="number" min="0" step="1" value="0" title="0 = unlimited paid clocks per career"></label>
+                            </div>
+                        </div>
                         <button id="dev-career-btn" class="btn btn-sm turn-delay-button loop-career-button" type="button" title="Loop career runs after completion">LOOP: OFF</button>
-                        <label class="run-count-control" title="Number of careers to run: 1 = single, 0 = until stopped"><span>RUNS</span><input id="run-count-input" class="run-count-input" type="number" min="0" max="999" step="1" value="1"></label>
+                        <label class="run-count-control" title="Number of careers to run: 1 = single, 0 = until stopped"><span>RUNS</span><input id="run-count-input" class="run-count-input" type="number" min="0" max="999" step="1" value="0"></label>
                     </div>
                 </div>
             </div>
@@ -71,6 +81,7 @@
         <main class="main-container">
             <div id="login-view" class="login-wrapper">
                 <div class="login-panel">
+                    <img class="login-logo" src="/icarus-logo.png" alt="Icarus">
                     <form id="login-form" autocomplete="on">
                         <div id="standard-fields">
                             <div class="form-group">
@@ -101,14 +112,6 @@
                     <div class="panel-body">
 
                         <div class="team-slots">
-                            <div class="team-item" id="team-slot-deck">
-                                <span class="team-item-role">Deck</span>
-                                <span class="team-item-empty">select a deck</span>
-                            </div>
-                            <div class="team-item" id="team-slot-friend">
-                                <span class="team-item-role">Friend</span>
-                                <span class="team-item-empty">select a friend support</span>
-                            </div>
                             <div class="team-item" id="team-slot-trainee">
                                 <span class="team-item-role">Trainee</span>
                                 <span class="team-item-empty">select a trainee</span>
@@ -120,6 +123,14 @@
                             <div class="team-item" id="team-slot-vet2">
                                 <span class="team-item-role">Parent 2</span>
                                 <span class="team-item-empty">select a parent</span>
+                            </div>
+                            <div class="team-item" id="team-slot-deck">
+                                <span class="team-item-role">Deck</span>
+                                <span class="team-item-empty">select a deck</span>
+                            </div>
+                            <div class="team-item" id="team-slot-friend">
+                                <span class="team-item-role">Friend</span>
+                                <span class="team-item-empty">select a friend support</span>
                             </div>
                         </div>
 
@@ -145,6 +156,7 @@
                                     <select id="settings-preset-select" class="form-input master-data-input preset-input"></select>
                                     <button id="settings-preset-add-btn" class="btn btn-sm preset-action-btn" type="button">NEW</button>
                                     <button id="settings-preset-save-btn" class="btn btn-sm preset-action-btn" type="button">SAVE</button>
+                                    <button id="settings-preset-load-btn" class="btn btn-sm preset-action-btn" type="button" title="Reload this preset's saved values from disk, discarding unsaved changes">LOAD</button>
                                     <button id="settings-preset-del-btn" class="btn btn-sm btn-danger preset-action-btn" type="button">DEL</button>
                                 </div>
                                 <p class="settings-preset-note">Saves Training Settings, Racing Settings, Scenario Overrides, and the selected deck/friend/trainee/parents. Configure Skills and Smart Race Solver settings are stored separately.</p>
@@ -171,7 +183,7 @@
                             </h2>
                             <div id="v4-body" class="collapsible-body expanded">
                                 <div class="v53-cockpit">
-                                    <div class="v516-top-actions"><button id="v515-setup-btn" class="btn btn-sm v515-setup-launch" type="button">SETUP</button><button id="v6719-help-btn" class="btn btn-sm v6719-help-launch" type="button">HELP</button><button id="v525-accounts-btn" class="btn btn-sm v525-accounts-launch" type="button">ACCOUNTS</button><button id="v516-diagnostics-btn" class="btn btn-sm v516-diagnostics-launch" type="button">DIAGNOSTICS</button><button id="v535-ai-learning-btn" class="btn btn-sm v535-ai-learning-launch" type="button">AI LEARNING</button><button id="v71-userdata-btn" class="btn btn-sm v71-userdata-launch" type="button">USERDATA</button><button id="v543-career-history-btn" class="btn btn-sm v543-career-history-launch" type="button">CAREER HISTORY</button></div>
+                                    <div class="v516-top-actions"><button id="v515-setup-btn" class="btn btn-sm v515-setup-launch" type="button">SETUP</button><button id="v6719-help-btn" class="btn btn-sm v6719-help-launch" type="button">HELP</button><button id="v525-accounts-btn" class="btn btn-sm v525-accounts-launch" type="button">ACCOUNTS</button><button id="v516-diagnostics-btn" class="btn btn-sm v516-diagnostics-launch" type="button">DIAGNOSTICS</button><button id="v535-ai-learning-btn" class="btn btn-sm v535-ai-learning-launch" type="button">AI / MISC</button><button id="v71-userdata-btn" class="btn btn-sm v71-userdata-launch" type="button">USERDATA</button><button id="v543-career-history-btn" class="btn btn-sm v543-career-history-launch" type="button">CAREER HISTORY</button></div>
                                     <div class="v53-career-card">
                                         <div class="v53-card-head">
                                             <span>CAREER</span>
@@ -243,22 +255,11 @@
                                             <div><span>Fans / Hour</span><strong id="v53-fph">0</strong></div>
                                             <div><span>Runtime</span><strong id="v53-runtime">0s</strong></div>
                                             <div><span>Careers Done</span><strong id="v53-careers">0</strong></div>
+                                            <div><span>Career Fan Gain</span><strong id="v53-career-fans">0</strong></div>
                                         </div>
                                     </div>
                                 </div>
                                 <div class="v4-grid">
-                                    <div class="v4-card v513-club-card">
-                                        <div class="v4-card-title">CLUB FAN TRACKER</div>
-                                        <div class="v513-club-controls">
-                                            <label class="v4-mini-field">Circle ID / URL<input id="v513-club-circle" type="text" placeholder="308667926 or uma.moe/circles/..." spellcheck="false"></label>
-                                            <label class="v4-mini-field">Daily quota<input id="v513-club-quota" type="number" min="0" step="100000" value="5000000"></label>
-                                            <label class="v4-mini-field v514-api-key-field">UMA API key<input id="v514-club-api-key" type="password" placeholder="uma_k_..." autocomplete="off" spellcheck="false"></label>
-                                            <button id="v514-club-key-toggle" class="btn btn-sm v4-small-btn v514-key-btn" type="button">SHOW KEY</button>
-                                            <button id="v513-club-refresh-btn" class="btn btn-sm v4-small-btn" type="button">REFRESH CLUB</button>
-                                        </div>
-                                        <div id="v513-club-summary" class="v513-club-summary">Club tracker idle.</div>
-                                        <div id="v513-club-members" class="v513-club-members"></div>
-                                    </div>
                                     <div class="v4-card" id="v516-diagnostics-card">
                                         <div class="v4-card-title">DIAGNOSTICS</div>
                                         <div id="v4-diagnostics" class="v4-kv">Diagnostics idle.</div>
@@ -329,9 +330,40 @@
                     </div>
                     <div class="panel-body">
                         <section class="dashboard-section">
+                            <h2 class="dashboard-section-title section-title-toggle" id="trainees-toggle">
+                                <span class="collapse-chevron expanded" id="trainees-chevron">&#9658;</span>
+                                TRAINEES <span id="uma-count"></span>
+                            </h2>
+                            <div id="trainees-body" class="collapsible-body expanded">
+                                <div id="uma-grid" class="data-grid"></div>
+                            </div>
+                        </section>
+                        <section class="dashboard-section">
+                            <h2 class="dashboard-section-title section-title-toggle" id="parents-toggle">
+                                <span class="collapse-chevron expanded" id="parents-chevron">&#9658;</span>
+                                PARENTS <span id="parent-count"></span>
+                            </h2>
+                            <div id="parents-body" class="collapsible-body expanded">
+                                <div id="parent-grid" class="data-grid"></div>
+                            </div>
+                        </section>
+                        <section class="dashboard-section">
+                            <h2 class="dashboard-section-title section-title-toggle" id="deck-bonuses-toggle">
+                                <span class="collapse-chevron expanded" id="deck-bonuses-chevron">&#9658;</span>
+                                DECK BONUSES
+                                <button id="rec-supports-btn" class="btn btn-sm section-title-action" type="button" title="See recommended Trackblazer support cards for the selected trainee">RECOMMENDED SUPPORTS</button>
+                            </h2>
+                            <div id="deck-bonuses-body" class="collapsible-body expanded">
+                                <div id="deck-bonuses-content" class="deck-bonuses-content">
+                                    <div class="friend-status">Select a deck to see its combined bonuses.</div>
+                                </div>
+                            </div>
+                        </section>
+                        <section class="dashboard-section">
                             <h2 class="dashboard-section-title section-title-toggle" id="decks-toggle">
                                 <span class="collapse-chevron expanded" id="decks-chevron">&#9658;</span>
                                 DECKS
+                                <button id="custom-deck-btn" class="btn btn-sm section-title-action" type="button" title="Build a custom deck from the support cards you own">BUILD CUSTOM</button>
                             </h2>
                             <div id="decks-body" class="collapsible-body expanded">
                                 <div id="deck-list"></div>
@@ -348,24 +380,6 @@
                                     <div id="friend-status" class="friend-status">Loading friends...</div>
                                 </div>
                                 <div id="friend-grid" class="data-grid"></div>
-                            </div>
-                        </section>
-                        <section class="dashboard-section">
-                            <h2 class="dashboard-section-title section-title-toggle" id="trainees-toggle">
-                                <span class="collapse-chevron expanded" id="trainees-chevron">&#9658;</span>
-                                TRAINEES <span id="uma-count"></span>
-                            </h2>
-                            <div id="trainees-body" class="collapsible-body expanded">
-                                <div id="uma-grid" class="data-grid"></div>
-                            </div>
-                        </section>
-                        <section class="dashboard-section">
-                            <h2 class="dashboard-section-title section-title-toggle" id="parents-toggle">
-                                <span class="collapse-chevron expanded" id="parents-chevron">&#9658;</span>
-                                PARENTS <span id="parent-count"></span>
-                            </h2>
-                            <div id="parents-body" class="collapsible-body expanded">
-                                <div id="parent-grid" class="data-grid"></div>
                             </div>
                         </section>
                         <section class="dashboard-section">
@@ -411,7 +425,7 @@
             <div class="v6719-help-panel">
                 <div class="v6719-help-topbar">
                     <div class="v6719-help-titlewrap">
-                        <span class="v6719-help-title">SweepyCL</span>
+                        <img class="v6719-help-logo" src="/icarus-logo.png" alt="Icarus">
                         <span class="v6719-help-subtitle">Help &amp; Documentation</span>
                     </div>
                     <button id="v6719-help-done-btn" class="btn btn-sm v6719-help-done" type="button">DONE</button>
@@ -422,10 +436,24 @@
                             <input id="v6719-help-search" class="v6719-help-search" type="text" placeholder="Search the docs" autocomplete="off" spellcheck="false" />
                         </div>
                         <nav id="v6719-help-nav-list" class="v6719-help-nav-list" aria-label="Help sections"></nav>
-                        <div class="v6719-help-nav-foot">SweepyCL &middot; in-app guide</div>
+                        <div class="v6719-help-nav-foot">Icarus &middot; in-app guide</div>
                     </aside>
                     <main id="v6719-help-content" class="v6719-help-content" tabindex="0"></main>
                 </div>
+            </div>
+        </div>
+
+        <div id="changelog-modal" class="changelog-modal">
+            <div class="changelog-panel">
+                <div class="changelog-topbar">
+                    <div class="changelog-titlewrap">
+                        <img class="changelog-logo" src="/icarus-logo.png" alt="Icarus">
+                        <span class="changelog-title">What's New</span>
+                        <span class="changelog-version" id="changelog-version"></span>
+                    </div>
+                    <button id="changelog-done-btn" class="btn btn-sm changelog-done" type="button">GOT IT</button>
+                </div>
+                <div class="changelog-body" id="changelog-body"></div>
             </div>
         </div>
 
@@ -449,7 +477,7 @@
 
         <div id="training-settings-modal" class="settings-window-modal" style="display:none">
             <div class="settings-window-panel">
-                <div class="settings-window-topbar"><div class="settings-window-title">TRAINING SETTINGS</div><button class="btn btn-sm settings-window-close" data-close="training-settings-modal" type="button">DONE</button></div>
+                <div class="settings-window-topbar"><div class="settings-window-title">TRAINING SETTINGS</div><label class="skill-optimizer-toggle" title="When ON, the goal-aware scorer boosts stats that are behind the pace needed to hit their target by the finals, and trims stats already ahead. Off by default; turn it off if you prefer the standard scoring."><input type="checkbox" id="goal-lookahead-toggle"> <span>Goal-aware lookahead</span></label><button class="btn btn-sm settings-window-close" data-close="training-settings-modal" type="button">DONE</button></div>
                 <div id="training-settings-body" class="settings-window-body"></div>
             </div>
         </div>
@@ -480,10 +508,55 @@
                 <div class="settings-window-body event-choices-body">
                     <div class="event-choices-toolbar">
                         <button id="event-choices-refresh-btn" class="btn btn-sm" type="button">REFRESH EVENTS</button>
-                        <button id="event-choices-reset-btn" class="btn btn-sm" type="button" title="Clear every saved override so all events fall back to Auto">RESET ALL TO AUTO</button>
+                        <button id="event-choices-set-auto-btn" class="btn btn-sm" type="button" title="Set every event to Auto (clears all forced choices so the bot decides)">SET ALL TO AUTO</button>
+                        <input id="event-choices-search" class="form-input event-choices-search" type="text" placeholder="Search event name, story id, or support…" autocomplete="off" spellcheck="false">
+                    </div>
+                    <div class="event-choices-statusbar">
                         <span id="event-choices-status" class="event-choices-status">Select a deck or run a career to discover events.</span>
+                        <span class="event-choices-legend"><span class="event-choice-badge badge-auto">AUTO</span> bot decides &nbsp;·&nbsp; <span class="event-choice-badge badge-override">FORCED</span> you chose</span>
                     </div>
                     <div id="event-choices-list" class="event-choices-list"></div>
+                </div>
+            </div>
+        </div>
+
+        <div id="rec-supports-modal" class="settings-window-modal" style="display:none">
+            <div class="settings-window-panel rec-supports-panel">
+                <div class="settings-window-topbar"><div class="settings-window-title">RECOMMENDED SUPPORT CARDS <span id="rec-supports-count"></span></div><button class="btn btn-sm settings-window-close" data-close="rec-supports-modal" type="button">CLOSE</button></div>
+                <div class="settings-window-body rec-supports-body">
+                    <div id="rec-supports-status" class="friend-status">Select a trainee to see recommended support cards.</div>
+                    <div id="rec-supports-grid" class="rec-supports-list"></div>
+                </div>
+            </div>
+        </div>
+
+        <div id="custom-deck-modal" class="settings-window-modal" style="display:none">
+            <div class="settings-window-panel custom-deck-panel">
+                <div class="settings-window-topbar"><div class="settings-window-title">BUILD CUSTOM DECK</div><button class="btn btn-sm settings-window-close" data-close="custom-deck-modal" type="button">CLOSE</button></div>
+                <div class="settings-window-body custom-deck-body">
+                    <div class="custom-deck-slots-wrap">
+                        <div class="custom-deck-slots-head">Selected cards <span id="custom-deck-count">(0/5)</span> <span class="deck-bonuses-note">— 5 of your own + 1 friend</span></div>
+                        <div id="custom-deck-slots" class="custom-deck-slots"></div>
+                    </div>
+                    <div class="custom-deck-toolbar">
+                        <input id="custom-deck-search" class="form-input" type="text" placeholder="Search owned support cards by name…" autocomplete="off" spellcheck="false">
+                        <select id="custom-deck-type-filter" class="form-input">
+                            <option value="">All types</option>
+                            <option value="speed">Speed</option>
+                            <option value="stamina">Stamina</option>
+                            <option value="power">Power</option>
+                            <option value="guts">Guts</option>
+                            <option value="wit">Wit</option>
+                            <option value="friend">Friend</option>
+                        </select>
+                    </div>
+                    <div id="custom-deck-status" class="event-choices-status"></div>
+                    <div id="custom-deck-owned" class="custom-deck-owned data-grid"></div>
+                    <div class="custom-deck-actions">
+                        <button id="custom-deck-apply-btn" class="btn btn-sm" type="button">APPLY DECK</button>
+                        <button id="custom-deck-clear-btn" class="btn btn-sm" type="button">CLEAR</button>
+                        <span class="deck-bonuses-note">Only support cards you own are shown. The deck feeds the next career run; it does not change your in-game saved decks.</span>
+                    </div>
                 </div>
             </div>
         </div>
@@ -501,7 +574,7 @@
         <div id="v535-ai-learning-modal" class="v516-diagnostics-modal v535-ai-learning-modal">
             <div class="v516-diagnostics-panel v535-ai-learning-panel">
                 <div class="v516-diagnostics-topbar">
-                    <div class="v516-diagnostics-title">AI LEARNING</div>
+                    <div class="v516-diagnostics-title">AI / MISC</div>
                     <button id="v535-ai-learning-done-btn" class="btn btn-sm v516-diagnostics-done" type="button">DONE</button>
                 </div>
                 <div id="v535-ai-learning-body" class="v516-diagnostics-body v535-ai-learning-body">
@@ -567,7 +640,8 @@
                                             </div>
                                             <div class="v544-event-kb-card v537-ai-import">
                                                 <div class="v537-ai-import-title">Event Outcome Knowledge Base</div>
-                                                <div class="v539-live-policy-help">Imports static outcome maps such as dumper outcomes.json and uses them for safer event-choice scoring, AI Dataset rows, and Local LLM analysis context. Frida/live interception is not included.</div>
+                                                <div class="v539-live-policy-help"><strong>What it is:</strong> a database of what each story-event choice actually <em>gives</em> (stat gains, energy, skill hints, conditions). A <strong>known outcome</strong> means the bot has the effects for that event's choices and can compare them.<br><br><strong>How it fills up:</strong> Icarus is an API bot, so it already sees the stat changes before/after every choice it makes — it <strong>auto-records outcomes from your own careers</strong> (no Frida or external dumper needed). You can also import a static <code>outcomes.json</code> below to seed events you haven't run yet; observed data from your runs takes precedence.<br><br><strong>How it's used:</strong> in <strong>Event Choices</strong>, the bot scores each option's known outcome against your event stat priority and picks the best; the data also enriches the AI Dataset and gives the Local LLM better context. Events with no data yet show "effect not in database" until they're observed or imported.</div>
+                                                <label class="v762-native-capture-row"><input type="checkbox" id="v762-native-capture-toggle" checked> <span>Auto-capture event outcomes from bot runs</span></label>
                                                 <div class="v532-ai-actions">
                                                     <button id="v544-event-kb-import-btn" class="btn btn-sm v4-small-btn" type="button">IMPORT BUNDLED OUTCOMES</button>
                                                     <button id="v544-event-kb-refresh-btn" class="btn btn-sm v4-small-btn" type="button">REFRESH EVENT KB</button>
@@ -575,41 +649,13 @@
                                                 <div id="v544-event-kb-status" class="v537-ai-import-status">Event outcome knowledge base waiting.</div>
                                                 <div id="v544-event-kb-summary" class="v532-ai-advisor"></div>
                                             </div>
-                                            <div class="v544-event-kb-card v537-ai-import" id="v6726-dumper-watcher-card">
-                                                <div class="v537-ai-import-title">Dumper Watcher <span class="v6726-dw-badge">STAGING ONLY</span></div>
-                                                <div class="v539-live-policy-help">Background poller that auto-imports event outcome data from the community dumper tool's <code>outcomes.json</code> into an <strong>isolated staging file</strong> (<code>data/event_outcomes_staging.json</code>). Staging is <strong>never read by EventManager or the AI Dataset</strong> — it can't affect bot decisions until you click PROMOTE. Use this to accumulate real, varied observations safely.</div>
-                                                <div class="v6726-dw-grid">
-                                                    <label class="v4-mini-field v6726-dw-field-wide">Dumper outcomes.json path
-                                                        <input id="v6726-dw-source" class="form-input" type="text" placeholder="C:\path\to\dumper-main\outcomes.json or ~/dumper/outcomes.json" autocomplete="off" spellcheck="false">
-                                                    </label>
-                                                    <label class="v4-mini-field">Poll interval (sec)
-                                                        <input id="v6726-dw-interval" class="form-input" type="number" min="5" max="3600" value="30">
-                                                    </label>
-                                                    <label class="v4-mini-field v6726-dw-toggle">
-                                                        <input id="v6726-dw-enabled" type="checkbox">
-                                                        <span>Enable background watcher</span>
-                                                    </label>
-                                                </div>
-                                                <div class="v532-ai-actions">
-                                                    <button id="v6726-dw-save-btn" class="btn btn-sm v4-small-btn" type="button">SAVE</button>
-                                                    <button id="v6726-dw-run-btn" class="btn btn-sm v4-small-btn" type="button">RUN NOW</button>
-                                                    <button id="v6726-dw-refresh-btn" class="btn btn-sm v4-small-btn" type="button">REFRESH STATUS</button>
-                                                </div>
-                                                <div id="v6726-dw-status" class="v537-ai-import-status">Watcher status will appear here after first refresh.</div>
-                                                <div id="v6726-dw-diff" class="v6726-dw-diff"></div>
-                                                <div class="v532-ai-actions v6726-dw-promote-actions">
-                                                    <button id="v6726-dw-promote-new-btn" class="btn btn-sm v4-small-btn" type="button" title="Copy only events that don't yet exist in the live KB. Existing entries are not touched.">PROMOTE NEW EVENTS</button>
-                                                    <button id="v6726-dw-promote-all-btn" class="btn btn-sm v4-small-btn" type="button" title="Copy every staging event into the live KB, overwriting any entries that differ.">PROMOTE ALL (NEW + UPDATED)</button>
-                                                    <button id="v6726-dw-clear-btn" class="btn btn-sm v4-small-btn v6726-dw-danger" type="button" title="Wipe the staging file. The live KB is untouched.">CLEAR STAGING</button>
-                                                </div>
-                                            </div>
                                             <div class="v537-ai-import">
                                                 <div class="v537-ai-import-title">Import Previous Logs & Presets</div>
                                                 <div class="v537-ai-import-row">
-                                                    <input id="v537-ai-import-path" class="v537-ai-import-path" type="text" placeholder="Paste old SweepyMod folder, uma_runtime folder, bot_logs folder, or .zip path">
+                                                    <input id="v537-ai-import-path" class="v537-ai-import-path" type="text" placeholder="Paste an older Icarus folder, its uma_runtime folder, a bot_logs folder, or a .zip path">
                                                     <button id="v537-ai-import-btn" class="btn btn-sm v4-small-btn" type="button">IMPORT DATA</button>
                                                 </div>
-                                                <div class="v537-ai-import-help">Example: C:\UmamusumeChatGPT\SweepyModv5.33 or C:\UmamusumeChatGPT\SweepyModv5.33.zip. Imports career logs, race outcomes, seen events, and settings presets. Auth files are ignored.</div>
+                                                <div class="v537-ai-import-help">Example: C:\Icarus\Icarusv1.0 or C:\Icarus\Icarusv1.0.zip (or an older version's folder/zip). Imports career logs, race outcomes, seen events, and settings presets. Auth files are ignored.</div>
                                                 <div id="v537-ai-import-status" class="v537-ai-import-status">No previous logs or presets imported this session.</div>
                                             </div>
                                             <div id="v534-ai-health" class="v534-ai-health">AI health checks pending.</div>
@@ -620,11 +666,11 @@
                                                     <div class="v536-ai-card"><span>Turns</span><strong id="v536-ai-turns">0</strong></div>
                                                     <div class="v536-ai-card"><span>Race Rows</span><strong id="v536-ai-races">0</strong></div>
                                                 </div>
-                                                <div class="v536-ai-section"><h4>Shadow Mode</h4><div id="v536-ai-shadow">Waiting for training.</div></div>
-                                                <div class="v536-ai-section"><h4>Backtest</h4><div id="v536-ai-backtest">Waiting for training.</div></div>
-                                                <div class="v536-ai-section"><h4>Learned Risk / Value</h4><div id="v536-ai-risk">Waiting for training.</div></div>
-                                                <div class="v536-ai-section"><h4>Suggestions</h4><div id="v536-ai-suggestions">Waiting for training.</div></div>
-                                                <div class="v536-ai-section"><h4>Epithet / Preset Confidence</h4><div id="v536-ai-confidence-detail">Waiting for training.</div></div>
+                                                <div class="v536-ai-section"><h4>Shadow Mode</h4><p class="v536-ai-desc">Safety check, no effect on live runs: it replays the learned race-risk model against your real results and measures how often a race it would have <em>warned</em> about actually finished below 1st. High precision here means the model's warnings are trustworthy — use it to decide whether to turn on Live Policy Assistance.</p><div id="v536-ai-shadow">Waiting for training.</div></div>
+                                                <div class="v536-ai-section"><h4>Backtest</h4><p class="v536-ai-desc">Replays your past careers through the current learned model to estimate how its picks would have performed versus what actually happened — a sanity check on the model's accuracy before you trust it.</p><div id="v536-ai-backtest">Waiting for training.</div></div>
+                                                <div class="v536-ai-section"><h4>Learned Risk / Value</h4><p class="v536-ai-desc">What the bot has learned from your own history: which races tend to <strong>lose</strong> (risk) and which return the most fans/epithets per turn (value). These only nudge the Smart Race Solver's scoring when <strong>Live Policy Assistance</strong> is on; they never override availability or safety gates.</p><div id="v536-ai-risk">Waiting for training.</div></div>
+                                                <div class="v536-ai-section"><h4>Suggestions</h4><p class="v536-ai-desc">Plain-language tuning ideas derived from your data (e.g. settings that tended to underperform). Advisory only — you choose whether to apply them.</p><div id="v536-ai-suggestions">Waiting for training.</div></div>
+                                                <div class="v536-ai-section"><h4>Epithet / Preset Confidence</h4><p class="v536-ai-desc">How much data the bot has gathered per trainee/preset and per epithet goal. More observed careers = higher confidence = more reliable learned suggestions for that specific setup. Low confidence means it simply hasn't seen enough runs yet.</p><div id="v536-ai-confidence-detail">Waiting for training.</div></div>
                                                 <div class="v536-ai-section v542-style-adaptation-section">
                                                     <h4>Racing Style Adaptation</h4>
                                                     <div class="v542-style-controls">
@@ -657,6 +703,20 @@
                     <button id="v525-accounts-done-btn" class="btn btn-sm v525-accounts-done" type="button">DONE</button>
                 </div>
                 <div class="v525-accounts-body">
+                    <div class="v525-accounts-intro">
+                        <p class="v525-accounts-desc"><strong>Multi-Account Control</strong> runs several game accounts at once — each in its own bot instance, on its own port. The <strong>Manager</strong> launches and supervises one dashboard per account and auto-restarts any that crash or stall. Each account keeps its <strong>own saved login</strong>, so they never share or overwrite each other's account.</p>
+                        <details class="v525-accounts-help">
+                            <summary>How to run two (or more) accounts</summary>
+                            <ol class="v525-accounts-steps">
+                                <li><strong>Add one row per game account.</strong> Click <strong>ADD ACCOUNT</strong> for each. Give every account a <strong>unique Name</strong> and a <strong>unique Port</strong> — e.g. <code>main</code> / <code>1616</code> and <code>alt</code> / <code>1617</code>.</li>
+                                <li><strong>Save the roster.</strong> Click <strong>SAVE ACCOUNTS</strong>.</li>
+                                <li><strong>Launch the Manager.</strong> Click <strong>LAUNCH MANAGER</strong>. It starts one bot per account on its port and keeps them alive.</li>
+                                <li><strong>Log into each port separately.</strong> Open each account's dashboard (e.g. <code>http://127.0.0.1:1616</code> and <code>http://127.0.0.1:1617</code>) and sign in with <em>that</em> account's Steam credentials. Every port remembers its own login.</li>
+                                <li><strong>Start a career</strong> on each dashboard as usual — they run independently. Watch live status for all accounts in the list below.</li>
+                            </ol>
+                            <div class="v525-accounts-note"><strong>Different ports alone are not enough.</strong> Each account also needs a <strong>different Name</strong> — the name is what isolates that account's saved login. Same name = same login (even on a different port); the port just decides which dashboard you open. Both Name and Port must be unique per account.</div>
+                        </details>
+                    </div>
                     <div class="v525-accounts-actions">
                         <button id="v525-add-account-btn" class="btn btn-sm" type="button">ADD ACCOUNT</button>
                         <button id="v525-save-accounts-btn" class="btn btn-sm" type="button">SAVE ACCOUNTS</button>
@@ -677,7 +737,7 @@
             <div id="skill-config-body" class="skill-config-body"></div>
         </div>
     </div>
-    <script src="app.js?v=550"></script>
+    <script src="app.js?v=552"></script>
     <script src="js/parent-filter.js?v=522"></script>
     <script src="js/monitor.js?v=522"></script>
 
@@ -715,11 +775,11 @@
                     <details class="v71-userdata-howto">
                         <summary>How resolution works (advanced)</summary>
                         <ol>
-                            <li><code>$SWEEPYCL_USERDATA_DIR</code> environment variable</li>
-                            <li><code>$SWEEPYCLAUDE_USERDATA_DIR</code> (legacy env var)</li>
+                            <li><code>$ICARUS_USERDATA_DIR</code> environment variable</li>
+                            <li><code>$SWEEPYCL_USERDATA_DIR</code> / <code>$SWEEPYCLAUDE_USERDATA_DIR</code> (legacy env vars)</li>
                             <li>The pointer file at <code id="v71-userdata-pointer-path-2"></code> — set by this dialog and survives across version installs</li>
-                            <li><code>SweepyCL_userdata</code> sibling folder next to the build</li>
-                            <li><code>SweepyClaude_userdata</code> (legacy sibling folder)</li>
+                            <li><code>Icarus_userdata</code> sibling folder next to the build</li>
+                            <li><code>SweepyCL_userdata</code> / <code>SweepyClaude_userdata</code> (legacy sibling folders)</li>
                             <li>Inside the build folder itself (not recommended — will be lost on upgrade)</li>
                         </ol>
                     </details>
@@ -727,9 +787,9 @@
                     <div class="v71-userdata-field">
                         <label for="v71-userdata-path-input">Set a stable userdata folder</label>
                         <div class="v71-userdata-input-row">
-                            <input id="v71-userdata-path-input" class="form-input" type="text" placeholder="C:\Umamusume API Bot Claude\SweepyCL_userdata" spellcheck="false" autocomplete="off">
+                            <input id="v71-userdata-path-input" class="form-input" type="text" placeholder="C:\Umamusume API Bot Claude\Icarus_userdata" spellcheck="false" autocomplete="off">
                         </div>
-                        <div class="v71-userdata-hint">Tip — the folder doesn't have to exist yet; it'll be created. A good convention is a folder named <code>SweepyCL_userdata</code> next to your build folder.</div>
+                        <div class="v71-userdata-hint">Tip — the folder doesn't have to exist yet; it'll be created. A good convention is a folder named <code>Icarus_userdata</code> next to your build folder.</div>
                         <label class="v71-userdata-migrate-toggle">
                             <input id="v71-userdata-migrate-checkbox" type="checkbox" checked>
                             <span>Also copy current settings/presets/auth into the new folder (non-destructive — never overwrites existing files at the destination)</span>
@@ -742,9 +802,14 @@
                         <button id="v71-userdata-dismiss-btn" class="btn btn-sm v4-small-btn" type="button">I'LL HANDLE IT LATER</button>
                     </div>
 
+                    <label class="v71-userdata-migrate-toggle v71-userdata-dontshow-toggle">
+                        <input id="v71-userdata-dontshow-checkbox" type="checkbox">
+                        <span>Do not show this again on startup</span>
+                    </label>
+
                     <div id="v71-userdata-status-msg" class="v71-userdata-status-msg"></div>
 
-                    <p class="v71-userdata-reopen-note">You can reopen this dialog any time from the <strong>USERDATA</strong> button in the top bar.</p>
+                    <p class="v71-userdata-reopen-note">You can reopen this dialog any time from the <strong>USERDATA</strong> button in the top bar — that's also where to change your folder later if you tick "Do not show again".</p>
                 </div>
             </div>
         </div>
@@ -771,10 +836,12 @@
                         </select>
                     </div>
                 </div>
+                <div id="v543-career-report" class="v543-career-report" style="display:none"></div>
                 <div class="v543-history-card-wrap" id="v543-career-history-body">
                     <div class="v543-history-empty">No completed careers recorded this session.</div>
                 </div>
             </div>
+
             <div id="v543-career-detail-modal" class="v543-detail-modal" style="display:none;">
                 <div class="v543-detail-shell">
                     <div class="v543-detail-head">
@@ -791,6 +858,7 @@
                 </div>
             </div>
         </div>
+
 
 </body>
 </html>

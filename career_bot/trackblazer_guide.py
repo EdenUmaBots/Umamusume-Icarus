@@ -8,7 +8,7 @@ DEFAULT_GUIDE = {
     "target_races_min": 25,
     "target_races_typical": 30,
     "race_pattern": {"race_chain_target": 2, "free_turn_after_chain": 1},
-    "summer_camp_turns": [36, 37, 38, 39, 60, 61, 62, 63],
+    "summer_camp_turns": [37, 38, 39, 40, 61, 62, 63, 64],
     "summer_strategy": {"summer_training_score_bonus": 0.16, "pre_summer_reserve_coin": 120},
     "shop_priorities": {},
 }

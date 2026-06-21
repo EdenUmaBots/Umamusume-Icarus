@@ -213,11 +213,14 @@ def race_outcome_risk(
     trainee_id: Any = "",
     preset_name: str = "",
     min_samples: int = 2,
+    _data: Any = None,
 ) -> Dict[str, Any]:
     pid = str(_safe_int(program_id))
     if pid == "0":
         return {"penalty": 0.0, "samples": 0, "confidence": "none"}
-    data = load_outcomes(base_dir)
+    # _data lets hot callers (Smart Race Solver) load the outcomes file once and
+    # reuse it across every candidate row instead of re-reading per program_id.
+    data = _data if _data is not None else load_outcomes(base_dir)
     profile = _profile_key(trainee_id, preset_name)
     if profile:
         bucket = ((data.get("profiles") or {}).get(profile) or {}).get(pid)

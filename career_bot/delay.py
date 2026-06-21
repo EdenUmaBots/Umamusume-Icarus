@@ -45,65 +45,35 @@ TURN_DELAY_RESTORE_MIN = 2.5
 TURN_DELAY_RESTORE_MAX = 5.0
 GLOBAL_DELAYS_DISABLED = False
 
-# v6.7.27 — Per-endpoint anti-detection delay scale.
-# 1.0 = original behavior (~15+ min per career).
-# 0.5 = half delays (brisk; ~8-10 min).
-# 0.25 = quarter delays (fast; ~4-6 min).
-# 0.05 = minimal pacing (speedrun; ~1-2 min, MAX detection risk).
-# 0.0 = no delays at all (machine-speed; very obviously a bot).
-#
-# This only scales the anti-detection sleeps in simulate_delay() and
-# simulate_turn_delay() below. dna_sleep() is NOT scaled — those calls
-# are used for error-recovery backoffs (HTTP 202/394/709 retries) and
-# specific timing windows the game server cares about; scaling them
-# would risk re-triggering the same error.
-DELAY_SCALE = 1.0
-
-
-def set_delay_scale(scale):
-    """Clamp and apply a new global delay scale. Returns the applied value."""
-    global DELAY_SCALE
-    try:
-        v = float(scale)
-    except (TypeError, ValueError):
-        v = 1.0
-    DELAY_SCALE = max(0.0, min(2.0, v))
-    return DELAY_SCALE
-
-
-def get_delay_scale():
-    return DELAY_SCALE
-
-
 _ENDPOINT_SHIFTS = {}
 for ep in _BASE_DELAYS:
     _ENDPOINT_SHIFTS[ep] = _dna_rng.uniform(0.85, 1.15)
 
 
 def simulate_delay(endpoint, client=None):
-    if GLOBAL_DELAYS_DISABLED or DELAY_SCALE <= 0.0:
+    if GLOBAL_DELAYS_DISABLED:
         print(f"Endpoint: {endpoint} | Delay: 0.000s", flush=True)
         return 0.0
 
     if endpoint not in _BASE_DELAYS:
-        target_delay = 0.3 * _USER_SPEED_SHIFT * DELAY_SCALE
-        mu = math.log(max(target_delay, 1e-6)) - (_USER_SIGMA**2) / 2.0
+        target_delay = 0.3 * _USER_SPEED_SHIFT
+        mu = math.log(target_delay) - (_USER_SIGMA**2) / 2.0
         dt = _dna_rng.lognormvariate(mu, _USER_SIGMA)
-        dt = max(0.08 * DELAY_SCALE, min(1.2 * DELAY_SCALE, dt))
+        dt = max(0.08, min(1.2, dt))
     else:
         real_min, real_max, real_avg = _BASE_DELAYS[endpoint]
         ep_shift = _ENDPOINT_SHIFTS[endpoint]
-        target_delay = real_avg * _USER_SPEED_SHIFT * ep_shift * DELAY_SCALE
-        shifted_min = real_min * _USER_SPEED_SHIFT * ep_shift * DELAY_SCALE
-        shifted_max = real_max * _USER_SPEED_SHIFT * ep_shift * DELAY_SCALE
-        mu = math.log(max(target_delay, 1e-6)) - (_USER_SIGMA**2) / 2.0
+        target_delay = real_avg * _USER_SPEED_SHIFT * ep_shift
+        shifted_min = real_min * _USER_SPEED_SHIFT * ep_shift
+        shifted_max = real_max * _USER_SPEED_SHIFT * ep_shift
+        mu = math.log(target_delay) - (_USER_SIGMA**2) / 2.0
         dt = _dna_rng.lognormvariate(mu, _USER_SIGMA)
         dt = max(shifted_min, min(shifted_max, dt))
 
     if _dna_rng.random() < _USER_DISTRACTION_CHANCE:
-        dt += _dna_rng.uniform(_USER_DISTRACTION_MIN, _USER_DISTRACTION_MAX) * DELAY_SCALE
+        dt += _dna_rng.uniform(_USER_DISTRACTION_MIN, _USER_DISTRACTION_MAX)
 
-    print(f"Endpoint: {endpoint} | Delay: {dt:.3f}s | scale={DELAY_SCALE:.2f}", flush=True)
+    print(f"Endpoint: {endpoint} | Delay: {dt:.3f}s", flush=True)
 
     if client and hasattr(client, '_last_raw_call_ts'):
         elapsed = time.time() - client._last_raw_call_ts
@@ -116,17 +86,17 @@ def simulate_delay(endpoint, client=None):
 
 
 def simulate_turn_delay():
-    if GLOBAL_DELAYS_DISABLED or DELAY_SCALE <= 0.0:
+    if GLOBAL_DELAYS_DISABLED:
         print(f"Endpoint: turn_delay | Delay: 0.000s", flush=True)
         return 0.0
     range_span = TURN_DELAY_MAX - TURN_DELAY_MIN
-    target_mean = (((TURN_DELAY_MIN + TURN_DELAY_MAX) / 2.0) + (_dna_rng.uniform(-0.08, 0.08) * range_span)) * _USER_SPEED_SHIFT * DELAY_SCALE
+    target_mean = (((TURN_DELAY_MIN + TURN_DELAY_MAX) / 2.0) + (_dna_rng.uniform(-0.08, 0.08) * range_span)) * _USER_SPEED_SHIFT
     sigma = 0.75 * _USER_SIGMA
     mu = math.log(max(0.1, target_mean)) - (sigma**2) / 2.0
     dt = _dna_rng.lognormvariate(mu, sigma)
-    dt = min(TURN_DELAY_MAX * 5.0 * DELAY_SCALE, max(TURN_DELAY_MIN * 0.5 * DELAY_SCALE, dt))
+    dt = min(TURN_DELAY_MAX * 5.0, max(TURN_DELAY_MIN * 0.5, dt))
 
-    print(f"Endpoint: turn_delay | Delay: {dt:.3f}s | scale={DELAY_SCALE:.2f}", flush=True)
+    print(f"Endpoint: turn_delay | Delay: {dt:.3f}s", flush=True)
     time.sleep(dt)
 
 def dna_randint(min_val, max_val):

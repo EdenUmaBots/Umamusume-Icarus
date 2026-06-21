@@ -319,5 +319,67 @@ class DecisionReasoningTextTests(unittest.TestCase):
         self.assertNotIn("authoritative override blocked", text)
 
 
+# --- 5. Shadow-precision: win-rate gate on race warnings -----------------
+
+class WinRateWarningGateTests(unittest.TestCase):
+    """A race only emits a negative ("warning") adjustment when its
+    historical win rate is at or below ``warn_win_rate_ceiling``.
+
+    Before this change a race the bot wins ~90% of the time still
+    accrued a small avg-rank penalty and emitted a warning, which read
+    as a false alarm in Shadow Mode (the race actually won) -- the user
+    observed 16% shadow precision.
+    """
+
+    def _race_model(self):
+        # One program the bot usually wins, one it usually loses; both
+        # confident and both carrying a positive learned penalty.
+        return {
+            "model": {
+                "winner": {"win_rate": 0.90, "penalty": 2.5,
+                           "clock_dependency_penalty": 0.0,
+                           "confidence": 0.9, "samples": 12},
+                "loser": {"win_rate": 0.20, "penalty": 38.0,
+                          "clock_dependency_penalty": 0.0,
+                          "confidence": 0.9, "samples": 12},
+            }
+        }
+
+    def _policy(self, **overrides):
+        from career_bot.ai_trainer import (
+            DEFAULT_AUTO_CONFIG, build_policy_adjustments,
+        )
+        cfg = dict(DEFAULT_AUTO_CONFIG)
+        cfg.update(overrides)
+        return build_policy_adjustments(self._race_model(), {}, {}, cfg)
+
+    def test_high_win_rate_race_does_not_warn(self):
+        winner = self._policy()["races"].get("winner", {})
+        self.assertGreaterEqual(
+            winner.get("adjustment", 0.0), 0.0,
+            "a race the bot usually wins must not be warned about",
+        )
+
+    def test_low_win_rate_race_still_warns(self):
+        races = self._policy()["races"]
+        self.assertIn("loser", races)
+        self.assertLess(
+            races["loser"]["adjustment"], 0.0,
+            "a race that loses most of the time must still warn",
+        )
+
+    def test_ceiling_is_configurable(self):
+        races = self._policy(warn_win_rate_ceiling=0.10)["races"]
+        self.assertGreaterEqual(races.get("loser", {}).get("adjustment", 0.0), 0.0)
+
+    def test_payload_exposes_ceiling(self):
+        self.assertEqual(self._policy()["warn_win_rate_ceiling"], 0.50)
+
+    def test_defaults_raised(self):
+        from career_bot.ai_trainer import DEFAULT_AUTO_CONFIG
+        self.assertEqual(DEFAULT_AUTO_CONFIG["warn_win_rate_ceiling"], 0.50)
+        self.assertEqual(DEFAULT_AUTO_CONFIG["min_samples_for_model"], 4)
+
+
 if __name__ == "__main__":
     unittest.main()

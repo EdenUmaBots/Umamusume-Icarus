@@ -1831,6 +1831,14 @@
       "item_name_pattern": "utx_ico_lottery_item_{0:D2}"
     },
     {
+      "story_id": 501036302,
+      "story_name": "Raffle Time!",
+      "event_category_id": 177,
+      "max_item_id": 5,
+      "item_dir": "Lottery",
+      "item_name_pattern": "utx_ico_lottery_item_{0:D2}"
+    },
+    {
       "story_id": 501037302,
       "story_name": "Raffle Time!",
       "event_category_id": 177,
@@ -2206,6 +2214,11 @@
           "chara_motion_set_id": 40015
         },
         {
+          "chara_id": 1036,
+          "name": "Air Shakur",
+          "chara_motion_set_id": 1036810
+        },
+        {
           "chara_id": 1037,
           "name": "Eishin Flash",
           "chara_motion_set_id": 1037802
@@ -2506,6 +2519,11 @@
           "chara_motion_set_id": 40035
         },
         {
+          "chara_id": 1036,
+          "name": "Air Shakur",
+          "chara_motion_set_id": 1036810
+        },
+        {
           "chara_id": 1037,
           "name": "Eishin Flash",
           "chara_motion_set_id": 1037802
@@ -2804,6 +2822,11 @@
           "chara_id": 1035,
           "name": "Winning Ticket",
           "chara_motion_set_id": 40015
+        },
+        {
+          "chara_id": 1036,
+          "name": "Air Shakur",
+          "chara_motion_set_id": 1036810
         },
         {
           "chara_id": 1037,

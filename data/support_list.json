@@ -619,6 +619,11 @@
     "rarity": "SR",
     "type": "Guts"
   },
+  "20049": {
+    "name": "Gold City",
+    "rarity": "SR",
+    "type": "Wisdom"
+  },
   "30001": {
     "name": "Special Week",
     "rarity": "SSR",
@@ -1098,5 +1103,10 @@
     "name": "Zenno Rob Roy",
     "rarity": "SSR",
     "type": "Stamina"
+  },
+  "30106": {
+    "name": "Air Groove",
+    "rarity": "SSR",
+    "type": "Power"
   }
 }

@@ -99,6 +99,7 @@ def serialize_preset(raw):
         "smart_skill_green_penalty",
         "smart_skill_min_score",
         "skill_profile",
+        "selection",
         "trackblazer_last_plan",
         "training_blocks",
         "manual_locks",
@@ -120,6 +121,7 @@ def serialize_preset(raw):
         "trackblazer_weights",
         "trackblazer_target_epithets",
         "trackblazer_forced_epithets",
+        "trackblazer_race_agenda",
     ]:
         if key in data:
             serialized[key] = data[key]

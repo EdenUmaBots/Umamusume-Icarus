@@ -50,14 +50,25 @@ class MandatoryClockRescueTests(unittest.TestCase):
         self.assertTrue(policy.get("mandatory_clock_rescue"))
         self.assertEqual(policy["disabled_reason"], "paid_clocks_via_mandatory_rescue")
 
-    def test_optional_race_still_blocked_with_burn_off(self):
-        """Non-mandatory races still respect the burn_clocks toggle --
-        the rescue only applies to mandatory races."""
+    def test_optional_graded_race_retries_by_default(self):
+        """v1.5: graded optional extra races now retry by default (android
+        parity), decoupled from the Burn Clocks toggle, to lift win rate."""
         runner = self._runner(burn_clocks=False)
         policy = runner._race_retry_policy(
             {"mant_config": {}}, program_id=1234, turn=40, attempts=0,
             free_clocks_available=0,
             is_mandatory=False,
+        )
+        self.assertTrue(policy["enabled"])
+        self.assertTrue(policy.get("extra_race_retry"))
+
+    def test_optional_race_blocked_when_extra_retry_disabled(self):
+        """Setting retry_extra_races=false restores the old burn_clocks-gated
+        behaviour: an optional race with burn off and no free clocks is blocked."""
+        runner = self._runner(burn_clocks=False)
+        policy = runner._race_retry_policy(
+            {"mant_config": {"retry_extra_races": False}}, program_id=1234, turn=40,
+            attempts=0, free_clocks_available=0, is_mandatory=False,
         )
         self.assertFalse(policy["enabled"])
         self.assertEqual(policy["disabled_reason"], "burn_clocks_disabled_by_user")

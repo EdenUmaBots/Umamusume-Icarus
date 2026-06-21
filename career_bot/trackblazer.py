@@ -8,14 +8,16 @@ import traceback
 from pathlib import Path
 from urllib.request import Request, urlopen
 
-from career_bot.race_intelligence import race_outcome_risk
+from career_bot.race_intelligence import race_outcome_risk, load_outcomes
 try:
-    from career_bot.ai_trainer import race_policy_adjustment
+    from career_bot.ai_trainer import race_policy_adjustment, load_auto_config, load_policy_adjustments
 except Exception:
     race_policy_adjustment = None
+    load_auto_config = None
+    load_policy_adjustments = None
 
 RAW_BASE = "https://raw.githubusercontent.com/daftuyda/umamusume_trackblazer_scheduler/main"
-LOCAL_SOLVER_SOURCE = "SweepyCL local Android SmartRaceSolver port"
+LOCAL_SOLVER_SOURCE = "SweepyCL local Trackblazer SmartRaceSolver port"
 STRUCTURED_EPITHETS_FILE = "android_smart_race_epithets.json"
 STRUCTURED_RACES_FILE = "android_smart_race_races.json"
 DATASETS = {
@@ -38,6 +40,59 @@ GRADE_BASE = {
 SUMMER_TURNS = {37, 38, 39, 40, 61, 62, 63, 64}
 LATE_DEC_TURNS = {23, 47, 71}
 TRAIN_LOCKS = {"train", "training", "rest", "none", "no_race", "no-race", "train_lock_sentinel"}
+
+RACE_AGENDAS_FILE = "race_agendas.json"
+_RACE_AGENDA_CACHE = {}
+
+
+def load_race_agendas(base_dir):
+    """Return the list of curated race agendas from
+    ``data/trackblazer/race_agendas.json`` (``[]`` if the file is missing).
+
+    An agenda is ``{id, title, description, recommended, target_epithets,
+    forced_epithets}``.  Selecting one (preset ``trackblazer_race_agenda``)
+    feeds its epithets into the smart solver so it schedules the races needed
+    to complete them instead of minimising races for fans alone.
+    """
+    key = str(base_dir or "")
+    if key in _RACE_AGENDA_CACHE:
+        return _RACE_AGENDA_CACHE[key]
+    path = Path(base_dir) / "data" / "trackblazer" / RACE_AGENDAS_FILE
+    agendas = []
+    try:
+        if path.exists():
+            raw = json.loads(path.read_text(encoding="utf-8"))
+            agendas = [a for a in (raw.get("agendas") or []) if isinstance(a, dict) and a.get("id")]
+    except Exception:
+        agendas = []
+    _RACE_AGENDA_CACHE[key] = agendas
+    return agendas
+
+
+def resolve_agenda_epithets(base_dir, agenda_id):
+    """Return ``(target_epithets, forced_epithets)`` for an agenda id, or
+    ``([], [])`` when the id is empty/unknown."""
+    aid = str(agenda_id or "").strip()
+    if not aid or aid.lower() in ("none", "off", ""):
+        return [], []
+    for agenda in load_race_agendas(base_dir):
+        if str(agenda.get("id")) == aid:
+            return (list(agenda.get("target_epithets") or []),
+                    list(agenda.get("forced_epithets") or []))
+    return [], []
+
+
+def _merge_epithet_lists(*lists):
+    """Order-preserving de-duplicated union of epithet-name lists."""
+    seen = set()
+    out = []
+    for lst in lists:
+        for name in (lst or []):
+            key = str(name or "").strip()
+            if key and key not in seen:
+                seen.add(key)
+                out.append(key)
+    return out
 
 DEFAULT_SOLVER_WEIGHTS = {
     "raceValue": 1.0,
@@ -430,6 +485,12 @@ def _candidate_rows(base_dir, aptitudes=None, fan_bonus=0, include_op=False, flo
     official = _official_program_core(base_dir)
     rewards = _trackblazer_reward_core(base_dir)
     rates = _performance_rates(base_dir)
+    # P3: load the learned-intelligence files ONCE per solve and reuse across all
+    # candidate rows (previously each row re-read outcomes + auto-config + policy
+    # from disk, ~744 reads of each per solve).
+    outcomes_data = load_outcomes(base_dir)
+    _pol_cfg = load_auto_config(base_dir) if (race_policy_adjustment and load_auto_config) else None
+    _pol_data = load_policy_adjustments(base_dir) if (race_policy_adjustment and load_policy_adjustments) else None
     rows = []
     for race in races:
         grade = str(race.get("grade") or "").upper()
@@ -447,8 +508,8 @@ def _candidate_rows(base_dir, aptitudes=None, fan_bonus=0, include_op=False, flo
             win_points = _first_place_value(reward.get("win_point_rewards") or [], "point_num")
             performance_rate = _official_performance_rate(rates, race, aptitudes)
             turn_num = int(match.get("turn") or meta.get("turn") or 0)
-            outcome_risk = race_outcome_risk(base_dir, program_id, trainee_id=trainee_id, preset_name=preset_name)
-            ai_policy_hint = race_policy_adjustment(base_dir, program_id) if race_policy_adjustment else {"adjustment": 0.0, "confidence": 0.0}
+            outcome_risk = race_outcome_risk(base_dir, program_id, trainee_id=trainee_id, preset_name=preset_name, _data=outcomes_data)
+            ai_policy_hint = race_policy_adjustment(base_dir, program_id, _cfg=_pol_cfg, _policy=_pol_data) if race_policy_adjustment else {"adjustment": 0.0, "confidence": 0.0}
             rows.append({
                 "program_id": program_id,
                 "turn": turn_num,
@@ -562,9 +623,9 @@ def _long_distance_risk_penalty(row, weights):
 
 
 def _smart_race_score(row, weights=None):
-    """Shared race scoring adapted from the Android Smart Race Solver.
+    """Shared race scoring adapted from the Trackblazer Smart Race Solver.
 
-    v5.31 adds log-derived intelligence on top of the Android objective:
+    v5.31 adds log-derived intelligence on top of the Trackblazer objective:
     observed race failure penalties, late-Senior fan-pressure, long-distance
     stamina risk, and item/recovery feasibility support.  These are additive and
     can be tuned or disabled from weights without breaking older presets.
@@ -708,7 +769,7 @@ def _race_matches_epithet(row, epithet):
 
 
 def _annotate_epithet_hits(base_dir, rows, target_epithets=None, forced_epithets=None):
-    # Prefer Android's structured matcher data when present; fall back to the
+    # Prefer the structured matcher data when present; fall back to the
     # older free-text Trackblazer cache for dev/test fixtures. These fields are
     # advisory annotations for UI/score explainability. Full completion is
     # evaluated against schedule history in the beam backend below.
@@ -730,15 +791,15 @@ def _annotate_epithet_hits(base_dir, rows, target_epithets=None, forced_epithets
 
 
 # ---------------------------------------------------------------------------
-# Android SmartRaceSolver-inspired structured epithet helpers (v5.30)
+# SmartRaceSolver-inspired structured epithet helpers (v5.30)
 # ---------------------------------------------------------------------------
-# The Android bot ships a structured epithet database (matchers such as
+# The structured epithet database ships matchers such as
 # winRace, winAnyOf, winCount, epithetAll). SweepyCL's older Trackblazer
 # cache only had free-text condition strings, so forced epithets could be
 # treated as weak per-race bonuses instead of real schedule goals. These
 # helpers keep the solver local/offline and evaluate epithets against the
-# projected schedule history, mirroring the Android RaceHistory +
-# EpithetTracker flow without pulling Android-specific dependencies into the
+# projected schedule history, mirroring the RaceHistory +
+# EpithetTracker flow without pulling engine-specific dependencies into the
 # desktop bot.
 
 _DISTANCE_ALIASES = {
@@ -798,7 +859,7 @@ def _solver_epithet_pool(base_dir, target_epithets=None, forced_epithets=None):
     """Return epithets evaluated by the scheduler.
 
     All structured epithets are included so the objective can reward incidental
-    completions like Android's solver does. The selected target/forced lists are
+    completions like the solver does. The selected target/forced lists are
     still surfaced separately in UI annotations and hard feasibility checks.
     """
     rows = _structured_epithet_data(base_dir)
@@ -1219,6 +1280,66 @@ def _forced_epithet_constraints(base_dir, forced_epithets, candidates):
             constraints.append((idxs, need, len(idxs)))
     return constraints
 
+
+def _opportunistic_epithet_milp_vars(epithet_pool, candidates, won_history, dead_names, forced_names, weights):
+    """v1.5 (solver parity): build the opportunistic-epithet reward variables
+    for the MILP.
+
+    The MILP gives EVERY achievable (non-dead) epithet a reward variable
+    in the objective, tied by linear constraints to the races that complete it.
+    That reward flips otherwise-zero G2/G3 races positive and is the reason
+    The reference solver schedules ~39 races where Icarus's MILP (which had NO epithet term)
+    stays train-heavy at ~24.  Icarus already did this in its beam backend, but
+    the beam never runs because the MILP succeeds first -- so the parity logic
+    was dead.  This wires it into the active MILP path.
+
+    Returns a list of (reward, matcher_constraints) where matcher_constraints is
+    a list of (idxs, need): scheduling at least `need` of candidate indices
+    `idxs` (with history wins already deducted) is required for the epithet's
+    reward.  An epithet with any dependency matcher (epithetAnyOf/All) or any
+    matcher unsatisfiable from the remaining races is skipped entirely -- the
+    beam fallback handles dependency epithets.  Forced epithets are excluded
+    (they are already pinned by _forced_epithet_constraints).
+    """
+    out = []
+    for ep in epithet_pool or []:
+        name = str(ep.get("name") or "").strip()
+        if not name or name in dead_names or name in forced_names:
+            continue
+        reward = _epithet_reward_value(ep, weights)
+        if reward <= 0:
+            continue
+        matchers = ep.get("matchers") or []
+        if not matchers:
+            continue
+        matcher_constraints = []
+        feasible = True
+        for matcher in matchers:
+            typ = _matcher_type(matcher)
+            if typ in {"epithetAnyOf", "epithetAll"}:
+                feasible = False  # dependency matcher -> beam fallback handles it
+                break
+            if typ == "winRace":
+                need = 1
+            elif typ in {"winRaceTimes", "winAnyOf", "winAtLeast", "winCount"}:
+                need = max(1, int(matcher.get("times") or matcher.get("count") or 1))
+            else:
+                continue  # unknown matcher type -> contributes no constraint
+            hist = sum(1 for r in (won_history or []) if _race_may_progress_matcher(r, matcher))
+            need -= hist
+            if need <= 0:
+                continue  # already satisfied by prior wins
+            idxs = [idx for idx, row in enumerate(candidates) if _race_may_progress_matcher(row, matcher)]
+            if len(idxs) < need:
+                feasible = False  # cannot complete this matcher from remaining races
+                break
+            matcher_constraints.append((idxs, need))
+        if not feasible or not matcher_constraints:
+            continue
+        out.append((reward, matcher_constraints))
+    return out
+
+
 def _normalize_manual_locks(manual_locks=None):
     out = {}
     for key, value in (manual_locks or {}).items():
@@ -1261,7 +1382,7 @@ def _smart_milp_schedule(
 ):
     """Optional exact MILP backend using scipy.optimize.milp.
 
-    This mirrors the Android solver's first-choice backend more closely than the
+    This mirrors the solver's first-choice backend more closely than the
     beam fallback. Variables are binary race decisions. Constraints enforce:
     - at most one race per turn,
     - manual race locks and Train locks,
@@ -1342,10 +1463,39 @@ def _smart_milp_schedule(
         }
 
     n = len(candidates)
+    # v1.5: opportunistic epithet reward variables (solver parity) -- every
+    # achievable, non-dead epithet gets a y-variable rewarded in the objective
+    # and tied to its qualifying races, flipping otherwise-zero G2/G3 races
+    # positive so the schedule reaches the target ~39-race count.  Soft (y may be
+    # 0), so they can never make the model infeasible.  Disable via
+    # weights.enableOpportunisticEpithets=false.
+    # v1.5: DEFAULTS OFF.  Direct schedule simulation showed the MILP already
+    # schedules the maximum executable races (~37) via the grade term, so adding
+    # epithet rewards does NOT increase the race count at any replan -- it only
+    # re-prioritises toward epithet completions at a consistent FAN COST
+    # (~390k -> ~332k estimated).  The real 37-planned-vs-28-executed gap is
+    # runtime (energy rests / hijacks), not the solver.  Kept as an opt-in for
+    # users who specifically want to chase achievable epithets.
+    epithet_vars = []
+    if weights.get("enableOpportunisticEpithets", False):
+        try:
+            pool = _solver_epithet_pool(base_dir, target_epithets, forced_epithets)
+            dead_names = set(_dead_epithets_from_failed_history(pool, _lost_history_rows(race_history or [])))
+            forced_names = _required_forced_names(base_dir, forced_epithets)
+            won_history = _won_history_rows(race_history or [])
+            epithet_vars = _opportunistic_epithet_milp_vars(pool, candidates, won_history, dead_names, forced_names, weights)
+        except Exception:
+            epithet_vars = []
+    m = len(epithet_vars)
+    total_vars = n + m
     # scipy.optimize.milp minimizes, so negate scores to maximize.
-    c = np.array([-float(row.get("score") or 0) for row in candidates], dtype=float)
-    integrality = np.ones(n, dtype=int)
-    bounds = Bounds(np.zeros(n), np.ones(n))
+    c = np.array(
+        [-float(row.get("score") or 0) for row in candidates]
+        + [-float(reward) for (reward, _cons) in epithet_vars],
+        dtype=float,
+    )
+    integrality = np.ones(total_vars, dtype=int)
+    bounds = Bounds(np.zeros(total_vars), np.ones(total_vars))
 
     rows_by_turn = {}
     for idx, row in enumerate(candidates):
@@ -1379,7 +1529,7 @@ def _smart_milp_schedule(
                 lbs.append(1)
                 ubs.append(1)
 
-    # Forced epithets are hard constraints. When the Android structured
+    # Forced epithets are hard constraints. When the structured
     # matcher can be expressed linearly, encode it exactly; dependency-based
     # epithets deliberately raise so the history-aware beam fallback handles
     # them instead of silently relaxing the goal.
@@ -1416,12 +1566,33 @@ def _smart_milp_schedule(
             lbs.append(0)
             ubs.append(allowance)
 
-    mat = lil_matrix((len(constraints), n), dtype=float)
+    # v1.5: epithet linking rows -- sum(qualifying race vars) - need*y >= 0, so a
+    # reward y can be 1 only when at least `need` of its races are scheduled.
+    epithet_rows = []
+    for j, (reward, cons) in enumerate(epithet_vars):
+        for (idxs, need) in cons:
+            epithet_rows.append((idxs, n + j, need))
+
+    mat = lil_matrix((len(constraints) + len(epithet_rows), total_vars), dtype=float)
     for r_idx, idxs in enumerate(constraints):
         for c_idx in idxs:
             mat[r_idx, c_idx] = 1.0
+    ep_lbs = []
+    ep_ubs = []
+    base_r = len(constraints)
+    for k, (idxs, ycol, need) in enumerate(epithet_rows):
+        r_idx = base_r + k
+        for c_idx in idxs:
+            mat[r_idx, c_idx] = 1.0
+        mat[r_idx, ycol] = -float(need)
+        ep_lbs.append(0.0)
+        ep_ubs.append(np.inf)
 
-    linear = LinearConstraint(mat.tocsr(), np.array(lbs, dtype=float), np.array(ubs, dtype=float))
+    linear = LinearConstraint(
+        mat.tocsr(),
+        np.array(lbs + ep_lbs, dtype=float),
+        np.array(ubs + ep_ubs, dtype=float),
+    )
     options = {"time_limit": max(1.0, float(timeout or 30)), "disp": False}
     result = milp(c=c, integrality=integrality, bounds=bounds, constraints=linear, options=options)
 
@@ -1429,8 +1600,8 @@ def _smart_milp_schedule(
         raise RuntimeError(f"scipy MILP infeasible or failed: {getattr(result, 'message', 'unknown error')}")
 
     picked = []
-    for idx, value in enumerate(result.x):
-        if value >= 0.5:
+    for idx in range(n):  # first n vars are races; the trailing m are epithet y-vars
+        if result.x[idx] >= 0.5:
             out = dict(candidates[idx])
             out["score"] = round(float(out.get("score") or 0), 3)
             picked.append(out)
@@ -1493,9 +1664,9 @@ def _smart_beam_schedule(
     preset_name="",
     carry_in_streak=0,
 ):
-    """Dependency-free desktop port of the Android heuristic backend.
+    """Dependency-free desktop port of the heuristic backend.
 
-    The Android implementation tries MILP first and then falls back to beam
+    The implementation tries MILP first and then falls back to beam
     search. SweepyCL keeps this self-contained and dependency-free by using
     the beam backend directly. It plans the full 72-turn race-vs-train space,
     honors manual locks, applies consecutive and summer penalties, and scores
@@ -1625,13 +1796,13 @@ def _smart_beam_schedule(
         schedule.append(out)
     schedule, epithet_ledger = _decorate_schedule_with_epithets(base_dir, schedule, target_epithets, forced_epithets, race_history)
     notes = [
-        "Self-contained SweepyCL port of Android SmartRaceSolver beam backend.",
+        "Self-contained SweepyCL port of the Trackblazer SmartRaceSolver beam backend.",
         "Manual locks and Train locks are honored.",
         "RaceHistory + EpithetTracker-style completion scoring is active.",
     ]
     target_count = int(weights.get("targetOptionalRaceCount") or 0)
     if target_count and len(schedule) < max(0, target_count - 4):
-        notes.append(f"Race density below Android-derived target ({len(schedule)}/{target_count}); check aptitude, locks, failed-race risk, or distance mode.")
+        notes.append(f"Race density below target ({len(schedule)}/{target_count}); check aptitude, locks, failed-race risk, or distance mode.")
     if epithet_ledger.get("dead"):
         notes.append("Some epithet branches are marked dead by failed historical race results: " + ", ".join(epithet_ledger.get("dead")[:6]))
     return {
@@ -1707,7 +1878,7 @@ def _greedy_schedule(base_dir, aptitudes=None, fan_bonus=0, max_races_in_row=2, 
 def epithet_catalog(base_dir):
     """Return the best local epithet catalog for UI pickers.
 
-    The Android structured file has executable matchers, so it is preferred.
+    The structured file has executable matchers, so it is preferred.
     The old Trackblazer cache is retained as a fallback for older checkouts.
     """
     rows = _structured_epithet_data(base_dir)

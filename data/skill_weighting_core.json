@@ -1205,6 +1205,31 @@
     "is_general_skill": 0
   },
   {
+    "skill_id": 100361,
+    "name": "trigger:BEAT",
+    "rarity": 5,
+    "group_id": 10036,
+    "group_rate": 1,
+    "grade_value": 340,
+    "cost": 0,
+    "skill_category": 5,
+    "tags": [
+      401,
+      403
+    ],
+    "icon_id": 20013,
+    "activate_lot": 0,
+    "ability_types": [
+      27,
+      28
+    ],
+    "conditions": [
+      "is_finalcorner==1&corner==0"
+    ],
+    "disable_singlemode": 1,
+    "is_general_skill": 0
+  },
+  {
     "skill_id": 100371,
     "name": "Schwarzes Schwert",
     "rarity": 5,
@@ -9660,6 +9685,30 @@
     "is_general_skill": 1
   },
   {
+    "skill_id": 201453,
+    "name": "Moonlit Flash",
+    "rarity": 2,
+    "group_id": 20145,
+    "group_rate": 3,
+    "grade_value": 508,
+    "cost": 150,
+    "skill_category": 4,
+    "tags": [
+      104,
+      401
+    ],
+    "icon_id": 20012,
+    "activate_lot": 1,
+    "ability_types": [
+      27
+    ],
+    "conditions": [
+      "running_style==4&straight_random==1"
+    ],
+    "disable_singlemode": 1,
+    "is_general_skill": 1
+  },
+  {
     "skill_id": 201461,
     "name": "End Closer Corners ◎",
     "rarity": 1,
@@ -11565,6 +11614,31 @@
     "is_general_skill": 1
   },
   {
+    "skill_id": 202181,
+    "name": "99 Problems",
+    "rarity": 1,
+    "group_id": 20218,
+    "group_rate": -1,
+    "grade_value": -174,
+    "cost": 0,
+    "skill_category": 0,
+    "tags": [
+      404,
+      405
+    ],
+    "icon_id": 10044,
+    "activate_lot": 0,
+    "ability_types": [
+      4,
+      5
+    ],
+    "conditions": [
+      "always==1"
+    ],
+    "disable_singlemode": 1,
+    "is_general_skill": 1
+  },
+  {
     "skill_id": 210012,
     "name": "Ignited Spirit SPD",
     "rarity": 1,
@@ -12952,6 +13026,31 @@
     ],
     "conditions": [
       "is_finalcorner==1&corner==0&order<=5"
+    ],
+    "disable_singlemode": 1,
+    "is_general_skill": 1
+  },
+  {
+    "skill_id": 900361,
+    "name": "trigger:BEAT",
+    "rarity": 1,
+    "group_id": 90036,
+    "group_rate": 2,
+    "grade_value": 180,
+    "cost": 200,
+    "skill_category": 5,
+    "tags": [
+      401,
+      403
+    ],
+    "icon_id": 20011,
+    "activate_lot": 1,
+    "ability_types": [
+      27,
+      28
+    ],
+    "conditions": [
+      "is_finalcorner==1&corner==0"
     ],
     "disable_singlemode": 1,
     "is_general_skill": 1

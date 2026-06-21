@@ -434,67 +434,138 @@ def llm_context(base_dir: Any, *, limit: int = 8) -> Dict[str, Any]:
 
 
 # ===========================================================================
-# v6.7.26 — Staging import for the Dumper Watcher feature.
+# v7.6.2 — Native event-outcome capture.
 #
-# This is an INTENTIONALLY ISOLATED mirror of import_outcomes. It writes to
-# event_outcomes_staging.json instead of event_outcomes.json and to
-# event_outcome_staging_rows.jsonl instead of event_outcome_rows.jsonl.
-#
-# Why the duplication: the runner's EventManager reads ONLY event_outcomes.json
-# (career_bot/events.py), and the AI Dataset reads ONLY event_outcome_rows.jsonl
-# (career_bot/ai_dataset.py). Staging files are never read by either, so data
-# imported into staging cannot influence live bot decisions — it can only be
-# reviewed by the user in the dashboard and explicitly promoted to live.
+# SweepyCL is an API bot: it sends the game's API calls itself and already
+# receives chara_info before and after every event choice it makes. That is the
+# exact data the external Frida dumper extracts by hooking the game — so the bot
+# can build and auto-update this KB from its OWN runs, with no Frida, no separate
+# tool, and no game-memory access. The diff mirrors the community dumper's
+# calculate_diff (generic integer deltas + conditions + skill hints).
 # ===========================================================================
 
-STAGING_FILE = "event_outcomes_staging.json"
-STAGING_DATASET_FILE = "event_outcome_staging_rows.jsonl"
-STAGING_IMPORT_REPORT = "event_outcome_staging_import_report.json"
+NATIVE_SOURCE = "native:bot"
+# chara_info integer fields that are run/account state, not event rewards. We
+# diff every int field generically (like the dumper) then drop the noise here;
+# _normalize_reward keeps only the KB-relevant keys anyway, this just avoids
+# surprising labels.
+_DELTA_IGNORE_KEYS = frozenset({
+    "turn", "fans", "rank", "rank_score", "card_id", "scenario_id", "viewer_id",
+    "chara_id", "trained_chara_id", "playing_time", "vital_max",
+})
 
 
-def load_staging_outcomes(base_dir: Any) -> Dict[str, Any]:
-    path = project_base(base_dir) / "data" / STAGING_FILE
-    return _read_json(path, {})
+def compute_chara_delta(before: Mapping[str, Any], after: Mapping[str, Any]) -> Dict[str, Any]:
+    """Event reward delta from chara_info before/after a choice.
 
-
-def import_outcomes_to_staging(base_dir: Any, *, source_path: Optional[Any] = None) -> Dict[str, Any]:
-    """Mirror of import_outcomes that writes to staging files only.
-
-    The runner never reads these paths — staged data has no effect on bot
-    decisions until the user manually promotes it via the dashboard.
+    Mirrors the community dumper's ``calculate_diff``: generic integer deltas,
+    plus gained/lost conditions (``chara_effect_id_array``) and gained skill
+    hints (``skill_tips_array``). Pass the result through ``_normalize_reward``
+    to keep only KB-relevant keys.
     """
-    if not source_path:
-        raise ValueError("source_path is required for staging import")
-    base = project_base(base_dir)
-    existing = load_staging_outcomes(base_dir)
-    path = Path(source_path).expanduser()
-    payload = _read_json(path, {})
-    if not isinstance(payload, Mapping) or not payload:
-        raise ValueError(f"No importable outcome data found at {path}")
-    normalized = normalize_dumper_outcomes(payload, source=f"dumper_staging:{path.name}") if _is_dumper_shape(payload) else dict(payload)
-    merged = dict(existing)
-    imported_keys: List[str] = []
-    for key, entry in normalized.items():
-        if not isinstance(entry, Mapping):
+    delta: Dict[str, Any] = {}
+    if not isinstance(before, Mapping) or not isinstance(after, Mapping):
+        return delta
+    for key, bval in before.items():
+        if key in _DELTA_IGNORE_KEYS:
             continue
-        merged[str(key)] = dict(entry)
-        imported_keys.append(str(key))
-    out_path = base / "data" / STAGING_FILE
-    _atomic_write_json(out_path, merged)
-    rows = event_outcome_dataset_rows(merged, imported_keys=imported_keys)
-    rows_written = _append_jsonl_rows(ai_root(base) / STAGING_DATASET_FILE, rows)
-    report = {
-        "success": True,
-        "version": VERSION,
-        "staging": True,
-        "created_at": now_iso(),
-        "source_path": str(path),
-        "imported_events": len(imported_keys),
-        "staging_known_events": count_known_events(merged),
-        "staging_known_choices": count_known_choices(merged),
-        "staging_dataset_rows_written": rows_written,
-        "staging_outcomes_file": str(out_path),
-        "note": "Staging only — not read by EventManager or AI Dataset until promoted to live.",
-    }
-    _atomic_write_json(ai_root(base) / STAGING_IMPORT_REPORT, report)
-    return report
+        if isinstance(bval, bool) or not isinstance(bval, int):
+            continue
+        aval = after.get(key)
+        if isinstance(aval, int) and not isinstance(aval, bool) and aval != bval:
+            delta[key] = aval - bval
+    try:
+        eff_before = set(before.get("chara_effect_id_array", []) or [])
+        eff_after = set(after.get("chara_effect_id_array", []) or [])
+        gained = sorted(eff_after - eff_before)
+        lost = sorted(eff_before - eff_after)
+        if gained:
+            delta["gained_conditions"] = gained
+        if lost:
+            delta["lost_conditions"] = lost
+    except Exception:
+        pass
+    try:
+        tips_before = {t.get("group_id"): t.get("level", 1) for t in (before.get("skill_tips_array") or []) if isinstance(t, Mapping)}
+        tips_after = {t.get("group_id"): t.get("level", 1) for t in (after.get("skill_tips_array") or []) if isinstance(t, Mapping)}
+        gained_tips: Dict[str, int] = {}
+        for sid, after_lvl in tips_after.items():
+            if sid is None:
+                continue
+            if _safe_int(after_lvl) > _safe_int(tips_before.get(sid, 0)):
+                gained_tips[str(sid)] = _safe_int(after_lvl) - _safe_int(tips_before.get(sid, 0))
+        if gained_tips:
+            delta["gained_skill_hints"] = gained_tips
+    except Exception:
+        pass
+    return delta
+
+
+def record_observation(
+    base_dir: Any,
+    *,
+    story_id: Any,
+    select_index: Any,
+    before: Optional[Mapping[str, Any]] = None,
+    after: Optional[Mapping[str, Any]] = None,
+    reward: Optional[Mapping[str, Any]] = None,
+    event_name: str = "",
+) -> Dict[str, Any]:
+    """Record one natively-observed event outcome into the live KB.
+
+    Keyed by ``story_id`` — the EventManager checks story_id before event-name,
+    so observed data takes precedence over imported/static data for events the
+    bot has actually played. Merges like the dumper (keeps the larger-magnitude
+    delta). Atomic write; callers should treat any failure as non-fatal.
+    """
+    story_id = str(story_id or "").strip()
+    if not story_id:
+        return {"success": False, "detail": "missing story_id"}
+    if reward is None:
+        reward = compute_chara_delta(before or {}, after or {})
+    reward = _normalize_reward(reward)
+    if not reward:
+        return {"success": False, "detail": "no measurable delta"}
+    select_index = str(select_index)
+    base = project_base(base_dir)
+    outcomes = load_outcomes(base)
+    existing = outcomes.get(story_id)
+    if isinstance(existing, Mapping):
+        entry = dict(existing)
+    else:
+        entry = {
+            "event_name": _clean_event_name(event_name),
+            "story_id": story_id,
+            "source": NATIVE_SOURCE,
+            "confidence": "observed_live",
+        }
+    if event_name and not entry.get("event_name"):
+        entry["event_name"] = _clean_event_name(event_name)
+    src = str(entry.get("source") or "")
+    if not src or src.startswith("native"):
+        entry["source"] = NATIVE_SOURCE
+        entry["confidence"] = "observed_live"
+    details = dict(entry.get("details") or {})
+    slots = dict(entry.get("choice_slots") or {})
+    slot = dict(slots.get("0") or {})
+    details[select_index] = _merge_rewards(details.get(select_index), reward)
+    slot[select_index] = _merge_rewards(slot.get(select_index), reward)
+    slots["0"] = slot
+    entry["details"] = details
+    entry["choice_slots"] = slots
+    entry["observations"] = _safe_int(entry.get("observations")) + 1
+    outcomes_map = dict(entry.get("outcomes") or {})
+    for idx, rw in details.items():
+        outcomes_map[str(idx)] = _reward_label(rw)
+    entry["outcomes"] = outcomes_map
+    entry["choice_count"] = len(details)
+    entry["updated_at"] = now_iso()
+    merged = dict(outcomes)
+    merged[story_id] = entry
+    _atomic_write_json(base / "data" / OUTCOMES_FILE, merged)
+    try:
+        rows = event_outcome_dataset_rows({story_id: entry}, imported_keys=[story_id])
+        _append_jsonl_rows(ai_root(base) / DATASET_FILE, rows)
+    except Exception:
+        pass
+    return {"success": True, "story_id": story_id, "select_index": select_index, "observations": entry["observations"]}

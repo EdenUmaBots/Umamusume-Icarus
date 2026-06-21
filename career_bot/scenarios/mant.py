@@ -25,6 +25,12 @@ SUMMER_CONSERVE_ENERGY = 60
 ENERGY_FAST_MEDIC = 80
 ENERGY_MEDIC_GENERAL = 85
 DECK_PARTNERS = {1, 2, 3, 4, 5, 6}
+
+# Energy-rescue (ported from UmaAuto's MANT scenario): owned consumables that can
+# lift vitality enough to run a strong training instead of wasting the turn on a
+# pure rest.  Values are the energy each item restores.
+ENERGY_ITEM_VALUES = {2001: 20, 2002: 40, 2003: 65, 2101: 100}  # Vita 20/40/65, Royal Kale Juice
+GOOD_LUCK_CHARM_ID = 10001
 BAD_EFFECT_NAMES = {
     1: "Night Owl",
     2: "Slacker",
@@ -172,6 +178,15 @@ class MantStrategy(ScenarioStrategy):
             return Decision("finish", {"current_turn": chara["turn"]}, "goal failed / career end")     
         if race and race.get("program_id") and playing_state in (2, 4):
             return Decision("race_progress", {"current_turn": chara["turn"], "phase": "start", "race_start_info": race, "chara_info": chara}, "race start")
+        # Engine selection. The Trackblazer engine is the DEFAULT: it fully owns
+        # the home-screen decision (training/rest/mood/recreation) and race entry.
+        # The legacy ("Classic") engine below is selected only when decision_mode
+        # is "legacy"/"classic"; "android" is accepted as a legacy alias for
+        # Trackblazer, and an unset/absent decision_mode also uses Trackblazer.
+        mode = str((((preset or {}).get("mant_config") or {}).get("decision_mode")) or "trackblazer").strip().lower()
+        if mode not in ("legacy", "classic"):
+            # "trackblazer", "android" (legacy alias), or unset -> Trackblazer engine.
+            return self._trackblazer_core().decide(state, preset)
         if self.race_planner:
             forced_program_id = self.race_planner.forced_program(state)
             if forced_program_id:
@@ -206,6 +221,13 @@ class MantStrategy(ScenarioStrategy):
                 "current_vital": chara.get("vital", 0),
             }, reason)
         return Decision("idle", {}, "no action")
+
+    def _trackblazer_core(self):
+        core = getattr(self, "_trackblazer", None)
+        if core is None:
+            from career_bot.scenarios.mant_trackblazer import MantTrackblazerCore
+            core = self._trackblazer = MantTrackblazerCore(self)
+        return core
 
     def _choice(self, event):
         choices = ((event.get("event_contents_info") or {}).get("choice_array") or [])
@@ -275,22 +297,49 @@ class MantStrategy(ScenarioStrategy):
                 count += 1
         return count
 
+    def _bondable_count(self, command, chara):
+        """Deck partners on this training whose bond is still below 80.
+
+        Used by the junior-year bond-rush: early turns prefer trainings that
+        raise the most unbonded deck partners toward the rainbow threshold,
+        even over a marginally higher raw score.
+        """
+        if not command:
+            return 0
+        bonds = self._bond_map(chara or {})
+        count = 0
+        for partner_id in command.get("training_partner_array") or []:
+            try:
+                partner_id = int(partner_id)
+            except Exception:
+                continue
+            if partner_id in DECK_PARTNERS and int(bonds.get(partner_id, 0) or 0) < 80:
+                count += 1
+        return count
+
     def _rainbow_bonus(self, command, chara, preset):
         count = self._rainbow_partner_count(command, chara)
         if count <= 0:
             return 0.0
-        base = float((preset or {}).get("rainbow_training_bonus") or 0.22)
-        stack = float((preset or {}).get("rainbow_training_stack_bonus") or 0.08)
-        return min(0.75, base + max(0, count - 1) * stack)
+        # v1.5: rainbow/friendship training yields far more stats than a normal
+        # facility, so a single rainbow is now worth ~2.0x the base score (was
+        # 1.22x, which under-valued them and let plain high-level facilities win
+        # the pick).  Android grabs rainbows aggressively; this matches it.  All
+        # three values are preset-tunable.
+        base = float((preset or {}).get("rainbow_training_bonus") or 1.0)
+        stack = float((preset or {}).get("rainbow_training_stack_bonus") or 0.12)
+        cap = float((preset or {}).get("rainbow_training_bonus_cap") or 1.25)
+        return min(cap, base + max(0, count - 1) * stack)
 
     def _should_avoid_full_hp_wit(self, command, chara, preset):
         if not command or TRAINING_COMMANDS.get(command.get("command_id")) != 4:
             return False
         if not self._is_hp_full(chara):
             return False
-        # Strong rainbow Wit is still allowed if explicitly enabled. Default is
-        # to avoid HP-wasting Wit at full HP unless the rainbow value is large.
-        if not (preset or {}).get("allow_full_hp_wit_rainbow"):
+        # v1.5: allow_full_hp_wit_rainbow now defaults TRUE, so a RAINBOW Wit at
+        # full HP is permitted (android trains Wit heavily, to 919).  Only a
+        # non-rainbow Wit at full HP is still avoided as an energy-recovery waste.
+        if not (preset or {}).get("allow_full_hp_wit_rainbow", True):
             return True
         return self._rainbow_partner_count(command, chara) <= 0
 
@@ -324,6 +373,8 @@ class MantStrategy(ScenarioStrategy):
         if not cfg.get("enable_target_pressure_scoring", True):
             return 1.0
         completion = self._target_completion_ratio(stat_idx, chara, targets)
+        # Android-matched completion buckets (Scoring.kt ratioBreakpoints/Multipliers):
+        # a stat far below target gets up to 5x, one near/over target drops to 0.3x.
         if completion < 0.15:
             bucket = 5.0
         elif completion < 0.30:
@@ -335,16 +386,93 @@ class MantStrategy(ScenarioStrategy):
         elif completion < 0.75:
             bucket = 1.0
         elif completion < 0.90:
-            bucket = 0.55
+            bucket = 0.5
         else:
-            bucket = 0.30
+            bucket = 0.3
+        # v1.5: strength stays at 0.35 by default.  Applying the raw android
+        # bucket (up to 5x) inflates the BEST training's score ~1.5x, which makes
+        # the race-vs-train gates (chain-break 0.45, irregular 0.62, calibrated to
+        # the un-inflated scale) drop planned races too eagerly -- cutting race
+        # count, the opposite of the goal.  The completion signal is instead
+        # sharpened the safe way: by the retuned per-distance targets (Power<Wit),
+        # which make a near-target Power bucket low without touching score
+        # magnitude.  Raise toward 1.0 only with re-tuned race-vs-train thresholds.
         strength = float(cfg.get("target_pressure_strength") if cfg.get("target_pressure_strength") is not None else 0.35)
         strength = max(0.0, min(1.0, strength))
         return max(0.25, 1.0 + ((bucket - 1.0) * strength))
 
+    def _starved_stat_multiplier(self, idx, chara, targets, preset):
+        """v1.5: lift a training whose MAIN stat is below target.
+
+        The 2.0x rainbow bonus makes the bot chase whichever stat the rainbows
+        land on, leaving another stat starved (e.g. Wit at 656/1000 while Speed
+        gets every rainbow) -- which costs the close, place-2 race losses.  This
+        boosts a behind-target training so a neglected stat can win the pick
+        against a non-rainbow rival.
+
+        Applied to the WHOLE score, parallel to (and competing with) the rainbow
+        bonus -- deliberately NOT via target_pressure_strength, so the general
+        score scale and the race-vs-train gates (chain-break/irregular) stay put.
+        Deeply-behind -> up to `cap`; at/above `threshold` -> 1.0 (no boost).
+        """
+        cfg = ((preset or {}).get("mant_config") or {})
+        if not cfg.get("enable_starved_stat_pull", True):
+            return 1.0
+        if idx is None or idx < 0 or idx >= 5:
+            return 1.0
+        completion = self._target_completion_ratio(idx, chara, targets)
+        threshold = float(cfg.get("starved_stat_threshold", 0.85))
+        if completion >= threshold:
+            return 1.0
+        strength = float(cfg.get("starved_stat_strength", 2.5))
+        cap = float(cfg.get("starved_stat_cap", 0.8))
+        boost = min(cap, max(0.0, (threshold - completion) * strength))
+        return 1.0 + boost
+
+    def _stat_priority_multiplier(self, stat_idx, preset, turn=0):
+        """Per-stat priority weight matching android Scoring.kt priorityMultiplier
+        (1.0 + 0.5*(size - rank)): top-priority stat ~3.5x, bottom ~1.5x.
+
+        Icarus previously applied stat priority only through the (conditional)
+        training-level and summer multipliers, so on a normal turn the highest
+        RAW-gain training won regardless of the user's stat priority.  This adds
+        the android baseline weighting on every stat gain.
+
+        Skipped on summer turns -- android swaps to the summer priority list
+        there (config.summerTrainingStatPriority), which Icarus already applies
+        via _summer_priority_multiplier; applying the regular list too would
+        fight it.
+
+        v1.5: DEFAULTS OFF.  Android multiplies stat gains by priority AND
+        calibrates its race-vs-train thresholds to that inflated scale.  Icarus's
+        thresholds (chain-break 0.45, irregular-training 0.62, summer-conserve
+        0.34) are calibrated to the un-inflated score, so applying a 1.5-3.5x
+        priority multiplier here makes those gates mis-fire (e.g. substituting
+        training for a planned race far too eagerly).  The retuned per-distance
+        targets (Power < Wit) already encode the stat priority for the
+        completion-bucket scorer, so this extra weighting is redundant by
+        default.  Enable only alongside re-tuned race-vs-train thresholds.
+        """
+        cfg = ((preset or {}).get("mant_config") or {})
+        if not cfg.get("enable_stat_priority_weighting", False):
+            return 1.0
+        if turn in SUMMER_CAMP_TURNS or is_summer_turn(turn, self.trackblazer_guide):
+            return 1.0
+        priorities = self._priority_indices(preset, "training_stat_priority", "stat_priority")
+        try:
+            rank = priorities.index(stat_idx)
+        except ValueError:
+            return 1.0
+        coeff = float(cfg.get("stat_priority_coefficient", 0.5))
+        return 1.0 + coeff * (len(priorities) - rank)
+
     def _wit_balance_multiplier(self, chara, targets, preset):
         cfg = ((preset or {}).get("mant_config") or {})
-        if not cfg.get("enable_wit_balance_damping", True):
+        # v1.5: defaults OFF.  Android has no Wit-specific penalty; this damping
+        # (x0.72/x0.85 when Wit gets ahead of the weakest stat) was actively
+        # capping Wit below the other stats, the opposite of the 919-Wit profile
+        # we want.  Re-enable per preset if a build genuinely over-trains Wit.
+        if not cfg.get("enable_wit_balance_damping", False):
             return 1.0
         wit_ratio = self._target_completion_ratio(4, chara, targets)
         other_ratios = [self._target_completion_ratio(idx, chara, targets) for idx in range(4)]
@@ -419,7 +547,14 @@ class MantStrategy(ScenarioStrategy):
             for score, cmd in sorted(scored, key=lambda row: row[0], reverse=True)
         ]
         self._scored_turn = turn
-        best_score, best = max(scored, key=lambda row: row[0])
+        # Junior-year bond-rush (ported from UmaAuto): during Junior class
+        # (turns 1-24) prefer the training that bonds the most still-unbonded
+        # deck partners, breaking ties by raw score.  This unlocks friendship/
+        # rainbow training sooner, which compounds for the rest of the career.
+        if turn <= 24 and cfg.get("junior_bond_rush", True):
+            best_score, best = max(scored, key=lambda row: (self._bondable_count(row[1], chara), row[0]))
+        else:
+            best_score, best = max(scored, key=lambda row: row[0])
         rest_threshold = int(preset.get("rest_threshold") or 48)
         failure = int(best.get("failure_rate") or 0)
         if medic and bad_status and vital <= ENERGY_FAST_MEDIC:
@@ -451,6 +586,15 @@ class MantStrategy(ScenarioStrategy):
         if self._should_recreate(recreation, preset, turn, motivation, vital, best_score):
             return self._record_recovery(recreation, turn)
         if rest and (vital <= rest_threshold or failure >= 35 or best_score < 0):
+            # Energy-rescue (ported from UmaAuto): when the bot would rest only
+            # because energy is low or failure is high, but the best training is
+            # strong/rainbow and we own a Vita/Kale (energy) or a Good-Luck Charm
+            # (zero failure), run the training instead of wasting the turn. The
+            # existing item layer tops up energy (or the charm zeroes failure)
+            # at line ~807 in the runner, before the command actually execs.
+            if self._can_rescue_training(data, chara, preset, best, best_score, vital, failure, rest_threshold):
+                best["_energy_rescue"] = True
+                return best
             # Wit as low-energy recovery: when the bot would rest only because
             # energy is low (not because training is worthless), a safe Wit option
             # that restores energy gives stats + SP + recovery in one turn instead
@@ -566,6 +710,8 @@ class MantStrategy(ScenarioStrategy):
             except Exception:
                 rainbow = 0
             suffix = f" (rainbow x{rainbow})" if rainbow else ""
+            if command.get("_energy_rescue"):
+                suffix += " (energy rescue)"
             return f"Train {name}{suffix}"
         if command_type == 7 and command_id == 701:
             return "Rest"
@@ -619,12 +765,24 @@ class MantStrategy(ScenarioStrategy):
         blocked = {self._coerce_stat_index(value) for value in raw}
         return idx in blocked
 
-    def _failure_allowed(self, command, preset):
+    def _failure_allowed(self, command, preset, has_charm=False):
         cfg = ((preset or {}).get("mant_config") or {})
         failure = int((command or {}).get("failure_rate") or 0)
         max_failure = int(cfg.get("maximum_failure_chance") or 20)
         if failure <= max_failure:
             return True
+        # v1.5 charm-aware admission (android analyzeTrainings(ignoreFailureChance
+        # = hasCharm)): when a Good-Luck Charm is held, a high-main-gain training
+        # stays ELIGIBLE at any failure chance -- the charm zeroes the failure
+        # when this training is the pick (items._charm_target consumes it).  This
+        # lets Icarus take the risky high-stat rainbows android routinely grabs.
+        if has_charm and cfg.get("enable_charm_aware_training", True):
+            main_gain = self._command_main_stat_gain(command)
+            _cm = cfg.get("charm_min_main_gain")   # 0-safe: honor an explicit 0
+            charm_min = int(_cm) if _cm is not None else tb_rules.DEFAULT_CHARM_MIN_MAIN_GAIN
+            charm_fail_limit = int(cfg.get("charm_failure_admit_limit") or 100)
+            if main_gain >= charm_min and failure <= charm_fail_limit:
+                return True
         if not cfg.get("enable_risky_training", False):
             return False
         main_gain = self._command_main_stat_gain(command)
@@ -766,12 +924,33 @@ class MantStrategy(ScenarioStrategy):
             turn = int((chara or {}).get("turn") or 0)
         except Exception:
             turn = 0
-        if turn <= 24:
-            pct = float(cfg.get("junior_milestone_pct") if cfg.get("junior_milestone_pct") is not None else 33) / 100.0
-            targets = [max(1, int(float(v or 0) * pct)) for v in targets]
-        elif turn <= 48:
-            pct = float(cfg.get("classic_milestone_pct") if cfg.get("classic_milestone_pct") is not None else 66) / 100.0
-            targets = [max(1, int(float(v or 0) * pct)) for v in targets]
+        # v1.5: milestone target down-scaling now DEFAULTS OFF (full targets all
+        # career), matching the actual Android bot.  The v1.4 code scaled targets
+        # to 33% (Classic) / 66% (Senior) on the belief it "matched the Android
+        # schedule" -- but the Android scorer (Scoring.kt calculateStatEfficiency)
+        # measures completion against the FULL per-distance target every turn and
+        # lets its ratio-bucket multipliers create the natural pacing.  The v1.4
+        # scaling made under-built stats read as ~93% "done" mid-career (e.g.
+        # speed 368 vs a scaled 396 target at turn 33), so both the cap curve and
+        # _target_pressure_multiplier SUPPRESSED the very stat Android boosts.
+        # That back-loaded stats (peak at the finale, underpowered for the
+        # Classic/Senior G1s) and lost winnable races.  Pacing now emerges from
+        # _target_pressure_multiplier's buckets, exactly like Android.  Users who
+        # want the old behaviour can still set classic/senior_year_milestone_pct.
+        if turn <= 48:
+            raw = cfg.get("classic_year_milestone_pct")
+            if raw is None:
+                raw = cfg.get("junior_milestone_pct")
+            pct = float(raw if raw is not None else 100) / 100.0
+            if pct < 1.0:
+                targets = [max(1, int(float(v or 0) * pct)) for v in targets]
+        elif turn <= 72:
+            raw = cfg.get("senior_year_milestone_pct")
+            if raw is None:
+                raw = cfg.get("classic_milestone_pct")
+            pct = float(raw if raw is not None else 100) / 100.0
+            if pct < 1.0:
+                targets = [max(1, int(float(v or 0) * pct)) for v in targets]
         return targets
 
     def _near_rainbow_partner_count(self, command, chara, preset):
@@ -883,7 +1062,8 @@ class MantStrategy(ScenarioStrategy):
         if self._training_blacklisted(idx, preset):
             if not (cfg.get("enable_prioritize_skill_hints", False) and (command.get("tips_event_partner_array") or [])):
                 return -999.0
-        if not self._failure_allowed(command, preset):
+        has_charm = self._owned_item_count(data, GOOD_LUCK_CHARM_ID) > 0
+        if not self._failure_allowed(command, preset, has_charm=has_charm):
             return -999.0
         if self._should_avoid_full_hp_wit(command, chara, preset):
             return -999.0
@@ -933,7 +1113,13 @@ class MantStrategy(ScenarioStrategy):
             yield_val = w_lv1 + (w_lv2 - w_lv1) * ratio
             score += yield_val * weight
         if hint_count and cfg.get("enable_prioritize_skill_hints", False):
-            score += w_hint * max(1, hint_count)
+            # Capped diminishing hint bonus (ported from UmaAuto): the first hint
+            # is worth full weight; additional hints on the same training add a
+            # smaller increment, and the count is capped at 4 so one
+            # hint-stacked turn can't dominate the score. Previously this was a
+            # steeper, uncapped linear bonus (w_hint * hint_count).
+            hint_scale = float(cfg.get("hint_count_scale", 0.5))
+            score += w_hint * (1.0 + hint_scale * (min(hint_count, 4) - 1))
         effect_items = command.get("params_inc_dec_info_array") or self._official_training_effect_items(command)
         for item in effect_items:
             value = float(item.get("value") or 0)
@@ -966,6 +1152,7 @@ class MantStrategy(ScenarioStrategy):
                 current = self._current_stat(chara, target)
                 stat_gain_score = self._cap_adjusted_stat_gain_score(stat_gain_score, target, current, cap, command, chara, preset)
                 stat_gain_score *= self._target_pressure_multiplier(target, chara, targets, preset)
+                stat_gain_score *= self._stat_priority_multiplier(target, preset, turn)
             score += stat_gain_score
         if pal_count:
             score *= 1.0 + max(0.0, min(1.0, float(preset.get("pal_card_multiplier") or 0.1)))
@@ -976,6 +1163,10 @@ class MantStrategy(ScenarioStrategy):
             near_bonus = self._near_rainbow_bonus(command, chara, preset)
             if near_bonus > 0:
                 score *= 1.0 + near_bonus
+
+        # Lift a behind-target stat so it can compete with the rainbow chase.
+        if score > 0:
+            score *= self._starved_stat_multiplier(idx, chara, targets, preset)
 
         score *= self._training_level_multiplier(command, idx, preset)
         score *= self._summer_priority_multiplier(idx, turn, preset)
@@ -1144,6 +1335,32 @@ class MantStrategy(ScenarioStrategy):
         if motivation < self._mood_threshold(turn, preset) and vital < 60 and best_score <= 0.3:
             if not (recovery_just_used and vital >= 50):
                 return True
+        # v1.5 mood floor (android parity, CORRECTED).  Android recovers mood
+        # whenever it slides to NORMAL or below ("Mood is NORMAL -> recover") on
+        # any turn with workable energy -- REGARDLESS of how good the available
+        # training is -- because Great mood multiplies every future training AND
+        # race.  The first attempt gated this on a best_score ceiling, but a
+        # rainbow always cleared it, so mood was NEVER recovered and the trainee
+        # ground both summer camps at mood 2 (Bad), tanking stats.  This now
+        # fires on any non-camp non-race turn where mood is at/below the floor
+        # (default NORMAL=3) and energy is workable, recreating until mood climbs
+        # back out of the floor (self-limiting: stops once motivation > floor).
+        cfg = ((preset or {}).get("mant_config") or {})
+        great = int(cfg.get("great_mood_value") or 5)
+        energy_floor = int(cfg.get("mood_recovery_energy_floor") or 50)
+        # Pre-summer-camp prep: on the turns right before a Summer block, push
+        # mood all the way to GREAT so the camp's boosted rainbow gains aren't
+        # capped by sub-Great mood (camp turns themselves train, never recreate,
+        # so this is the last chance to fix mood before the biggest stat window).
+        if (cfg.get("enable_keep_great_mood", True) and turn in {34, 35, 58, 59}
+                and motivation < great and vital >= energy_floor):
+            return True
+        # General mood floor: recover whenever mood is at/below NORMAL on a
+        # workable-energy non-camp turn (android: "Mood is NORMAL -> recover").
+        mood_floor = int(cfg.get("mood_recovery_floor") or 3)
+        if (cfg.get("enable_keep_great_mood", True)
+                and motivation <= mood_floor and vital >= energy_floor):
+            return True
         if not preset.get("prioritize_recreation"):
             return False
         thresholds = preset.get("pal_thresholds") or []
@@ -1253,6 +1470,15 @@ class MantStrategy(ScenarioStrategy):
 
     def _guide_race_chain_break(self, data, chara, preset, program_id):
         cfg = ((preset or {}).get("mant_config") or {})
+        # v7.6: never override a hand-picked race schedule.  When the user
+        # supplies a manual race list, every race they selected must run --
+        # the race-streak safety heuristic (train/rest/recreation substitution)
+        # must not hijack it.  This mirrors the manual-mode guard in
+        # _irregular_training_decision (see below).  Without this guard the
+        # "unsafe grade" branch disproportionately dropped DIRT races, since
+        # ~70% of dirt races are OP/PRE-OP grade (rank < 3) versus ~43% of turf.
+        if str((preset or {}).get("extra_race_list_source") or "").strip().lower() == "manual":
+            return None
         if not cfg.get("enable_game8_race_chain_break", True):
             return None
         if cfg.get("ignore_consecutive_race_warning", False):
@@ -1262,7 +1488,8 @@ class MantStrategy(ScenarioStrategy):
         if turn in {23, 24, 47, 48, 71, 72} or turn >= 73:
             return None
         chain_count = self._recent_race_chain_count(data, turn)
-        target = int(cfg.get("race_chain_target") or tb_rules.DEFAULT_RACE_CHAIN_TARGET)
+        _rct = cfg.get("race_chain_target")   # 0-safe: honor an explicit 0
+        target = int(_rct) if _rct is not None else tb_rules.DEFAULT_RACE_CHAIN_TARGET
         # v6.7.7: reverted to pre-v6.7.3 behavior per user request.  The
         # v6.7.3 fix had introduced an unconditional HP-critical gate
         # that fired at chain_count >= legacy_target (2) regardless of
@@ -1330,6 +1557,64 @@ class MantStrategy(ScenarioStrategy):
             except Exception:
                 continue
         return total
+
+    def _rescue_energy_value(self, data, vital, rest_threshold, margin):
+        """Energy value of the cheapest owned Vita/Kale that, when used, lifts
+        vitality clear of ``rest_threshold + margin``; None if none would.
+
+        Ported from UmaAuto.  Prefers the smallest sufficient item so we don't
+        burn a Royal Kale Juice when a Vita 20 would do.
+        """
+        target = rest_threshold + margin
+        owned = {}
+        free = (data or {}).get("free_data_set") or {}
+        for row in free.get("user_item_info_array") or []:
+            try:
+                iid = int(row.get("item_id") or 0)
+            except Exception:
+                continue
+            if iid in ENERGY_ITEM_VALUES:
+                owned[iid] = owned.get(iid, 0) + int(row.get("num") or row.get("current_num") or row.get("item_num") or 0)
+        best = None
+        for iid, qty in owned.items():
+            if qty > 0 and vital + ENERGY_ITEM_VALUES[iid] > target:
+                if best is None or ENERGY_ITEM_VALUES[iid] < ENERGY_ITEM_VALUES[best]:
+                    best = iid
+        return ENERGY_ITEM_VALUES[best] if best is not None else None
+
+    def _can_rescue_training(self, data, chara, preset, best, best_score, vital, failure, rest_threshold):
+        """True when a low-energy / high-failure rest should instead run ``best``
+        by spending a Vita/Kale (energy rescue) or a Good-Luck Charm.
+
+        Ported from UmaAuto's MANT scenario.  This only decides whether the
+        rescue is worth a consumable; the actual top-up is performed by the
+        existing item layer (items._energy_targets / _charm_target) once
+        ``_best_command`` returns the training and the runner re-decides.
+        """
+        cfg = ((preset or {}).get("mant_config") or {})
+        if not cfg.get("rescue_good_training", True):
+            return False
+        if best is None or int(best.get("command_type") or 0) != 1:
+            return False
+        if best_score is None or best_score <= 0:
+            return False
+        if vital < int(cfg.get("rescue_min_vital") or 25):
+            return False
+        rainbow = self._rainbow_partner_count(best, chara)
+        strong = best_score >= float(cfg.get("rescue_score_threshold") or 0.55)
+        if rainbow < 1 and not strong:
+            return False
+        margin = int(cfg.get("rescue_vital_margin") or 12)
+        energy_val = self._rescue_energy_value(data, vital, rest_threshold, margin)
+        has_charm = self._owned_item_count(data, GOOD_LUCK_CHARM_ID) > 0
+        hard_cap = int(cfg.get("rescue_failure_hard_cap") or 50)
+        if failure >= hard_cap:
+            return has_charm
+        if vital <= rest_threshold:
+            return energy_val is not None
+        if failure >= 35:
+            return has_charm or energy_val is not None
+        return False
 
     def _planned_race_is_epithet_critical(self, program_id, preset, data):
         """Return the set of UNMET target epithet names that this program_id
@@ -1422,6 +1707,22 @@ class MantStrategy(ScenarioStrategy):
         if not cfg.get("enable_irregular_training", True):
             return None
         turn = int(chara.get("turn") or 0)
+        # v1.5: don't hijack a race the SMART SOLVER explicitly planned for this
+        # turn.  Android's rule is "if a race is planned, run it" -- the solver
+        # already weighed training value when it built the schedule, and letting
+        # the irregular-training heuristic override planned races was eroding
+        # ~7 races/career (29 executed vs ~36 planned).  Tunable per preset.
+        if self.race_planner is not None and not cfg.get("allow_irregular_over_planned", False):
+            try:
+                # v1.5: if the solver wanted ANY race this turn, run a race -- not
+                # just the exact planned program.  This protects the missing-race
+                # substitute (a live-list race the solver intended) from being
+                # hijacked back into training, and matches android's solver-first
+                # rule ("if a race is planned, run it").
+                if self.race_planner.wanted_programs(preset, turn):
+                    return None
+            except Exception:
+                pass
         if turn < int(cfg.get("irregular_training_min_turn") or tb_rules.IRREGULAR_TRAINING_MIN_TURN):
             return None
         if turn in SUMMER_CAMP_TURNS or turn >= 73:
@@ -1458,7 +1759,8 @@ class MantStrategy(ScenarioStrategy):
 
         threshold = float(cfg.get("irregular_training_score_threshold") or tb_rules.DEFAULT_IRREGULAR_TRAINING_SCORE_THRESHOLD)
         fail_limit = int(cfg.get("irregular_training_failure_limit") or tb_rules.DEFAULT_IRREGULAR_TRAINING_FAILURE_LIMIT)
-        min_main_gain = int(cfg.get("irregular_training_min_main_gain") or tb_rules.DEFAULT_IRREGULAR_TRAINING_MIN_MAIN_GAIN)
+        _imm = cfg.get("irregular_training_min_main_gain")   # 0-safe: honor an explicit 0
+        min_main_gain = int(_imm) if _imm is not None else tb_rules.DEFAULT_IRREGULAR_TRAINING_MIN_MAIN_GAIN
         charm_min_gain = int(cfg.get("irregular_training_charm_min_main_gain") or tb_rules.DEFAULT_IRREGULAR_TRAINING_CHARM_MIN_MAIN_GAIN)
         charm_fail_limit = int(cfg.get("irregular_training_charm_failure_limit") or tb_rules.DEFAULT_IRREGULAR_TRAINING_CHARM_FAILURE_LIMIT)
         failure = int(best.get("failure_rate") or 0)

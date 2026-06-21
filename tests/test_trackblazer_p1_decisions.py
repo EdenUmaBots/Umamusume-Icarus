@@ -104,6 +104,9 @@ class TrackblazerP1DecisionTests(unittest.TestCase):
         self.assertEqual(decision.action, "race")
 
     def test_race_chain_break_recovers_on_critical_vital(self):
+        # This exercises the legacy ("Classic") engine's guide race-chain-break
+        # gate, which only runs when the Classic engine is selected. (The default
+        # Trackblazer engine has its own energy guard with different reasoning.)
         strategy = MantStrategy(FakeRacePlanner())
         history = [
             {"turn": 27, "action": "race"},
@@ -111,7 +114,7 @@ class TrackblazerP1DecisionTests(unittest.TestCase):
             {"turn": 29, "action": "race"},
         ]
         st = state(vital=8, commands=[training(gain=5, failure=0), recreation(), rest()], history=history)
-        decision = strategy.next_decision(st, {"mant_config": {}, "compensate_failure": False})
+        decision = strategy.next_decision(st, {"mant_config": {"decision_mode": "legacy"}, "compensate_failure": False})
         self.assertEqual(decision.action, "command")
         self.assertEqual(decision.payload["command_type"], 3)
         self.assertIn("race-streak safety", decision.reason)

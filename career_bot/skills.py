@@ -671,6 +671,14 @@ class SkillBuyer:
             return state, 0
         is_hoarding = points > 1500
         threshold = cfg["learn_skill_threshold"]
+        # v1.5 pre-finals dump (the reference preFinals plan): on the turns just
+        # before the Twinkle Star Climax (finale races at 74/76/78), spend the
+        # accumulated SP on the best skills even if below the normal threshold,
+        # so the trainee enters the finals fully kitted instead of carrying SP
+        # past the last races it can affect.
+        pre_finals_turn = int(cfg.get("pre_finals_skill_turn") or 73)
+        if not force and cfg.get("enable_pre_finals_skill_dump", True) and turn >= pre_finals_turn and points > 0:
+            force = True
         if not force and not is_hoarding and points <= threshold:
             self.last_candidates = []
             self.last_selected = []
@@ -890,6 +898,69 @@ class SkillBuyer:
         selected_label = STYLE_LABELS.get(selected_id or 0, str(selected_style_key or "selected style"))
         return True, f"style_mismatch:{selected_label}"
 
+    # Aptitude multiplier.  The reference optimiser scales a skill's
+    # raw evaluation points by the trainee's aptitude grade for the dimension the
+    # skill belongs to: S/A 1.1, B/C 0.9, D/E/F 0.8, G 0.7.  We mirror that mapping
+    # exactly and default to 1.0 (neutral) when no aptitude data is available.
+    _APTITUDE_MULTIPLIER = {
+        "S": 1.1, "A": 1.1,
+        "B": 0.9, "C": 0.9,
+        "D": 0.8, "E": 0.8, "F": 0.8,
+        "G": 0.7,
+    }
+
+    def _aptitude_grades(self, profile, preset):
+        """Collect the trainee's per-dimension aptitude grades.
+
+        Generated profiles carry distance_aptitude/track_aptitude maps; the live
+        Skill Configuration UI passes a flat aptitudes map on the preset's
+        skill_strategy.  Merge whatever is available into one lower-cased lookup
+        keyed by dimension name (sprint/mile/medium/long/turf/dirt/front/...).
+        """
+        grades = {}
+        strategy = (preset or {}).get("skill_strategy") if isinstance((preset or {}).get("skill_strategy"), dict) else {}
+        for src in (
+            (strategy or {}).get("aptitudes"),
+            (profile or {}).get("distance_aptitude"),
+            (profile or {}).get("track_aptitude"),
+            (profile or {}).get("style_aptitude"),
+            (profile or {}).get("aptitudes"),
+        ):
+            if isinstance(src, dict):
+                for key, val in src.items():
+                    g = str(val or "").strip().upper()[:1]
+                    if g in self._APTITUDE_MULTIPLIER:
+                        grades.setdefault(str(key).lower(), g)
+        return grades
+
+    def _skill_aptitude_multiplier(self, skill_id, profile, preset):
+        """Return the aptitude multiplier for this skill.
+
+        The skill's relevant aptitude is read from its distance/style/track tags;
+        we take the BEST (highest) grade across the dimensions the skill touches so
+        a well-suited skill is not penalised by an unrelated weak aptitude.  When
+        the skill has no aptitude-bearing tags or the trainee has no aptitude data,
+        the multiplier is neutral (1.0) so the eval/SP ratio drives ordering.
+        """
+        grades = self._aptitude_grades(profile, preset)
+        if not grades:
+            return 1.0
+        tags = set(self.skill_tags.get(int(skill_id or 0)) or set())
+        tag_dimension = {
+            SKILL_TAG_FRONT: "front", SKILL_TAG_PACE: "pace",
+            SKILL_TAG_LATE: "late", SKILL_TAG_END: "end",
+            SKILL_TAG_SPRINT: "sprint", SKILL_TAG_MILE: "mile",
+            SKILL_TAG_MEDIUM: "medium", SKILL_TAG_LONG: "long",
+            SKILL_TAG_DIRT: "dirt",
+        }
+        best = None
+        for tag, dim in tag_dimension.items():
+            if tag in tags and dim in grades:
+                mult = self._APTITUDE_MULTIPLIER.get(grades[dim], 1.0)
+                if best is None or mult > best:
+                    best = mult
+        return best if best is not None else 1.0
+
     def _skill_smart_score(self, skill_id, name, base_name, hint_level, profile, preset=None):
         if not profile:
             return 0, []
@@ -994,11 +1065,32 @@ class SkillBuyer:
             if int(official.get("trainee_source_count") or 0):
                 reasons.append(f"trainee_sources:{int(official.get('trainee_source_count') or 0)}")
 
+        # --- PRIMARY SORT KEY ---------------------------------------------------
+        # Everything accumulated above is Icarus's hand-tuned additive heuristic
+        # (recommended / community tier / color / style / distance / track / race
+        # / category / official-master).  As of v1.5 it is DEMOTED
+        # to a tiebreaker.  The PRIMARY ordering now mirrors the reference bot:
+        #
+        #     primary = (grade_value / need_skill_point) * aptitude_multiplier
+        #
+        # grade_value is the REAL in-game skill evaluation-points value from
+        # data/skill_data.json; need_skill_point is the SP cost.  This is true
+        # eval-points-per-SP, not a proxy.  The aptitude multiplier is the reference
+        # mapping (S/A 1.1, B/C 0.9, D/E/F 0.8, G 0.7) applied to the skill's
+        # relevant aptitude dimension.  We scale by PRIMARY_SCALE so the primary
+        # term dominates the heuristic, which only breaks ties between skills of
+        # similar eval/SP efficiency.  Hard exclusions accumulated above (wrong
+        # style -10000, wrong track) stay additive and still override the primary.
+        heuristic = score
         grade = int(self.skill_grade_values.get(skill_id) or 0)
         cost = max(1, int(self.skill_costs.get(skill_id) or 160))
-        if grade > 0:
-            score += min(35, grade / max(1, cost) * 8)
-            reasons.append("value")
+        apt_mult = self._skill_aptitude_multiplier(skill_id, profile, preset)
+        eval_per_sp = (grade / cost) * apt_mult  # negative for ✗ debuff skills
+        primary_scale = float((preset or {}).get("skill_eval_primary_scale", 1000)) if preset else 1000
+        score = eval_per_sp * primary_scale + heuristic
+        reasons.append(f"eval_per_sp:{round(eval_per_sp, 3)}")
+        if apt_mult != 1.0:
+            reasons.append(f"aptitude_x{apt_mult}")
 
         return round(score, 2), reasons
 
@@ -1044,8 +1136,11 @@ class SkillBuyer:
             })
         cfg = self._skill_config(preset)
         if cfg["skill_spending_strategy"] == "optimize_rank":
+            # smart_score now already embeds the (grade/cost)*aptitude
+            # primary key, so we no longer divide by cost again here (that would
+            # over-penalise cost as grade/cost^2).  Cheaper skill breaks ties.
             result.sort(key=lambda item: (
-                -float(item.get("smart_score") or 0) / max(1, int(item.get("cost") or 1)),
+                -float(item.get("smart_score") or 0),
                 int(item.get("cost") or 9999),
                 item["skill_id"],
             ))
@@ -1059,12 +1154,66 @@ class SkillBuyer:
                 seen.add(item["skill_id"])
                 deduped.append(item)
         result = deduped
+
+        # v7.3 — Manual skill tier override.
+        #
+        # When the user has disabled "Enable Skill Point Check Plan (Beta)"
+        # AND populated at least one tier in manual_skill_tiers, the bot
+        # short-circuits the smart scorer above and uses the tier list
+        # directly. Each candidate's name is looked up in the user's tier
+        # map; tiers are sorted ascending (tier 1 highest priority), with
+        # smart_score / cost as tiebreakers within a tier so the same skill
+        # at multiple available hint levels still picks the highest-impact
+        # variant first.
+        #
+        # If the plan-check toggle is off but all tiers are empty, this
+        # block silently no-ops and the smart-scorer ordering above is used —
+        # so flipping the toggle never bricks skill purchasing if the user
+        # hasn't built a tier list yet.
+        plan_check_enabled = bool(preset.get("enable_skill_point_check_plan", True))
+        if not plan_check_enabled:
+            tier_map = self._manual_tier_lookup(preset)
+            if tier_map:
+                filtered = [item for item in result if item.get("name") in tier_map]
+                if filtered:
+                    filtered.sort(key=lambda item: (
+                        tier_map.get(item.get("name"), 999),  # tier ascending
+                        -float(item.get("smart_score") or 0),
+                        int(item.get("cost") or 9999),
+                        item["skill_id"],
+                    ))
+                    result = filtered
         
         if preset.get("learn_skill_only_user_provided"):
             if not any(row for row in (preset.get("learn_skill_list") or [])):
                 return []
             return [item for item in result if item["priority"] < 999]
         return result
+
+    def _manual_tier_lookup(self, preset):
+        """Return {skill_name: tier_int} from preset.manual_skill_tiers.
+
+        Lower tier numbers = higher priority. If a skill appears in multiple
+        tiers (the UI shouldn't allow this but be defensive), the LOWER tier
+        (higher priority) wins.
+        """
+        tiers = (preset or {}).get("manual_skill_tiers") or {}
+        if not isinstance(tiers, dict):
+            return {}
+        lookup = {}
+        for tier_key, names in tiers.items():
+            try:
+                tier_num = int(tier_key)
+            except (TypeError, ValueError):
+                continue
+            if tier_num < 1 or tier_num > 5:
+                continue
+            for name in (names or []):
+                if not name: continue
+                name_str = str(name)
+                if name_str not in lookup or tier_num < lookup[name_str]:
+                    lookup[name_str] = tier_num
+        return lookup
 
     def resolve_skill_tip(self, tip, owned_skill_ids, owned_groups, priority, blacklist, preset, profile=None):
         group_id = int(tip.get("group_id") or 0)

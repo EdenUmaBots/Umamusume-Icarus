@@ -108,7 +108,7 @@ AILMENT_CURE_ALL = "Miracle Cure"
 
 CURE_ITEMS = set(AILMENT_CURE_MAP.values()) | {AILMENT_CURE_ALL}
 
-# v5 smart-shop guardrails inspired by the Android bot: buy toward usefulness,
+# v5 smart-shop guardrails: buy toward usefulness,
 # not toward a museum shelf. Most items cap at 5, one-shot cures cap lower.
 DEFAULT_INVENTORY_CAP = 5
 ITEM_INVENTORY_CAPS = {
@@ -121,11 +121,18 @@ ITEM_INVENTORY_CAPS = {
     "Reporter's Binoculars": 1,
     "Master Practice Guide": 1,
     "Scholar's Hat": 1,
-    "Good-Luck Charm": 5,
+    "Good-Luck Charm": 3,
     "Reset Whistle": 5,
     "Coaching Megaphone": 5,
     "Motivating Megaphone": 5,
     "Empowering Megaphone": 5,
+    # P1: anklets/weights over-buy left ~3 unused per run.  Cap each type at 3
+    # (the per-name cap), with a combined "keep ~2 main +1 sub" stock ceiling
+    # enforced separately in _skip_buy via trackblazer_anklet_max_stock.
+    "Speed Ankle Weights": 3,
+    "Stamina Ankle Weights": 3,
+    "Power Ankle Weights": 3,
+    "Guts Ankle Weights": 3,
 }
 
 INSTANT_USE_ITEMS = [
@@ -156,6 +163,12 @@ ENERGY_ITEMS = {
     "Vita 65": 65,
     "Royal Kale Juice": 100,
 }
+
+# Energy/vitality-restore items that live on the INSTANT_USE_ITEMS path.  These
+# must be gated by the energy threshold (and the vital cap) instead of firing
+# every turn -- otherwise the bot drinks an Energy Drink MAX EX at vital 95-112,
+# wasting it well over the cap.  Mood-only items are intentionally excluded.
+INSTANT_ENERGY_RESTORE_ITEMS = frozenset({"Energy Drink MAX EX"})
 
 MEGAPHONE_TIERS = {
     "Coaching Megaphone": (1, 4),
@@ -204,6 +217,35 @@ DEFAULT_ITEM_TIERS = dict(tb_rules.TRACKBLAZER_SHOP_TIERS)
 
 def display_to_slug(name):
     return str(name or "").lower().replace("'", "").replace(" ", "_")
+
+
+def _cfg_num(cfg, key, default, cast=int):
+    """0-safe config read.
+
+    The historic ``int(cfg.get(key) or DEFAULT)`` idiom treats a configured 0 as
+    "unset" (0 is falsy) and silently reverts to DEFAULT.  This broke user
+    presets that set e.g. ``energy_recovery_threshold: 0``.  Read the value
+    explicitly so an intentional 0 is honored; only fall back to DEFAULT when the
+    key is absent or the value is None/blank/unparseable.
+    """
+    value = (cfg or {}).get(key, None)
+    if value is None or value == "":
+        return cast(default)
+    try:
+        return cast(value)
+    except (TypeError, ValueError):
+        return cast(default)
+
+
+# Items that get auto-consumed before races where they give no benefit (e.g. a
+# pre-New-Year race with no stamina penalty), wasting coins better spent on
+# impactful items.  Never purchased unless mant_config.allow_wasteful_consumables
+# is set true.  IDs: Yummy Cat Food 3001, Energy Drink MAX EX 2202, Reporter's
+# Binoculars 4002, Master Practice Guide 4003.
+ALWAYS_EXCLUDE_ITEM_IDS = (3001, 2202, 4002, 4003)
+ALWAYS_EXCLUDE_SLUGS = frozenset(
+    display_to_slug(ITEM_NAMES[item_id]) for item_id in ALWAYS_EXCLUDE_ITEM_IDS
+)
 
 
 MASTER_SHOP_CACHE = {}
@@ -546,14 +588,30 @@ class MantItemManager:
             fast_cfg = shop_cfg.get("fast_learner") or {}
             if cfg.get("enable_fast_learner_shop_boost", False) and name == fast_cfg.get("item", "Scholar's Hat") and current_turn <= int(fast_cfg.get("reserve_until_turn") or 64):
                 eff_t = min(eff_t, int(fast_cfg.get("tier") or 1))
-            for ailment in active_ailments:
-                specific_cure = AILMENT_CURE_MAP.get(ailment)
-                if specific_cure and name == specific_cure and not has_miracle and owned.get(name, 0) <= 0:
+            # ---- Cure items: buy ONLY for an active bad condition -------------
+            # v6.8: TRACKBLAZER_SHOP_TIERS lists cures at base tier 1, which made
+            # Icarus pre-stock Miracle Cures / Rich Hand Cream with no condition
+            # present (the "why do I have 2 cure-alls and a cream" complaint).
+            # Gate them: a cure is top priority only when its condition is active
+            # and not already covered; otherwise it is demoted out of the buy
+            # list.  ``preemptive_cure_reserve: true`` (preset mant_config)
+            # restores the old keep-one-cure-all/cream-on-hand behaviour.
+            if name in CURE_ITEMS:
+                cured_ailment = next(
+                    (a for a in active_ailments if AILMENT_CURE_MAP.get(a) == name), None)
+                is_cure_all = name == AILMENT_CURE_ALL
+                needed_now = (
+                    (cured_ailment is not None and not has_miracle and owned.get(name, 0) <= 0)
+                    or (is_cure_all and active_ailments and not has_miracle)
+                )
+                if needed_now:
                     eff_t = 1
-            if slug == "miracle_cure" and active_ailments and not has_miracle:
-                eff_t = 1
-            if (slug == "miracle_cure" or slug == "rich_hand_cream") and owned.get(name, 0) <= 0:
-                eff_t = 1
+                elif (cfg.get("preemptive_cure_reserve", False)
+                      and name in (AILMENT_CURE_ALL, "Rich Hand Cream")
+                      and owned.get(name, 0) <= 0):
+                    eff_t = 1
+                else:
+                    eff_t = 999  # no active condition -> do not stock cures
             if slug == "grilled_carrots":
                 eff_t = min(eff_t, base_t - bbq_shift)
             elif slug == "good-luck_charm":
@@ -714,12 +772,17 @@ class MantItemManager:
         cfg = self._mant_cfg(preset)
         targets = []
 
-        if not grade or grade in {"OP", "PRE-OP", "800", "900"}:
+        # P0: climax/finale rows have race_instance_id starting "92" and no grade
+        # field, so normalize_grade now yields "CLIMAX".  Detect either signal and
+        # let _hammer_target_for_race swing unconditionally on these races.
+        is_climax = grade == "CLIMAX" or str(info.get("race_instance_id") or "").startswith("92")
+
+        if not is_climax and (not grade or grade in {"OP", "PRE-OP", "800", "900"}):
             return targets
         if turn < 13:
             return targets
 
-        hammer = self._hammer_target_for_race(owned, turn, grade, cfg)
+        hammer = self._hammer_target_for_race(owned, turn, grade, cfg, is_climax=is_climax)
         if hammer:
             targets.append((hammer, 1))
 
@@ -775,25 +838,41 @@ class MantItemManager:
     def _race_name_key(self, name):
         return "".join(ch.lower() for ch in str(name or "") if ch.isalnum())
 
-    def _hammer_target_for_race(self, owned, turn, grade, cfg):
+    def _hammer_target_for_race(self, owned, turn, grade, cfg, is_climax=False):
         master_qty = int(owned.get("Master Cleat Hammer", 0) or 0)
         artisan_qty = int(owned.get("Artisan Cleat Hammer", 0) or 0)
         if master_qty + artisan_qty <= 0:
             return None
 
-        is_finale = turn in tb_rules.TRACKBLAZER_FINALE_RACE_TURNS
         is_final_race = turn >= tb_rules.TRACKBLAZER_FINAL_RACE_TURN
         conservation = turn >= tb_rules.RACE_ITEM_CONSERVATION_START_TURN
 
+        # P0: CLIMAX/finale race -> swing the best hammer unconditionally.  This is
+        # the payoff for the conservation reserves enforced on regular G1s below.
+        if is_climax or grade == "CLIMAX":
+            if master_qty > 0:
+                return "Master Cleat Hammer"
+            if artisan_qty > 0:
+                return "Artisan Cleat Hammer"
+            return None
+
         if grade == "G1":
+            # P0: hold back a Master-hammer reserve for the finale so regular G1s
+            # stop draining the stock (the conservation window now opens at T25).
+            master_reserve = _cfg_num(cfg, "trackblazer_master_hammer_finale_reserve", tb_rules.DEFAULT_MASTER_HAMMER_FINALE_RESERVE)
+            artisan_reserve = _cfg_num(cfg, "trackblazer_artisan_hammer_finale_reserve", tb_rules.DEFAULT_ARTISAN_HAMMER_FINALE_RESERVE)
             if master_qty > 0:
                 if not conservation or is_final_race:
                     return "Master Cleat Hammer"
-                reserve = int(cfg.get("trackblazer_master_hammer_finale_reserve") or tb_rules.DEFAULT_MASTER_HAMMER_FINALE_RESERVE)
-                if not is_finale or master_qty >= reserve:
+                # During conservation, only swing a Master on a regular G1 once we
+                # are above the finale reserve floor.
+                if master_qty > master_reserve:
                     return "Master Cleat Hammer"
             if artisan_qty > 0:
-                return "Artisan Cleat Hammer" if (not conservation or is_final_race or artisan_qty >= 2) else None
+                if not conservation or is_final_race:
+                    return "Artisan Cleat Hammer"
+                # Same hold-back logic for the Artisan stock on regular G1s.
+                return "Artisan Cleat Hammer" if artisan_qty > artisan_reserve else None
             return None
 
         if grade not in {"G2", "G3"}:
@@ -808,22 +887,37 @@ class MantItemManager:
 
     def _should_use_glow_stick(self, owned, turn, grade, fans, cfg):
         qty = int(owned.get("Glow Sticks", 0) or 0)
-        if qty <= 0 or grade != "G1":
+        # v1.5: allow G1/G2/G3 (was G1-only), using a grade-agnostic
+        # glow-stick use.  The effective-fan floor below still gates out small
+        # races, so this only adds the big-fan G2/G3 races to the fan boost.
+        allowed_grades = cfg.get("glow_stick_grades") or ("G1", "G2", "G3")
+        if qty <= 0 or grade not in allowed_grades:
             return False
         is_finale = turn in tb_rules.TRACKBLAZER_FINALE_RACE_TURNS
         is_final_race = turn >= tb_rules.TRACKBLAZER_FINAL_RACE_TURN
-        min_fans = int(cfg.get("trackblazer_glow_stick_min_fans") or tb_rules.DEFAULT_GLOW_STICK_MIN_FANS)
+        min_fans = _cfg_num(cfg, "trackblazer_glow_stick_min_fans", tb_rules.DEFAULT_GLOW_STICK_MIN_FANS)
+        # Glow-stick fan gate.  The solver compares the race's ACTUAL fan
+        # gain against the 20000 threshold (DEFAULT_GLOW_STICK_MIN_FANS).  The
+        # only fan figure we have here is ``fans`` = the race's fan reward from
+        # the race catalog / race_map, which IS the real awarded-fan figure for
+        # the race (not a separate "base" number).  The old code multiplied it by
+        # an arbitrary x2.0 fudge to fabricate an "effective" value, which made
+        # the gate fire on the wrong races.  Compare the real fan figure directly
+        # (multiplier defaults to 1.0 now); the knob stays tunable for anyone who
+        # wants to re-scale.
+        fan_mult = _cfg_num(cfg, "glow_stick_fan_multiplier", 1.0, cast=float)
+        eff_fans = int(fans * fan_mult) if fans else 0
         # If fan data is unavailable for a known finale race, use the item. The
         # finale is exactly what the reserve exists for.
-        if fans and fans < min_fans and not is_finale:
+        if eff_fans and eff_fans < min_fans and not is_finale:
             return False
         if turn < tb_rules.RACE_ITEM_CONSERVATION_START_TURN:
-            return (fans == 0) or fans >= min_fans
+            return (eff_fans == 0) or eff_fans >= min_fans
         if is_final_race:
             return True
-        if not is_finale and fans >= tb_rules.TOP_TIER_G1_GLOW_FAN_FLOOR:
+        if not is_finale and eff_fans >= tb_rules.TOP_TIER_G1_GLOW_FAN_FLOOR:
             return True
-        reserve = int(cfg.get("trackblazer_glow_stick_final_reserve") or tb_rules.DEFAULT_GLOW_STICK_FINAL_RESERVE)
+        reserve = _cfg_num(cfg, "trackblazer_glow_stick_final_reserve", tb_rules.DEFAULT_GLOW_STICK_FINAL_RESERVE)
         return qty > reserve
 
     def _old_ui_cleat_before_race(self, owned, turn, program_id, race_planner):
@@ -935,12 +1029,29 @@ class MantItemManager:
         if not owned:
             self.last_use_result = {"skip": "no_owned"}
             return state, 0
+        # Energy gate for the instant-use energy-restore items (Energy Drink MAX
+        # EX): root cause of the "fires every turn at vital 95-112" bug was that
+        # the instant-use loop queued these unconditionally.  Reuse the same
+        # 0-safe energy_recovery_threshold and never overcap past max vital.
+        _energy_cfg = self._mant_cfg(preset)
+        _energy_threshold = _cfg_num(_energy_cfg, "energy_recovery_threshold", tb_rules.DEFAULT_ENERGY_RECOVERY_THRESHOLD)
+        if current_turn in (35, 59):
+            _energy_threshold = max(_energy_threshold, _cfg_num(_energy_cfg, "pre_camp_energy_threshold", 65))
+        _vital = int(chara.get("vital") or 0)
+        _max_vital = max(1, int(chara.get("max_vital") or 100))
+
         targets = []
         for name in INSTANT_USE_ITEMS:
             qty = owned.get(name, 0)
             if qty <= 0:
                 continue
             if DISPLAY_TO_ID.get(name) in self.failed_use_this_turn:
+                continue
+            if name in INSTANT_ENERGY_RESTORE_ITEMS:
+                # Only drink when actually low on energy, and never over the cap.
+                if _vital >= _max_vital or _vital >= _energy_threshold:
+                    continue
+                targets.append((name, 1))
                 continue
             if name in ONE_TIME_BUFF_ITEMS:
                 if name in self.used_buffs:
@@ -1076,35 +1187,23 @@ class MantItemManager:
         return slug.endswith("_notepad") or slug.endswith("_manual") or slug.endswith("_scroll")
 
     def _coin_reserve(self, turn, budget, cfg):
-        if turn <= 20:
-            reserve = 160
-        elif turn <= 35:
-            reserve = 220
-        elif turn <= 45:
-            reserve = 180
-        elif turn <= 55:
-            reserve = 120
-        elif turn <= 64:
-            reserve = 80
-        elif turn <= 72:
-            reserve = 40
-        else:
-            reserve = 0
-        reserve = int(cfg.get("mant_coin_reserve", reserve) if "mant_coin_reserve" in cfg else reserve)
-        cap = self._coin_cap(turn, cfg)
-        if cap and budget > cap:
-            reserve = min(reserve, max(0, cap // 2))
-        if turn >= 73:
-            return 0
-        if turn >= 65 and budget > 300:
-            return min(reserve, 40)
-        if turn >= 56 and budget > 220:
-            return min(reserve, 60)
-        if turn >= 46 and budget > 260:
-            return min(reserve, 80)
-        if turn >= 36 and budget > 320:
-            return min(reserve, 120)
-        return reserve
+        # v1.5+: BUY-TIME coin reserve removed -- spend down to ~0 at purchase
+        # time to match the reference behavior, which holds NO buy-time hoard.  Unspent
+        # coins were unbought glow sticks / hammers = fewer fans.  USE-TIME
+        # reserves (finale hammer / glow-stick / min-stock floors) are SEPARATE
+        # functions and are intentionally left untouched.  Still honors an
+        # explicit mant_coin_reserve override if the user sets one.
+        if "mant_coin_reserve" in (cfg or {}):
+            return max(0, _cfg_num(cfg, "mant_coin_reserve", 0))
+        # P0: pre-finale coin reserve.  Spend-to-zero is correct mid-career, but it
+        # left the bot broke at the T73/74 finale shop where new hammers spawn.
+        # Hold a reserve across the short pre-finale window so we arrive with money
+        # to buy them.  Window/amount are config-overridable.
+        start = _cfg_num(cfg, "trackblazer_finale_coin_reserve_start_turn", 65)
+        end = _cfg_num(cfg, "trackblazer_finale_coin_reserve_end_turn", 73)
+        if start <= int(turn or 0) <= end:
+            return max(0, _cfg_num(cfg, "trackblazer_finale_coin_reserve", 175))
+        return 0
 
     def _coin_cap(self, turn, cfg):
         if turn <= 20:
@@ -1147,6 +1246,15 @@ class MantItemManager:
             floor = min(floor, 80)
         elif turn >= 46:
             floor = min(floor, 120)
+        # P0: re-assert the pre-finale coin reserve as a HARD floor.  The clamps
+        # above (and the cap-based reductions) would otherwise shave it back down
+        # to ~40 during turns 65-72, undoing the reserve and arriving broke at the
+        # finale shop.  Only applies while the finale reserve window is active.
+        f_start = _cfg_num(cfg, "trackblazer_finale_coin_reserve_start_turn", 65)
+        f_end = _cfg_num(cfg, "trackblazer_finale_coin_reserve_end_turn", 73)
+        if f_start <= int(turn or 0) <= f_end and not self._is_instant_stat_item(name):
+            finale_reserve = max(0, _cfg_num(cfg, "trackblazer_finale_coin_reserve", 175))
+            floor = max(floor, finale_reserve)
         return max(0, int(floor))
 
     def _mant_cfg(self, preset):
@@ -1189,6 +1297,7 @@ class MantItemManager:
         cfg.setdefault("trackblazer_artisan_hammer_min_stock_for_g2", tb_rules.DEFAULT_ARTISAN_HAMMER_MIN_STOCK_FOR_G2)
         cfg.setdefault("trackblazer_glow_stick_final_reserve", tb_rules.DEFAULT_GLOW_STICK_FINAL_RESERVE)
         cfg.setdefault("trackblazer_glow_stick_min_fans", tb_rules.DEFAULT_GLOW_STICK_MIN_FANS)
+        cfg.setdefault("glow_stick_fan_multiplier", 2.0)
         return cfg
 
     def _owned_map(self, free):
@@ -1246,7 +1355,7 @@ class MantItemManager:
         """Choose recovery items using Trackblazer conservation rules.
 
         Native SweepyCL payloads already tell us vitality and inventory, so this
-        is the Android policy without OCR: reserve one low-tier Vita, avoid
+        is the standard policy without OCR: reserve one low-tier Vita, avoid
         over-healing past ~110%, and treat Royal Kale Juice as a guarded full
         restore because it costs motivation.
         """
@@ -1257,11 +1366,14 @@ class MantItemManager:
             return []
 
         cfg = self._mant_cfg(preset)
-        threshold = int(cfg.get("energy_recovery_threshold") or tb_rules.DEFAULT_ENERGY_RECOVERY_THRESHOLD)
+        # 0-safe: honor a user-set energy_recovery_threshold of 0.
+        threshold = _cfg_num(cfg, "energy_recovery_threshold", tb_rules.DEFAULT_ENERGY_RECOVERY_THRESHOLD)
         turn = int(chara.get("turn") or 0)
         if turn in (35, 59):
-            threshold = max(threshold, int(cfg.get("pre_camp_energy_threshold") or 65))
-        if hp > threshold:
+            threshold = max(threshold, _cfg_num(cfg, "pre_camp_energy_threshold", 65))
+        # Never spend energy/recovery items once vital is already at/above the
+        # threshold, and never overcap (waste) at/over max vital.
+        if hp >= max_hp or hp >= threshold:
             return []
 
         # Charm turns should not spend recovery items; failure is already zero and
@@ -1270,14 +1382,14 @@ class MantItemManager:
             return []
 
         motivation = int(chara.get("motivation") or 3)
-        reserve = max(0, int(cfg.get("trackblazer_energy_item_reserve") or tb_rules.DEFAULT_ENERGY_ITEM_RESERVE))
-        cupcake_reserve = max(0, int(cfg.get("trackblazer_cupcake_reserve") or tb_rules.DEFAULT_CUPCAKE_RESERVE))
+        reserve = max(0, _cfg_num(cfg, "trackblazer_energy_item_reserve", tb_rules.DEFAULT_ENERGY_ITEM_RESERVE))
+        cupcake_reserve = max(0, _cfg_num(cfg, "trackblazer_cupcake_reserve", tb_rules.DEFAULT_CUPCAKE_RESERVE))
         has_cupcake = self._available_cupcake(owned, reserve=cupcake_reserve, allow_reserved=True) is not None
 
         # Royal Kale is a full refill with a mood bite. Use it as the panic lever
         # at critical HP, or when a cupcake can patch the mood loss immediately.
         if owned.get("Royal Kale Juice", 0) > 0:
-            critical = hp <= int(cfg.get("kale_critical_threshold") or tb_rules.ENERGY_CRITICAL_KALE_THRESHOLD)
+            critical = hp <= _cfg_num(cfg, "kale_critical_threshold", tb_rules.ENERGY_CRITICAL_KALE_THRESHOLD)
             safe_mood = has_cupcake or motivation <= 1
             if critical or safe_mood:
                 return [("Royal Kale Juice", 1)]
@@ -1285,7 +1397,10 @@ class MantItemManager:
         usable_vitas = self._usable_vita_counts(owned, reserve)
         if not usable_vitas:
             return []
-        target_cap = int(max_hp * float(cfg.get("energy_overshoot_cap_ratio") or tb_rules.ENERGY_OVERSHOOT_CAP_RATIO))
+        # 0-safe read; the small overshoot allowance lets a final Vita top-up land
+        # near the cap, but the hp>=max_hp gate above already blocks pure overcap.
+        ratio = _cfg_num(cfg, "energy_overshoot_cap_ratio", tb_rules.ENERGY_OVERSHOOT_CAP_RATIO, cast=float)
+        target_cap = int(max_hp * ratio)
         picked = []
         total = hp
         # Greedy descending: the policy wants useful top-ups, not a tiny-item drip.
@@ -1322,8 +1437,8 @@ class MantItemManager:
         motivation = int(chara.get("motivation") or 3)
         hp = int(chara.get("vital") or 0)
         cfg = self._mant_cfg(preset)
-        reserve = max(0, int(cfg.get("trackblazer_cupcake_reserve") or tb_rules.DEFAULT_CUPCAKE_RESERVE))
-        threshold = int(cfg.get("cupcake_energy_threshold") or 70)
+        reserve = max(0, _cfg_num(cfg, "trackblazer_cupcake_reserve", tb_rules.DEFAULT_CUPCAKE_RESERVE))
+        threshold = _cfg_num(cfg, "cupcake_energy_threshold", 70)
 
         if not kale_queued:
             if motivation >= 5:
@@ -1365,9 +1480,9 @@ class MantItemManager:
         vitality = int(current_chara.get("vital") or current_chara.get("current_vital") or 0)
         motivation = int(current_chara.get("motivation") or 3)
         # If the problem is obviously HP or mood, a reshuffle does not solve it.
-        if vitality and vitality <= int(cfg.get("energy_recovery_threshold") or tb_rules.DEFAULT_ENERGY_RECOVERY_THRESHOLD):
+        if vitality and vitality <= _cfg_num(cfg, "energy_recovery_threshold", tb_rules.DEFAULT_ENERGY_RECOVERY_THRESHOLD):
             return None
-        if motivation <= int(cfg.get("whistle_motivation_floor") or 2):
+        if motivation <= _cfg_num(cfg, "whistle_motivation_floor", 2):
             return None
 
         total_gain = self._command_stat_gain(best_command, sp_weight=0.5)
@@ -1390,16 +1505,16 @@ class MantItemManager:
             return None
         fail_rate = int(best_command.get("failure_rate") or 0)
         cfg = self._mant_cfg(preset)
-        threshold = int(cfg.get("charm_failure_rate") or tb_rules.DEFAULT_CHARM_FAILURE_THRESHOLD)
+        threshold = _cfg_num(cfg, "charm_failure_rate", tb_rules.DEFAULT_CHARM_FAILURE_THRESHOLD)
         if fail_rate < threshold:
             return None
 
         main_gain = self._command_main_stat_gain(best_command)
-        min_gain = int(cfg.get("charm_min_main_gain") or tb_rules.DEFAULT_CHARM_MIN_MAIN_GAIN)
+        min_gain = _cfg_num(cfg, "charm_min_main_gain", tb_rules.DEFAULT_CHARM_MIN_MAIN_GAIN)
         if main_gain < min_gain:
             return None
 
-        low_mood_floor = int(cfg.get("trackblazer_skip_bad_mood_items_below_gain") or tb_rules.DEFAULT_LOW_MOOD_ITEM_GAIN_FLOOR)
+        low_mood_floor = _cfg_num(cfg, "trackblazer_skip_bad_mood_items_below_gain", tb_rules.DEFAULT_LOW_MOOD_ITEM_GAIN_FLOOR)
         current_chara = (status or {}).get("current_chara") if isinstance(status, dict) else {}
         motivation = int((current_chara or {}).get("motivation") or 3)
         if motivation <= 2 and main_gain < low_mood_floor:
@@ -1434,31 +1549,43 @@ class MantItemManager:
         inventory_pressure = slots_left > 0 and owned_count >= slots_left
         has_upgrade_pair = owned.get("Motivating Megaphone", 0) > 0 and owned.get("Empowering Megaphone", 0) > 0 and slots_left >= 2
 
+        # P2: don't burn the summer-reserved strong megaphones on ordinary training
+        # turns before the first summer-camp turn.  Below the reserve and before
+        # camp, hold the Empowering for the camp turns (35 / 59) unless inventory
+        # pressure / dump mode forces a release.
+        summer_reserve = _cfg_num(cfg, "megaphone_summer_reserve", 2)
+        first_summer_turn = _cfg_num(cfg, "megaphone_summer_first_turn", 35)
+        strong_owned = int(owned.get("Empowering Megaphone", 0) or 0) + int(owned.get("Motivating Megaphone", 0) or 0)
+        hold_summer_strong = (
+            turn < first_summer_turn
+            and strong_owned <= summer_reserve
+            and not (inventory_pressure or dump_mode)
+        )
+
         target_tier = 0
         if current_mega_tier <= 0:
             if has_upgrade_pair and score >= medium_threshold:
                 return ("Motivating Megaphone", 1)
-            if score >= large_threshold and owned.get("Empowering Megaphone", 0) > 0:
+            if score >= large_threshold and owned.get("Empowering Megaphone", 0) > 0 and not hold_summer_strong:
                 return ("Empowering Megaphone", 1)
-            if score >= medium_threshold and owned.get("Motivating Megaphone", 0) > 0:
+            if score >= medium_threshold and owned.get("Motivating Megaphone", 0) > 0 and not hold_summer_strong:
                 return ("Motivating Megaphone", 1)
-            if score >= small_threshold and owned.get("Coaching Megaphone", 0) > 0:
+            # P2: never auto-fire the small Coaching megaphone unless nothing
+            # better is owned -- it is the weakest tier and is best saved.
+            if (score >= small_threshold and owned.get("Coaching Megaphone", 0) > 0
+                    and owned.get("Motivating Megaphone", 0) <= 0
+                    and owned.get("Empowering Megaphone", 0) <= 0):
                 return ("Coaching Megaphone", 1)
             if inventory_pressure or dump_mode:
+                # P2: dump ladder prefers Empowering > Motivating > Coaching.
                 if has_upgrade_pair:
-                    return ("Motivating Megaphone", 1)
+                    return ("Empowering Megaphone", 1)
                 if owned.get("Empowering Megaphone", 0) > 0:
                     return ("Empowering Megaphone", 1)
-                if score >= medium_threshold and owned.get("Motivating Megaphone", 0) > 0:
-                    return ("Motivating Megaphone", 1)
-                if score >= small_threshold and owned.get("Coaching Megaphone", 0) > 0:
-                    return ("Coaching Megaphone", 1)
-                if owned.get("Coaching Megaphone", 0) > 0:
-                    return ("Coaching Megaphone", 1)
                 if owned.get("Motivating Megaphone", 0) > 0:
                     return ("Motivating Megaphone", 1)
-                if owned.get("Empowering Megaphone", 0) > 0:
-                    return ("Empowering Megaphone", 1)
+                if owned.get("Coaching Megaphone", 0) > 0:
+                    return ("Coaching Megaphone", 1)
             else:
                 if score >= large_threshold:
                     target_tier = 3
@@ -1504,6 +1631,13 @@ class MantItemManager:
         cfg = self._mant_cfg(preset)
         buffer = int(cfg.get("mega_late_buy_buffer") or 3)
         target = max(0, slots_left - buffer)
+        # P2: keep a small summer reserve of strong megaphones (Empowering/Large)
+        # so we never dump-buy them past the count we want banked for the summer
+        # camp turns.  Counts only the top-tier megaphones against the reserve.
+        summer_reserve = _cfg_num(cfg, "megaphone_summer_reserve", 2)
+        strong_owned = int(owned.get("Empowering Megaphone", 0) or 0) + int(owned.get("Motivating Megaphone", 0) or 0)
+        if strong_owned >= summer_reserve:
+            return True
         return self._owned_megaphone_count(owned) >= target
 
     def _remaining_megaphone_slots(self, data, turn, race_planner, preset):
@@ -1681,8 +1815,11 @@ class MantItemManager:
             counts = (preset or {}).get("_deck_type_counts") or []
             idx = TRAINING_ITEM_DECK_TYPE_INDEX.get(name)
             deck_count = int(counts[idx] or 0) if idx is not None and len(counts) > idx else 0
-            value += deck_count * 18.0
-            value -= qty * 12.0
+            # P1: strong decks kept buying anklets forever (+18/card vs -12/qty).
+            # Trim the per-card bonus and steepen the per-owned penalty so value
+            # falls off after the first couple of copies.
+            value += deck_count * 12.0
+            value -= qty * 20.0
         guide = self._guide(preset)
         shop_cfg = guide.get("shop_priorities") or {}
         immediate_cfg = shop_cfg.get("immediate_stat_items") or {}
@@ -1707,7 +1844,11 @@ class MantItemManager:
             if is_pre_summer(turn):
                 value += 35.0
         if self._is_instant_stat_item(name):
-            value += 20.0 if turn >= 46 else 0.0
+            # P3: keep the late-game +20 for the worthwhile Medium Manual (+7) and
+            # Large Scroll (+15), but NOT for the small +3 notepads -- those should
+            # not get a value boost that keeps them in the buy list.
+            if not display_to_slug(name).endswith("_notepad"):
+                value += 20.0 if turn >= 46 else 0.0
         value -= cost * 0.35
         return value
 
@@ -1719,10 +1860,27 @@ class MantItemManager:
         excluded_slugs = {display_to_slug(item) for item in excluded}
         if display_to_slug(name) in excluded_slugs:
             return True
+        # Hard exclusions: wasteful pre-race auto-consumed items (see
+        # ALWAYS_EXCLUDE_SLUGS).  Never bought unless explicitly re-enabled.
+        if (display_to_slug(name) in ALWAYS_EXCLUDE_SLUGS
+                and not cfg.get("allow_wasteful_consumables", False)):
+            return True
+        # P3: small +3 stat notepads (ids 1001-1005) are skip-by-default -- their
+        # tiny stat gain isn't worth the coins.  Medium Manual (+7) / Large Scroll
+        # (+15) are unaffected (different slug suffixes).  Opt back in via config.
+        if display_to_slug(name).endswith("_notepad") and not cfg.get("trackblazer_buy_notepads", False):
+            return True
         if int(owned.get(name, 0) or 0) >= self._item_cap(name, preset):
             return True
         if name in MEGAPHONE_TIERS and self._megaphone_buy_surplus(data or {}, owned, turn, race_planner, preset):
             return True
+        # P1: anklet over-buy guard.  Keep only ~2 anklets in stock total (main +
+        # sub); once we hold that many across all types, stop buying more.
+        if name in set(TRAINING_TYPE_ANKLET.values()):
+            anklet_max = _cfg_num(cfg, "trackblazer_anklet_max_stock", 2)
+            total_anklets = sum(int(owned.get(a, 0) or 0) for a in set(TRAINING_TYPE_ANKLET.values()))
+            if total_anklets >= anklet_max:
+                return True
         if name in CURE_ITEMS:
             # Rich Hand Cream and Miracle Cure are Trackblazer-critical race/run
             # insurance and may be stocked up to their normal cap. Other specific

@@ -900,6 +900,156 @@
     "running_style": 2
   },
   {
+    "card_id": 103601,
+    "chara_id": 1036,
+    "name": "Air Shakur",
+    "rarity": 3,
+    "base_stats": {
+      "speed": 99,
+      "stamina": 85,
+      "power": 95,
+      "guts": 69,
+      "wit": 102
+    },
+    "max_stats": {
+      "speed": 1200,
+      "stamina": 1200,
+      "power": 1200,
+      "guts": 1200,
+      "wit": 1200
+    },
+    "growth": {
+      "speed": 0,
+      "stamina": 0,
+      "power": 0,
+      "guts": 0,
+      "wit": 30
+    },
+    "distance_aptitude": {
+      "sprint": "G",
+      "mile": "E",
+      "medium": "A",
+      "long": "A"
+    },
+    "style_aptitude": {
+      "front": "G",
+      "pace": "C",
+      "late": "A",
+      "end": "A"
+    },
+    "track_aptitude": {
+      "turf": "A",
+      "dirt": "G"
+    },
+    "ui_colors": {
+      "main": "2459B4",
+      "sub": "E1E000",
+      "border": "2053a9"
+    },
+    "available_skill_set_id": 103601,
+    "running_style": 4
+  },
+  {
+    "card_id": 103601,
+    "chara_id": 1036,
+    "name": "Air Shakur",
+    "rarity": 4,
+    "base_stats": {
+      "speed": 110,
+      "stamina": 95,
+      "power": 106,
+      "guts": 76,
+      "wit": 113
+    },
+    "max_stats": {
+      "speed": 1200,
+      "stamina": 1200,
+      "power": 1200,
+      "guts": 1200,
+      "wit": 1200
+    },
+    "growth": {
+      "speed": 0,
+      "stamina": 0,
+      "power": 0,
+      "guts": 0,
+      "wit": 30
+    },
+    "distance_aptitude": {
+      "sprint": "G",
+      "mile": "E",
+      "medium": "A",
+      "long": "A"
+    },
+    "style_aptitude": {
+      "front": "G",
+      "pace": "C",
+      "late": "A",
+      "end": "A"
+    },
+    "track_aptitude": {
+      "turf": "A",
+      "dirt": "G"
+    },
+    "ui_colors": {
+      "main": "2459B4",
+      "sub": "E1E000",
+      "border": "2053a9"
+    },
+    "available_skill_set_id": 103601,
+    "running_style": 4
+  },
+  {
+    "card_id": 103601,
+    "chara_id": 1036,
+    "name": "Air Shakur",
+    "rarity": 5,
+    "base_stats": {
+      "speed": 120,
+      "stamina": 104,
+      "power": 116,
+      "guts": 84,
+      "wit": 126
+    },
+    "max_stats": {
+      "speed": 1200,
+      "stamina": 1200,
+      "power": 1200,
+      "guts": 1200,
+      "wit": 1200
+    },
+    "growth": {
+      "speed": 0,
+      "stamina": 0,
+      "power": 0,
+      "guts": 0,
+      "wit": 30
+    },
+    "distance_aptitude": {
+      "sprint": "G",
+      "mile": "E",
+      "medium": "A",
+      "long": "A"
+    },
+    "style_aptitude": {
+      "front": "G",
+      "pace": "C",
+      "late": "A",
+      "end": "A"
+    },
+    "track_aptitude": {
+      "turf": "A",
+      "dirt": "G"
+    },
+    "ui_colors": {
+      "main": "2459B4",
+      "sub": "E1E000",
+      "border": "2053a9"
+    },
+    "available_skill_set_id": 103601,
+    "running_style": 4
+  },
+  {
     "card_id": 102301,
     "chara_id": 1023,
     "name": "Biwa Hayahide",

@@ -1,0 +1,55 @@
+{
+  "_comment": "Curated Trackblazer race agendas. Selecting one populates the smart race solver's target_epithets so it schedules (and keeps) the races needed to complete them, instead of minimising races for fans alone. Epithet names must match data/trackblazer/epithets.json. These are SOFT targets (no MILP-infeasibility risk); use trackblazer_forced_epithets for hard commitments. The 'balanced' set mirrors the epithets the Android smart solver actually earned on an Oguri Cap run (39 races, ~826k fans).",
+  "agendas": [
+    {
+      "id": "balanced",
+      "title": "Balanced (Fans + Epithets)",
+      "description": "Broad achievable epithet set across turf/dirt G1s, regions, and distances. Mirrors the Android solver's proven 39-race, ~826k-fan Oguri run. Best general-purpose choice.",
+      "recommended": true,
+      "target_epithets": [
+        "Breakneck Miler", "Dirt G1 Achiever", "Dirt G1 Powerhouse", "Dirt G1 Star",
+        "Dirty Work", "Fall Champion", "Globe-Trotter", "Incredible", "Junior Jewel",
+        "Kanto Conqueror", "Legendary", "Phenomenal", "Pro Racer", "Shield Bearer",
+        "Spring Champion", "Standard Distance Leader", "Stunning", "Tohoku Top Dog",
+        "West Japan Whiz"
+      ],
+      "forced_epithets": []
+    },
+    {
+      "id": "mile",
+      "title": "Mile Specialist",
+      "description": "Mile/standard-distance focused. Good for mile-aptitude trainees (e.g. Oguri Cap S-mile).",
+      "recommended": false,
+      "target_epithets": [
+        "Breakneck Miler", "Mile a Minute", "Spring Champion", "Fall Champion",
+        "Standard Distance Leader", "Pro Racer", "Junior Jewel", "Legendary",
+        "Phenomenal", "Incredible", "Globe-Trotter"
+      ],
+      "forced_epithets": []
+    },
+    {
+      "id": "dirt",
+      "title": "Dirt Crusher",
+      "description": "Dirt G1 chain plus dirt-themed epithets. Requires solid dirt aptitude.",
+      "recommended": false,
+      "target_epithets": [
+        "Dirt G1 Achiever", "Dirt G1 Star", "Dirt G1 Powerhouse", "Dirt G1 Dominator",
+        "Dirty Work", "Playing Dirty", "Kicking Up Dust", "Dirt Dancer",
+        "Pro Racer", "Globe-Trotter", "Legendary"
+      ],
+      "forced_epithets": []
+    },
+    {
+      "id": "regional",
+      "title": "Globe-Trotter (Regional Spread)",
+      "description": "Maximises race variety across Japan's regions for regional epithets. Highest raw race count.",
+      "recommended": false,
+      "target_epithets": [
+        "Kanto Conqueror", "West Japan Whiz", "Tohoku Top Dog", "Hokkaido Hotshot",
+        "Kokura Constable", "Globe-Trotter", "Pro Racer", "Legendary", "Phenomenal",
+        "Standard Distance Leader"
+      ],
+      "forced_epithets": []
+    }
+  ]
+}

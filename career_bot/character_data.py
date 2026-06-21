@@ -1,7 +1,7 @@
 """SweepyCL character data loaders (v6.3).
 
 Reads two community-maintained JSON catalogs ported from the
-``uma-android-automation`` project (see ``data/character_data/README.md``):
+the reference automation project (see ``data/character_data/README.md``):
 
   - ``character_presets.json`` -- 59 trainees with distance & surface
     aptitude grades.  Used as a name-keyed lookup to enrich auto-derived
@@ -11,7 +11,7 @@ Reads two community-maintained JSON catalogs ported from the
   - ``epithets.json`` -- 217 epithets, 59 of which are tagged as
     character-specific (the trainee's signature title) plus 158 generic
     ones.  Used to populate ``suggested_epithets`` in resolved profiles
-    so the dashboard can render a pre-filtered picker like Android's.
+    so the dashboard can render a pre-filtered picker like the game's.
 
 Both files are loaded lazily and memoized on first access.  The loaders
 are read-only -- this module never writes to disk.
@@ -100,7 +100,7 @@ def _read_json_cached(path: Path, cache: Dict[str, Dict[str, Any]], mtimes: Dict
 def load_character_presets(base_dir: Any) -> Dict[str, Dict[str, Any]]:
     """Return ``{character_name: preset_row}`` for all bundled characters.
 
-    A preset row has the Android shape::
+    A preset row has the standard shape::
 
         {"name": "Oguri Cap",
          "distanceAptitudes": {"Sprint": "B", "Mile": "S", "Medium": "A", "Long": "A"},
@@ -115,7 +115,7 @@ def load_character_presets(base_dir: Any) -> Dict[str, Dict[str, Any]]:
 def load_epithet_catalog(base_dir: Any) -> Dict[str, Dict[str, Any]]:
     """Return ``{epithet_title: epithet_row}`` for all bundled epithets.
 
-    A row has the Android shape::
+    A row has the standard shape::
 
         {"name": "Showbiz Idol",
          "characters": ["Oguri Cap"],
@@ -217,7 +217,7 @@ def signature_epithet(
     """Return the single character-tagged epithet for this trainee, or
     ``None`` if the catalog doesn't have one.
 
-    In the Android-derived catalog each of the 59 known characters has
+    In the character catalog each of the 59 known characters has
     exactly one signature epithet (the title earned by completing their
     character-defining race set).  This helper exists so callers can
     populate a ``suggested_epithets`` list with just the signature title

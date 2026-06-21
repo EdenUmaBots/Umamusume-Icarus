@@ -19,7 +19,46 @@ import urllib.request
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
-ACCOUNTS = ROOT / "accounts.json"
+
+
+def resolve_userdata_dir():
+    """Resolve the userdata folder the dashboard uses, so the manager reads the
+    SAME accounts.json the UI writes.
+
+    Mirrors main.py's resolution order. When the manager is launched from the
+    dashboard, ICARUS_USERDATA_DIR is set explicitly for an exact match;
+    otherwise we fall back through the same env vars / pointer files / sibling
+    folders main.py checks. Without this the manager would read a stale or
+    sample accounts.json from the build folder while the dashboard writes the
+    real roster to the (usually external) userdata folder.
+    """
+    for env_name in ("ICARUS_USERDATA_DIR", "SWEEPYCL_USERDATA_DIR", "SWEEPYCLAUDE_USERDATA_DIR"):
+        v = (os.environ.get(env_name) or "").strip()
+        if v:
+            try:
+                p = Path(v).expanduser()
+                if p.is_dir():
+                    return p
+            except Exception:
+                pass
+    for pointer_dir in (Path.home() / ".icarus", Path.home() / ".sweepycl"):
+        try:
+            ptr = pointer_dir / "userdata_pointer.json"
+            if ptr.exists():
+                target = (json.loads(ptr.read_text(encoding="utf-8")).get("userdata_path") or "").strip()
+                if target and Path(target).expanduser().is_dir():
+                    return Path(target).expanduser()
+        except Exception:
+            pass
+    for sibling in ("Icarus_userdata", "SweepyCL_userdata", "SweepyClaude_userdata"):
+        cand = ROOT.parent / sibling
+        if cand.is_dir():
+            return cand
+    return ROOT
+
+
+USERDATA = resolve_userdata_dir()
+ACCOUNTS = USERDATA / "accounts.json"
 RUNTIME = ROOT / "uma_runtime"
 LOG_DIR = RUNTIME / "manager_logs"
 STATUS_PATH = RUNTIME / "manager_status.json"
@@ -74,6 +113,12 @@ def write_instance_config(account):
 def start_child(account):
     cfg, port = write_instance_config(account)
     env = os.environ.copy()
+    # Children must resolve the same userdata folder as the dashboard/manager so
+    # each per-account profile reads/writes its auth under the shared userdata
+    # (auth is isolated per-profile inside it). Inherited from the dashboard when
+    # set; otherwise pin it to the folder the manager resolved.
+    if not env.get("ICARUS_USERDATA_DIR"):
+        env["ICARUS_USERDATA_DIR"] = str(USERDATA)
     if account.get("stuck_turn_threshold"):
         env["UMA_STUCK_TURN_THRESHOLD"] = str(account.get("stuck_turn_threshold"))
     LOG_DIR.mkdir(parents=True, exist_ok=True)

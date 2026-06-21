@@ -1,6 +1,6 @@
 """SweepyCL training scorer (v6.1).
 
-Reimplements the Android-equivalent training-scoring formula:
+Reimplements the Trackblazer training-scoring formula:
 
     score = (StatEfficiency * w_stat
              + Relationship  * w_rel
@@ -26,7 +26,7 @@ API surface intentionally small:
   - ``TrainingScore``        -- per-command output with components + diagnostics.
   - ``score_trainings(home_info, chara_info, ...)`` -- returns scores sorted
     best-first.
-  - ``pre_summer_action(turn, energy, mood)`` -- Android-equivalent
+  - ``pre_summer_action(turn, energy, mood)`` -- standard
     June-Late prep helper (returns ``"rest" | "recover" | "train_wit" | None``).
 
 No new dependencies.  Pure standard library.
@@ -58,7 +58,7 @@ MOOD_NORMAL = 3
 
 @dataclass
 class TrainingScorerConfig:
-    """All tunables for the scorer.  Defaults match the Android bot's
+    """All tunables for the scorer.  Defaults match the reference solver's
     settings page out-of-the-box so users coming from there don't have to
     re-tune anything obvious."""
 
@@ -85,7 +85,7 @@ class TrainingScorerConfig:
     """Used when ``rainbow_bonus_enabled`` is on (aggressive rainbow pursuit)."""
 
     rainbow_normal_multiplier: float = 1.5
-    """Default rainbow multiplier (matches Android default)."""
+    """Default rainbow multiplier (matches the reference default)."""
 
     no_rainbow_multiplier: float = 1.0
 
@@ -107,7 +107,7 @@ class TrainingScorerConfig:
     """Bond bars below this fraction of the rainbow threshold are ignored
     for anticipation (otherwise everything looks ``near-rainbow``)."""
 
-    # ----- facility level weighting (Android equivalent) ------------------
+    # ----- facility level weighting (standard formula) ------------------
 
     enable_level_weighting: bool = True
     """Top-N priority stats get a multiplier based on the training facility
@@ -127,7 +127,7 @@ class TrainingScorerConfig:
 
     max_failure_chance: int = 20
     """Trainings with failure rate above this are filtered out (matches
-    Android default; risky-training mode override goes through a separate
+    Default behavior; risky-training mode override goes through a separate
     config flag downstream)."""
 
     stat_cap_buffer: int = 100
@@ -159,6 +159,19 @@ class TrainingScorerConfig:
 
     summer_stat_priority: Optional[List[str]] = None
     """Optional separate priority for Summer turns (37-40 and 61-64)."""
+
+    # ----- #6 goal-aware lookahead (opt-in) -------------------------------
+
+    goal_lookahead: bool = False
+    """When True, stat-gain value is boosted for stats that are BEHIND the pace
+    needed to reach their target by the career deadline, and trimmed for stats
+    already ahead of pace. Off by default — default scoring is unchanged."""
+
+    career_total_turns: int = 78
+    """Total career turns used to compute the goal-lookahead pace target."""
+
+    goal_lookahead_max_boost: float = 0.4
+    """Cap on the urgency multiplier swing (±) applied when ``goal_lookahead``."""
 
     # ----- rainbow detection ----------------------------------------------
 
@@ -358,7 +371,7 @@ def _level_multiplier(
     priority: Sequence[str],
     facility_level: int,
 ) -> float:
-    """Android-equivalent training-level weighting.
+    """Standard training-level weighting.
 
     Only the top-N priority stats get a boost, only when facility level >= 2.
     The Lvl-5 ceilings are configured; intermediate levels fade linearly
@@ -416,12 +429,49 @@ def _rainbow_multiplier(
     return cfg.no_rainbow_multiplier
 
 
+def _goal_urgency(
+    cfg: TrainingScorerConfig,
+    current_stats: Mapping[str, int],
+    targets: Mapping[str, int],
+    turn: int,
+) -> Dict[str, float]:
+    """#6 — per-stat pace multiplier for goal-aware lookahead.
+
+    Returns ``{}`` (no effect) unless ``cfg.goal_lookahead`` is on. Otherwise a
+    stat that is BEHIND the linear pace needed to reach its target by the career
+    deadline is boosted (up to +``goal_lookahead_max_boost``); a stat already
+    ahead of pace is trimmed by the same cap. This nudges the goal-aware scorer
+    to shore up lagging stats earlier so the target build is met by the finals.
+    """
+    if not getattr(cfg, "goal_lookahead", False):
+        return {}
+    total = max(1, int(getattr(cfg, "career_total_turns", 78)))
+    turn = int(turn or 0)
+    if turn <= 0 or turn >= total:
+        return {}
+    progress = turn / total
+    swing = float(getattr(cfg, "goal_lookahead_max_boost", 0.4))
+    out: Dict[str, float] = {}
+    for name, target in (targets or {}).items():
+        target = int(target or 0)
+        if target <= 0:
+            continue
+        expected = target * progress
+        if expected <= 0:
+            continue
+        current = int((current_stats or {}).get(name) or 0)
+        ratio = current / expected  # < 1 behind pace, > 1 ahead of pace
+        out[name] = 1.0 + max(-swing, min(swing, 1.0 - ratio))
+    return out
+
+
 def _stat_efficiency(
     stat_gains: Mapping[str, int],
     targets: Mapping[str, int],
     current_stats: Mapping[str, int],
     priority: Sequence[str],
     cfg: TrainingScorerConfig,
+    urgency: Optional[Mapping[str, float]] = None,
 ) -> float:
     """How much the stat gain moves the trainee toward their distance target.
 
@@ -430,7 +480,7 @@ def _stat_efficiency(
       - **Importance**: per-distance target normalized against the scenario
         max.  A Long-runner whose Stamina target is 1100 gets full importance
         for Stamina; a Sprint-runner whose Stamina target is 400 gets ~36%.
-        This is what the Android setting "Stat Targets by Distance" encodes.
+        This is what the "Stat Targets by Distance" setting encodes.
 
       - **Gap remaining**: ``(target - current) / target`` -- 1.0 when
         starting fresh, 0.0 once you've hit target.  Once at/over target
@@ -461,6 +511,9 @@ def _stat_efficiency(
             # push past target for a clearly excellent training, but not
             # nearly as eagerly as before reaching it.
             base = gain * 0.25
+
+        if urgency:
+            base *= float(urgency.get(name, 1.0))
 
         # Priority ordering is a secondary modulator -- rank 0 keeps full
         # rate, descending stats fade gradually.
@@ -555,6 +608,7 @@ def score_trainings(
     distance = (distance_label or _infer_distance(chara_info)).lower()
     targets = cfg.stat_targets.get(distance) or cfg.stat_targets.get("mile") or {}
     priority = _priority_for_context(cfg, context)
+    urgency = _goal_urgency(cfg, current_stats, targets, int((chara_info or {}).get("turn") or 0))
 
     scored: List[TrainingScore] = []
     for cmd in (home_info or {}).get("command_info_array") or []:
@@ -565,7 +619,7 @@ def score_trainings(
         if int(cmd.get("is_enable") or 0) == 0:
             continue
         scored.append(
-            _score_one_command(cmd, current_stats, targets, priority, bonds, cfg)
+            _score_one_command(cmd, current_stats, targets, priority, bonds, cfg, urgency)
         )
 
     # Filtered/skipped commands sort to the bottom by virtue of score=0.
@@ -580,6 +634,7 @@ def _score_one_command(
     priority: Sequence[str],
     bonds: Mapping[int, int],
     cfg: TrainingScorerConfig,
+    urgency: Optional[Mapping[str, float]] = None,
 ) -> TrainingScore:
     command_id = int(cmd.get("command_id") or 0)
     command_type = int(cmd.get("command_type") or 0)
@@ -640,7 +695,7 @@ def _score_one_command(
 
     # ---- Components ----------------------------------------------------
 
-    stat_eff = _stat_efficiency(stat_gains, targets, current_stats, priority, cfg)
+    stat_eff = _stat_efficiency(stat_gains, targets, current_stats, priority, cfg, urgency)
     rel_raw, partner_count, rainbow_count, near_fill = _relationship_score(cmd, bonds, cfg)
     skill_hint_partners = len(cmd.get("tips_event_partner_array") or [])
     misc_raw = _misc_score(cmd, sp_gain, skill_hint_partners)
@@ -695,7 +750,7 @@ def pre_summer_action(
     *,
     energy_floor_pct: float = 0.70,
 ) -> Optional[str]:
-    """Android-equivalent June-Late pre-summer prep decision.
+    """June-Late pre-summer prep decision.
 
     Returns ``"rest"``, ``"recover"``, ``"train_wit"``, or ``None``.
 
@@ -713,11 +768,64 @@ def pre_summer_action(
     return "train_wit"
 
 
+def adapt_stamina_targets(
+    config: TrainingScorerConfig,
+    chara_info: Mapping[str, Any],
+    *,
+    enabled: bool,
+    turn: Optional[int] = None,
+    career_total_turns: int = 78,
+    min_turn: int = 40,
+    lag_ratio: float = 0.8,
+    floor: int = 400,
+) -> TrainingScorerConfig:
+    """Parent/deck-aware stamina relaxation (v6.8, opt-in).
+
+    When ``enabled`` and the trainee's stamina is, by mid-career, projected to
+    fall well short of its per-distance target (the signature of no stamina
+    inheritance or stamina support feeding it), lower the stamina target for the
+    trainee's inferred distance toward the projected-achievable value.  This
+    stops the scorer from sinking turns into an unreachable stamina number; those
+    turns flow to the next-priority stat (typically speed/wit) instead.
+
+    Heuristic, intentionally conservative: only acts after ``min_turn`` (post the
+    first summer camp, so the pace estimate is meaningful) and only when the
+    linear end-of-career projection is below ``lag_ratio`` of the target.  The
+    relaxed target is floored at ``floor`` and never raised above the original.
+
+    Pure: returns ``config`` unchanged when disabled / too early / on pace.
+    """
+    if not enabled or not turn or turn < min_turn:
+        return config
+    distance = _infer_distance(chara_info)
+    targets = (config.stat_targets or {}).get(distance)
+    if not isinstance(targets, Mapping):
+        return config
+    target_sta = int(targets.get("stamina") or 0)
+    if target_sta <= floor:
+        return config
+    current_sta = int(chara_info.get("stamina") or chara_info.get("stamina_value") or 0)
+    frac = max(0.05, min(1.0, turn / max(1, career_total_turns)))
+    projected_end = current_sta / frac
+    if projected_end >= target_sta * lag_ratio:
+        return config  # on track enough -- leave the target alone
+    new_target = max(floor, min(target_sta, int(round(projected_end))))
+    if new_target >= target_sta:
+        return config
+    import copy
+    new_cfg = copy.copy(config)
+    new_cfg.stat_targets = {d: dict(v) for d, v in (config.stat_targets or {}).items()}
+    new_cfg.stat_targets[distance] = dict(targets)
+    new_cfg.stat_targets[distance]["stamina"] = new_target
+    return new_cfg
+
+
 __all__ = [
     "TrainingScorerConfig",
     "TrainingScore",
     "score_trainings",
     "pre_summer_action",
+    "adapt_stamina_targets",
     "STAT_TARGET_TYPES",
     "SKILL_POINT_TARGETS",
     "RAINBOW_BOND_THRESHOLD_DEFAULT",

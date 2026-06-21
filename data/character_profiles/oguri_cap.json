@@ -2,25 +2,67 @@
   "display_name": "Oguri Cap",
   "_comment": "Tuned against the Android OguriTB profile's settings (Speed/Power/Wit priority, rainbow bonus on) and the audit findings (Stamina 518 < 550 default long-distance floor was penalizing late-game G1 longs). v6.6 NOTE: targetOptionalRaceCount was REMOVED because the solver only uses it for an after-the-fact diagnostic warning, NOT for actual race-count optimization. The real levers for race density are epithetValue, raceCostPct, and lateSeniorRacePressure -- those are now tuned aggressively. Oguri's auto-picked signature 'Ideal Idol' requires winning Mile Championship + Yasuda Kinen + Arima Kinen, so the solver gets epithetValue=3.0 per hit on those.",
   "training_scorer_mode": "hint",
-
   "training_scorer_overrides": {
-    "stat_priority": ["speed", "power", "wit", "stamina", "guts"],
-    "event_stat_priority": ["speed", "power", "stamina", "wit", "guts"],
-    "summer_stat_priority": ["speed", "power", "stamina", "wit", "guts"],
+    "stat_priority": [
+      "speed",
+      "power",
+      "stamina",
+      "wit",
+      "guts"
+    ],
+    "event_stat_priority": [
+      "speed",
+      "power",
+      "stamina",
+      "wit",
+      "guts"
+    ],
+    "summer_stat_priority": [
+      "speed",
+      "power",
+      "stamina",
+      "wit",
+      "guts"
+    ],
     "rainbow_bonus_enabled": true,
     "stat_targets": {
-      "sprint": {"speed": 1200, "stamina": 400, "power": 1100, "guts": 400, "wit": 1000},
-      "mile":   {"speed": 1200, "stamina": 700, "power": 1100, "guts": 400, "wit": 1000},
-      "medium": {"speed": 1150, "stamina": 850, "power": 1050, "guts": 400, "wit": 1000},
-      "long":   {"speed": 1050, "stamina": 1100, "power": 1000, "guts": 400, "wit": 1000}
+      "sprint": {
+        "speed": 1200,
+        "stamina": 400,
+        "power": 1100,
+        "guts": 400,
+        "wit": 1000
+      },
+      "mile": {
+        "speed": 1150,
+        "stamina": 750,
+        "power": 850,
+        "guts": 700,
+        "wit": 1000
+      },
+      "medium": {
+        "speed": 1150,
+        "stamina": 850,
+        "power": 850,
+        "guts": 700,
+        "wit": 1000
+      },
+      "long": {
+        "speed": 1050,
+        "stamina": 1100,
+        "power": 1000,
+        "guts": 400,
+        "wit": 1000
+      }
     }
   },
-
   "solver_overrides": {},
   "target_epithets": [],
   "forced_epithets": [],
-  "preferred_distances": ["mile", "medium"],
-
+  "preferred_distances": [
+    "mile",
+    "medium"
+  ],
   "scenarios": {
     "4": {
       "_comment": "Trackblazer scenario 4. epithetValue 3.0 = 3x default pull on Ideal Idol's required G1 wins. raceCostPct 75 lowers the per-race cost threshold so more middling races become net-positive (default 100 is 'only race for epithets'). lateSeniorRacePressure 20 (default 12) pushes more racing in turns 65-72. distancePreferenceBonus 12 (default 6) further rewards Mile/Medium picks. longDistanceStaminaFloor 450 = down from 550 since Oguri's Stamina aptitude is B not S/A. NOTE: targetOptionalRaceCount intentionally absent -- it's a no-op in the solver math, only used for warning notes.",
@@ -34,5 +76,6 @@
         "distancePreferenceBonus": 12.0
       }
     }
-  }
+  },
+  "auto_pick_epithets": false
 }

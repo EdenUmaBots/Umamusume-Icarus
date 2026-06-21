@@ -83,8 +83,43 @@ def _json_default(obj: Any) -> str:
     return str(obj)
 
 
+# P5: roll AI dataset jsonl files past this size into timestamped archives so the
+# live file stays small (fast to read/count). Archives are KEPT INDEFINITELY (no
+# cap) and stay readable by the trainer via _read_jsonl's archive globbing.
+JSONL_ROTATE_BYTES = 50 * 1024 * 1024
+JSONL_ARCHIVE_MARKER = ".archive-"
+
+
+def _rotate_if_large(path: Path) -> None:
+    """Rename an oversized dataset file to ``<stem>.archive-<ts><suffix>``.
+
+    Best-effort: a failure here must never block the append that follows.
+    """
+    try:
+        if not path.exists() or path.stat().st_size < JSONL_ROTATE_BYTES:
+            return
+        stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        archive = path.with_name(f"{path.stem}{JSONL_ARCHIVE_MARKER}{stamp}{path.suffix}")
+        n = 1
+        while archive.exists():  # two rotations in the same second
+            archive = path.with_name(f"{path.stem}{JSONL_ARCHIVE_MARKER}{stamp}_{n}{path.suffix}")
+            n += 1
+        path.replace(archive)
+    except Exception:
+        pass
+
+
+def _archive_paths(path: Path):
+    """All rotated archives for a dataset path, oldest-first by name."""
+    try:
+        return sorted(path.parent.glob(f"{path.stem}{JSONL_ARCHIVE_MARKER}*{path.suffix}"))
+    except Exception:
+        return []
+
+
 def _append_jsonl(path: Path, rows: Iterable[Mapping[str, Any]]) -> int:
     path.parent.mkdir(parents=True, exist_ok=True)
+    _rotate_if_large(path)
     count = 0
     with path.open("a", encoding="utf-8") as fh:
         for row in rows:
@@ -1318,19 +1353,46 @@ def import_previous_logs(base_dir: Any, source_path: str, rebuild: bool = True, 
         "manifest": str(ai_root / "import_manifest.json"),
     }
 
+_LINE_COUNT_MEMO: Dict[str, Any] = {}
+
+
+def _count_lines_cached(path) -> int:
+    """Count newlines, memoized by (size, mtime). Append-only datasets only get
+    re-read when they actually change, so repeated status polls cost a stat()."""
+    try:
+        st = path.stat()
+    except OSError:
+        return 0
+    key = str(path)
+    sig = (st.st_size, st.st_mtime_ns)
+    ent = _LINE_COUNT_MEMO.get(key)
+    if ent is not None and ent[0] == sig:
+        return ent[1]
+    try:
+        with path.open("rb") as fh:
+            count = sum(1 for _ in fh)
+    except Exception:
+        return -1
+    _LINE_COUNT_MEMO[key] = (sig, count)
+    return count
+
+
 def dataset_status(base_dir: Any) -> Dict[str, Any]:
     root = runtime_output_root(base_dir) / "ai"
     files: Dict[str, Dict[str, Any]] = {}
     for kind, name in DATASET_FILES.items():
         path = root / name
-        count = 0
-        if path.exists():
-            try:
-                with path.open("r", encoding="utf-8") as fh:
-                    count = sum(1 for _ in fh)
-            except Exception:
-                count = -1
-        files[kind] = {"path": str(path), "exists": path.exists(), "rows": count}
+        exists = path.exists()
+        live = _count_lines_cached(path) if exists else 0
+        archived = 0
+        for ap in _archive_paths(path):
+            ac = _count_lines_cached(ap)
+            if ac > 0:
+                archived += ac
+        # "rows" stays the cumulative total (live + rotated archives) so the UI
+        # count keeps climbing across rotations; live_rows is the on-disk file.
+        files[kind] = {"path": str(path), "exists": exists, "rows": live + archived,
+                       "live_rows": live, "archived_rows": archived}
     stats_path = root / "advisor_stats.json"
     stats = {}
     if stats_path.exists():

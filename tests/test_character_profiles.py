@@ -398,7 +398,7 @@ class ShippedProfilesRegressionTests(unittest.TestCase):
         self.assertEqual(weights["lateSeniorRacePressure"], 20.0)
         # Base training_scorer overrides reach the config
         cfg = profile.training_scorer_config()
-        self.assertEqual(cfg.stat_priority, ["speed", "power", "wit", "stamina", "guts"])
+        self.assertEqual(cfg.stat_priority, ["speed", "power", "stamina", "wit", "guts"])
         self.assertTrue(cfg.rainbow_bonus_enabled)
         self.assertEqual(cfg.stat_targets["long"]["stamina"], 1100)
         # Preferred distances reach through

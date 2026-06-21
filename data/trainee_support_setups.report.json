@@ -1,0 +1,43 @@
+{
+  "source_urls": 75,
+  "trainees_written": 75,
+  "with_setups": 70,
+  "with_budget": 69,
+  "with_alternates": 69,
+  "with_trainee_card_id": 26,
+  "fetch_errors": [],
+  "failed_parse": [
+    {
+      "url": "https://game8.co/games/Umamusume-Pretty-Derby/archives/572583",
+      "name": "Biwa Hayahide (Rouge Caroler)",
+      "reason": "no sections parsed"
+    },
+    {
+      "url": "https://game8.co/games/Umamusume-Pretty-Derby/archives/571291",
+      "name": "Tosen Jordan (Jokester ☆ Vibes)",
+      "reason": "no sections parsed"
+    },
+    {
+      "url": "https://game8.co/games/Umamusume-Pretty-Derby/archives/568906",
+      "name": "Kawakami Princess (Princess of Pink)",
+      "reason": "no sections parsed"
+    },
+    {
+      "url": "https://game8.co/games/Umamusume-Pretty-Derby/archives/541250",
+      "name": "Air Groove (Quercus Civilis)",
+      "reason": "no sections parsed"
+    },
+    {
+      "url": "https://game8.co/games/Umamusume-Pretty-Derby/archives/536325",
+      "name": "Biwa Hayahide (pf. Winning Equation...)",
+      "reason": "no sections parsed"
+    }
+  ],
+  "empty_trainees": [
+    "Biwa Hayahide (Rouge Caroler)",
+    "Tosen Jordan (Jokester ☆ Vibes)",
+    "Kawakami Princess (Princess of Pink)",
+    "Air Groove (Quercus Civilis)",
+    "Biwa Hayahide (pf. Winning Equation...)"
+  ]
+}

@@ -23,14 +23,14 @@
     "6+": 0
   },
   "summer_camp_turns": [
-    36,
     37,
     38,
     39,
-    60,
+    40,
     61,
     62,
-    63
+    63,
+    64
   ],
   "summer_strategy": {
     "save_training_boosts_for_summer": true,

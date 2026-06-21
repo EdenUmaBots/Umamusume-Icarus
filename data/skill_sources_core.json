@@ -2185,6 +2185,48 @@
       "need_rank": 0
     },
     {
+      "available_skill_set_id": 103601,
+      "skill_id": 200462,
+      "skill_name": "Ramp Up",
+      "need_rank": 0
+    },
+    {
+      "available_skill_set_id": 103601,
+      "skill_id": 201452,
+      "skill_name": "End Closer Straightaways ○",
+      "need_rank": 0
+    },
+    {
+      "available_skill_set_id": 103601,
+      "skill_id": 201453,
+      "skill_name": "Moonlit Flash",
+      "need_rank": 5
+    },
+    {
+      "available_skill_set_id": 103601,
+      "skill_id": 201492,
+      "skill_name": "Levelheaded",
+      "need_rank": 2
+    },
+    {
+      "available_skill_set_id": 103601,
+      "skill_id": 201502,
+      "skill_name": "Strategist",
+      "need_rank": 4
+    },
+    {
+      "available_skill_set_id": 103601,
+      "skill_id": 202101,
+      "skill_name": "Elated",
+      "need_rank": 3
+    },
+    {
+      "available_skill_set_id": 103601,
+      "skill_id": 202102,
+      "skill_name": "Eager",
+      "need_rank": 0
+    },
+    {
       "available_skill_set_id": 103701,
       "skill_id": 200432,
       "skill_name": "Focus",
@@ -13293,6 +13335,65 @@
       ]
     },
     {
+      "skill_set_id": 1101502,
+      "skills": [
+        {
+          "slot": 1,
+          "skill_id": 100151,
+          "skill_level": 1,
+          "skill_name": "This Dance Is for Vittoria!"
+        },
+        {
+          "slot": 2,
+          "skill_id": 200331,
+          "skill_level": 1,
+          "skill_name": "Professor of Curvature"
+        },
+        {
+          "slot": 3,
+          "skill_id": 201901,
+          "skill_level": 1,
+          "skill_name": "Neck and Neck"
+        },
+        {
+          "slot": 4,
+          "skill_id": 200382,
+          "skill_level": 1,
+          "skill_name": "Straightaway Recovery"
+        },
+        {
+          "slot": 5,
+          "skill_id": 200722,
+          "skill_level": 1,
+          "skill_name": "Up-Tempo"
+        },
+        {
+          "slot": 6,
+          "skill_id": 200562,
+          "skill_level": 1,
+          "skill_name": "Stamina to Spare"
+        },
+        {
+          "slot": 7,
+          "skill_id": 200362,
+          "skill_level": 1,
+          "skill_name": "Straightaway Adept"
+        },
+        {
+          "slot": 8,
+          "skill_id": 201532,
+          "skill_level": 1,
+          "skill_name": "Pace Chaser Savvy ○"
+        },
+        {
+          "slot": 9,
+          "skill_id": 200192,
+          "skill_level": 1,
+          "skill_name": "Fall Runner ○"
+        }
+      ]
+    },
+    {
       "skill_set_id": 1101601,
       "skills": [
         {
@@ -15037,6 +15138,59 @@
           "skill_id": 200572,
           "skill_level": 1,
           "skill_name": "Preferred Position"
+        }
+      ]
+    },
+    {
+      "skill_set_id": 1105802,
+      "skills": [
+        {
+          "slot": 1,
+          "skill_id": 100581,
+          "skill_level": 1,
+          "skill_name": "I Never Goof Up!"
+        },
+        {
+          "slot": 2,
+          "skill_id": 201701,
+          "skill_level": 1,
+          "skill_name": "Come What May"
+        },
+        {
+          "slot": 3,
+          "skill_id": 200581,
+          "skill_level": 1,
+          "skill_name": "Speed Star"
+        },
+        {
+          "slot": 4,
+          "skill_id": 200292,
+          "skill_level": 1,
+          "skill_name": "Target in Sight ○"
+        },
+        {
+          "slot": 5,
+          "skill_id": 200722,
+          "skill_level": 1,
+          "skill_name": "Up-Tempo"
+        },
+        {
+          "slot": 6,
+          "skill_id": 201902,
+          "skill_level": 1,
+          "skill_name": "Head-On"
+        },
+        {
+          "slot": 7,
+          "skill_id": 200572,
+          "skill_level": 1,
+          "skill_name": "Preferred Position"
+        },
+        {
+          "slot": 8,
+          "skill_id": 201112,
+          "skill_level": 1,
+          "skill_name": "Medium Corners ○"
         }
       ]
     },
@@ -17495,6 +17649,39 @@
           "skill_id": 100351,
           "skill_level": 3,
           "skill_name": "Our Ticket to Win!"
+        }
+      ]
+    },
+    {
+      "skill_set_id": 10360103,
+      "skills": [
+        {
+          "slot": 1,
+          "skill_id": 100361,
+          "skill_level": 1,
+          "skill_name": "trigger:BEAT"
+        }
+      ]
+    },
+    {
+      "skill_set_id": 10360104,
+      "skills": [
+        {
+          "slot": 1,
+          "skill_id": 100361,
+          "skill_level": 2,
+          "skill_name": "trigger:BEAT"
+        }
+      ]
+    },
+    {
+      "skill_set_id": 10360105,
+      "skills": [
+        {
+          "slot": 1,
+          "skill_id": 100361,
+          "skill_level": 3,
+          "skill_name": "trigger:BEAT"
         }
       ]
     },
@@ -34735,6 +34922,56 @@
       ]
     },
     {
+      "card_id": 103601,
+      "chara_id": 1036,
+      "name": "Air Shakur",
+      "available_skill_set_id": 103601,
+      "skills": [
+        {
+          "available_skill_set_id": 103601,
+          "skill_id": 200462,
+          "skill_name": "Ramp Up",
+          "need_rank": 0
+        },
+        {
+          "available_skill_set_id": 103601,
+          "skill_id": 202102,
+          "skill_name": "Eager",
+          "need_rank": 0
+        },
+        {
+          "available_skill_set_id": 103601,
+          "skill_id": 201452,
+          "skill_name": "End Closer Straightaways ○",
+          "need_rank": 0
+        },
+        {
+          "available_skill_set_id": 103601,
+          "skill_id": 201492,
+          "skill_name": "Levelheaded",
+          "need_rank": 2
+        },
+        {
+          "available_skill_set_id": 103601,
+          "skill_id": 202101,
+          "skill_name": "Elated",
+          "need_rank": 3
+        },
+        {
+          "available_skill_set_id": 103601,
+          "skill_id": 201502,
+          "skill_name": "Strategist",
+          "need_rank": 4
+        },
+        {
+          "available_skill_set_id": 103601,
+          "skill_id": 201453,
+          "skill_name": "Moonlit Flash",
+          "need_rank": 5
+        }
+      ]
+    },
+    {
       "card_id": 102301,
       "chara_id": 1023,
       "name": "Biwa Hayahide",
@@ -39597,6 +39834,15 @@
       "skills": []
     },
     {
+      "support_card_id": 20049,
+      "name": "Gold City",
+      "rarity": 2,
+      "command_id": 106,
+      "command_label": "wit",
+      "skill_set_id": 9081040,
+      "skills": []
+    },
+    {
       "support_card_id": 20003,
       "name": "Hishi Amazon",
       "rarity": 2,
@@ -39918,6 +40164,15 @@
       "command_id": 102,
       "command_label": "stamina",
       "skill_set_id": 9081019,
+      "skills": []
+    },
+    {
+      "support_card_id": 30106,
+      "name": "Air Groove",
+      "rarity": 3,
+      "command_id": 102,
+      "command_label": "stamina",
+      "skill_set_id": 9081018,
       "skills": []
     },
     {
@@ -41443,6 +41698,11 @@
     "100151": [
       {
         "source_type": "skill_set",
+        "source_id": 1101502,
+        "skill_level": 1
+      },
+      {
+        "source_type": "skill_set",
         "source_id": 10150103,
         "skill_level": 1
       },
@@ -42005,6 +42265,23 @@
         "skill_level": 1
       }
     ],
+    "100361": [
+      {
+        "source_type": "skill_set",
+        "source_id": 10360103,
+        "skill_level": 1
+      },
+      {
+        "source_type": "skill_set",
+        "source_id": 10360104,
+        "skill_level": 2
+      },
+      {
+        "source_type": "skill_set",
+        "source_id": 10360105,
+        "skill_level": 3
+      }
+    ],
     "100371": [
       {
         "source_type": "skill_set",
@@ -42317,6 +42594,11 @@
       }
     ],
     "100581": [
+      {
+        "source_type": "skill_set",
+        "source_id": 1105802,
+        "skill_level": 1
+      },
       {
         "source_type": "skill_set",
         "source_id": 10580103,
@@ -45286,6 +45568,11 @@
       },
       {
         "source_type": "skill_set",
+        "source_id": 1101502,
+        "skill_level": 1
+      },
+      {
+        "source_type": "skill_set",
         "source_id": 1102201,
         "skill_level": 1
       },
@@ -46362,6 +46649,11 @@
       },
       {
         "source_type": "skill_set",
+        "source_id": 1105802,
+        "skill_level": 1
+      },
+      {
+        "source_type": "skill_set",
         "source_id": 32842101,
         "skill_level": 1
       },
@@ -46583,6 +46875,11 @@
       {
         "source_type": "skill_set",
         "source_id": 1101501,
+        "skill_level": 1
+      },
+      {
+        "source_type": "skill_set",
+        "source_id": 1101502,
         "skill_level": 1
       },
       {
@@ -47844,6 +48141,11 @@
       },
       {
         "source_type": "skill_set",
+        "source_id": 1101502,
+        "skill_level": 1
+      },
+      {
+        "source_type": "skill_set",
         "source_id": 1101601,
         "skill_level": 1
       },
@@ -48473,6 +48775,11 @@
       {
         "source_type": "skill_set",
         "source_id": 1101401,
+        "skill_level": 1
+      },
+      {
+        "source_type": "skill_set",
+        "source_id": 1101502,
         "skill_level": 1
       },
       {
@@ -49670,6 +49977,11 @@
         "need_rank": 0
       },
       {
+        "source_type": "available_skill_set",
+        "source_id": 103601,
+        "need_rank": 0
+      },
+      {
         "source_type": "skill_set",
         "source_id": 8006,
         "skill_level": 1
@@ -49901,6 +50213,12 @@
         "source_id": 101802,
         "source_name": "Air Groove",
         "need_rank": 4
+      },
+      {
+        "source_type": "trainee",
+        "source_id": 103601,
+        "source_name": "Air Shakur",
+        "need_rank": 0
       },
       {
         "source_type": "trainee",
@@ -52892,6 +53210,11 @@
       },
       {
         "source_type": "skill_set",
+        "source_id": 1101502,
+        "skill_level": 1
+      },
+      {
+        "source_type": "skill_set",
         "source_id": 1102301,
         "skill_level": 1
       },
@@ -53415,6 +53738,11 @@
       },
       {
         "source_type": "skill_set",
+        "source_id": 1105802,
+        "skill_level": 1
+      },
+      {
+        "source_type": "skill_set",
         "source_id": 32100303,
         "skill_level": 1
       },
@@ -53638,6 +53966,11 @@
       {
         "source_type": "skill_set",
         "source_id": 1102201,
+        "skill_level": 1
+      },
+      {
+        "source_type": "skill_set",
+        "source_id": 1105802,
         "skill_level": 1
       },
       {
@@ -57787,12 +58120,22 @@
       },
       {
         "source_type": "skill_set",
+        "source_id": 1101502,
+        "skill_level": 1
+      },
+      {
+        "source_type": "skill_set",
         "source_id": 1104801,
         "skill_level": 1
       },
       {
         "source_type": "skill_set",
         "source_id": 1105801,
+        "skill_level": 1
+      },
+      {
+        "source_type": "skill_set",
+        "source_id": 1105802,
         "skill_level": 1
       },
       {
@@ -61361,6 +61704,11 @@
       {
         "source_type": "skill_set",
         "source_id": 1103301,
+        "skill_level": 1
+      },
+      {
+        "source_type": "skill_set",
+        "source_id": 1105802,
         "skill_level": 1
       },
       {
@@ -66352,6 +66700,11 @@
         "need_rank": 0
       },
       {
+        "source_type": "available_skill_set",
+        "source_id": 103601,
+        "need_rank": 0
+      },
+      {
         "source_type": "skill_set",
         "source_id": 200016,
         "skill_level": 1
@@ -66410,9 +66763,28 @@
       },
       {
         "source_type": "trainee",
+        "source_id": 103601,
+        "source_name": "Air Shakur",
+        "need_rank": 0
+      },
+      {
+        "source_type": "trainee",
         "source_id": 105001,
         "source_name": "Narita Taishin",
         "need_rank": 4
+      }
+    ],
+    "201453": [
+      {
+        "source_type": "available_skill_set",
+        "source_id": 103601,
+        "need_rank": 5
+      },
+      {
+        "source_type": "trainee",
+        "source_id": 103601,
+        "source_name": "Air Shakur",
+        "need_rank": 5
       }
     ],
     "201461": [
@@ -66745,6 +67117,11 @@
         "need_rank": 0
       },
       {
+        "source_type": "available_skill_set",
+        "source_id": 103601,
+        "need_rank": 2
+      },
+      {
         "source_type": "skill_set",
         "source_id": 100010,
         "skill_level": 1
@@ -66844,6 +67221,12 @@
         "source_id": 103301,
         "source_name": "Admire Vega",
         "need_rank": 0
+      },
+      {
+        "source_type": "trainee",
+        "source_id": 103601,
+        "source_name": "Air Shakur",
+        "need_rank": 2
       }
     ],
     "201501": [
@@ -66885,6 +67268,11 @@
     ],
     "201502": [
       {
+        "source_type": "available_skill_set",
+        "source_id": 103601,
+        "need_rank": 4
+      },
+      {
         "source_type": "skill_set",
         "source_id": 200015,
         "skill_level": 1
@@ -66908,6 +67296,12 @@
         "source_type": "skill_set",
         "source_id": 32845501,
         "skill_level": 1
+      },
+      {
+        "source_type": "trainee",
+        "source_id": 103601,
+        "source_name": "Air Shakur",
+        "need_rank": 4
       }
     ],
     "201511": [
@@ -67159,6 +67553,11 @@
       {
         "source_type": "skill_set",
         "source_id": 200027,
+        "skill_level": 1
+      },
+      {
+        "source_type": "skill_set",
+        "source_id": 1101502,
         "skill_level": 1
       },
       {
@@ -68476,6 +68875,11 @@
       },
       {
         "source_type": "skill_set",
+        "source_id": 1105802,
+        "skill_level": 1
+      },
+      {
+        "source_type": "skill_set",
         "source_id": 40102604,
         "skill_level": 1
       },
@@ -68532,6 +68936,11 @@
         "need_rank": 5
       },
       {
+        "source_type": "skill_set",
+        "source_id": 1101502,
+        "skill_level": 1
+      },
+      {
         "source_type": "trainee",
         "source_id": 101002,
         "source_name": "Taiki Shuttle",
@@ -68559,6 +68968,11 @@
         "source_type": "available_skill_set",
         "source_id": 101002,
         "need_rank": 0
+      },
+      {
+        "source_type": "skill_set",
+        "source_id": 1105802,
+        "skill_level": 1
       },
       {
         "source_type": "skill_set",
@@ -68792,6 +69206,32 @@
         "source_id": 107201,
         "source_name": "Yaeno Muteki",
         "need_rank": 2
+      }
+    ],
+    "202101": [
+      {
+        "source_type": "available_skill_set",
+        "source_id": 103601,
+        "need_rank": 3
+      },
+      {
+        "source_type": "trainee",
+        "source_id": 103601,
+        "source_name": "Air Shakur",
+        "need_rank": 3
+      }
+    ],
+    "202102": [
+      {
+        "source_type": "available_skill_set",
+        "source_id": 103601,
+        "need_rank": 0
+      },
+      {
+        "source_type": "trainee",
+        "source_id": 103601,
+        "source_name": "Air Shakur",
+        "need_rank": 0
       }
     ],
     "202121": [

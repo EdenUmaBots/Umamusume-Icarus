@@ -33,6 +33,8 @@ class EventManager:
         self.base_dir = Path(base_dir)
         self.outcomes = {}
         self.event_display = {}
+        self.scraped_effects = {}
+        self._scraped_name_index = None
         self.last_choice_trace = {}
         runtime = self.base_dir / "uma_runtime"
         self._runtime_overrides_path = runtime / "event_overrides.json"
@@ -47,6 +49,19 @@ class EventManager:
                 self.outcomes = json.loads(path.read_text(encoding="utf-8"))
             except Exception:
                 pass
+
+        # v1.5: the gametora-scraped effect DB (3639 events keyed by story_id,
+        # each choice carrying an effect string like "Skill hint +1, Power +20").
+        # Used ONLY as a fallback when there is no observed/curated outcome for an
+        # event, so existing tuned behavior is unchanged for known events.
+        scraped_path = self.base_dir / "data" / "event_effects_scraped.json"
+        if scraped_path.exists():
+            try:
+                raw = json.loads(scraped_path.read_text(encoding="utf-8")) or {}
+                if isinstance(raw, dict):
+                    self.scraped_effects = raw
+            except Exception:
+                self.scraped_effects = {}
 
         display_path = self.base_dir / "data" / "event_reward_display_core.json"
         if display_path.exists():
@@ -145,18 +160,20 @@ class EventManager:
             self.last_choice_trace = {"story_id": story_id, "choice": 0, "reason": "no_choices"}
             return 0
 
-        runtime_override = self._runtime_override_choice(story_id)
-        if runtime_override is not None:
-            idx = self._choice_index_from_select(choices, runtime_override)
-            self.last_choice_trace = {"story_id": story_id, "choice": idx, "reason": "runtime_override", "override": runtime_override}
-            self._write_runtime_seen(story_id, event, len(choices), idx, "override")
-            return idx
-
+        # Per-preset event choices (preset.event_overrides) win over the legacy
+        # global override file, so switching presets switches event choices.
         override = self._override_choice(event, preset)
         if override is not None:
             idx = self._choice_index_from_select(choices, override)
             self.last_choice_trace = {"story_id": story_id, "choice": idx, "reason": "preset_override", "override": override}
             self._write_runtime_seen(story_id, event, len(choices), idx, "preset_override")
+            return idx
+
+        runtime_override = self._runtime_override_choice(story_id)
+        if runtime_override is not None:
+            idx = self._choice_index_from_select(choices, runtime_override)
+            self.last_choice_trace = {"story_id": story_id, "choice": idx, "reason": "runtime_override", "override": runtime_override}
+            self._write_runtime_seen(story_id, event, len(choices), idx, "override")
             return idx
 
         # Known game-critical default from the original bot.
@@ -191,6 +208,7 @@ class EventManager:
         outcomes = outcome_data.get("outcomes", {}) if isinstance(outcome_data, dict) else {}
         details = outcome_data.get("details") or outcome_data.get("rewards") or {}
         inline_rewards = self._inline_choice_rewards(event)
+        scraped_rewards = None  # lazily resolved only if needed
         scored = []
         any_signal = False
         for i, choice in enumerate(choices):
@@ -201,6 +219,12 @@ class EventManager:
                 reward_detail = details.get(select_index)
             if reward_detail is None and i < len(inline_rewards):
                 reward_detail = inline_rewards[i]
+            # v1.5: no observed/curated/inline signal -> fall back to the scraped
+            # effect DB so previously-blind events get a real score.
+            if reward_detail is None and label is None:
+                if scraped_rewards is None:
+                    scraped_rewards = self._scraped_choices_for_event(event)
+                reward_detail = scraped_rewards.get(select_index)
             score, reason = self._score_outcome(label, reward_detail, preset, chara, current_turn)
             scored.append({
                 "index": i,
@@ -271,12 +295,120 @@ class EventManager:
         outcome_data = self.outcomes.get(story_id)
         if outcome_data:
             return outcome_data
-        if len(story_id) >= 3:
-            suffix = story_id[-3:]
-            for k, v in self.outcomes.items():
-                if str(k).endswith(suffix):
-                    return v
+        # v1.5: tightened fuzzy match. The old "last 3 digits, first match wins"
+        # silently mis-scored unrelated events that happened to share 3 trailing
+        # digits. Now require a longer suffix AND a UNIQUE candidate, so an
+        # ambiguous match is treated as "no data" (and falls through to the name
+        # lookup / scraped DB) rather than guessing wrong.
+        if len(story_id) >= 6:
+            suffix = story_id[-6:]
+            matches = [v for k, v in self.outcomes.items() if str(k).endswith(suffix)]
+            if len(matches) == 1:
+                return matches[0]
         return None
+
+    # ---- v1.5 scraped-effect fallback (gametora 3639-event DB) -------------
+    _EFFECT_STAT_MAP = {
+        "speed": "speed", "stamina": "stamina", "power": "power", "guts": "guts",
+        "wisdom": "wiz", "wit": "wiz", "wiz": "wiz", "intelligence": "wiz",
+    }
+
+    def _parse_effect_string(self, text):
+        """Parse a gametora-style effect string into a reward dict consumable by
+        ``_score_reward_detail``.
+
+        Examples:
+          "Skill hint +1, Bond +5, Power +20"
+          "Skill points +30, Motivation -1, Wisdom +15"
+          "Energy +20, Get Practice Perfect ○"
+        Unknown tokens are ignored; status symbols ○ (good) / ✕ × (bad) are read.
+        Returns ``None`` when nothing scoreable is found.
+        """
+        if not text or not isinstance(text, str):
+            return None
+        reward = {}
+        hint_count = 0
+        if "○" in text or "◯" in text:
+            reward["positive_status"] = True
+        if "✕" in text or "×" in text:
+            reward["negative_status"] = True
+        for m in re.finditer(r"([A-Za-z][A-Za-z .]*?)\s*([+-]\s*\d+)", text):
+            name = m.group(1).strip().lower()
+            try:
+                val = int(m.group(2).replace(" ", ""))
+            except Exception:
+                continue
+            if "skill" in name and "hint" in name:
+                hint_count += max(1, val)
+                continue
+            if "skill" in name and ("point" in name or "pt" in name):
+                reward["skill_point"] = reward.get("skill_point", 0) + val
+                continue
+            if "max" in name and ("energy" in name or "vital" in name or "stamina" in name):
+                reward["max_vital"] = reward.get("max_vital", 0) + val
+                continue
+            if "energy" in name or "vital" in name:
+                reward["vital"] = reward.get("vital", 0) + val
+                continue
+            if "bond" in name or "friendship" in name:
+                reward["bond"] = reward.get("bond", 0) + val
+                continue
+            if "motivation" in name or "mood" in name:
+                reward["motivation"] = reward.get("motivation", 0) + val
+                continue
+            if "all stat" in name or name == "all stats":
+                for sk in STAT_KEYS:
+                    reward[sk] = reward.get(sk, 0) + val
+                continue
+            stat = None
+            for token, sk in self._EFFECT_STAT_MAP.items():
+                if name == token or name.endswith(" " + token) or name.endswith(token):
+                    stat = sk
+                    break
+            if stat:
+                reward[stat] = reward.get(stat, 0) + val
+        if hint_count:
+            reward["gained_skill_hints"] = {f"h{i}": 1 for i in range(hint_count)}
+        return reward or None
+
+    def _scraped_by_name(self, event):
+        if self._scraped_name_index is None:
+            idx = {}
+            for sid, row in (self.scraped_effects or {}).items():
+                if isinstance(row, dict):
+                    nm = " ".join(str(row.get("event_name") or "").strip().split()).lower()
+                    if nm and nm not in idx:
+                        idx[nm] = row
+            self._scraped_name_index = idx
+        for name in (event.get("title"), event.get("event_title"), event.get("name"),
+                     ((event.get("event_contents_info") or {}).get("title")
+                      if isinstance(event.get("event_contents_info"), dict) else "")):
+            needle = " ".join(str(name or "").strip().split()).lower()
+            if needle and needle in self._scraped_name_index:
+                return self._scraped_name_index[needle]
+        return None
+
+    def _scraped_choices_for_event(self, event):
+        """Return ``{select_index_str: reward_dict}`` parsed from the scraped DB
+        for this event, or ``{}`` when not found."""
+        if not self.scraped_effects:
+            return {}
+        story_id = str(event.get("story_id", ""))
+        row = self.scraped_effects.get(story_id)
+        if not isinstance(row, dict):
+            row = self._scraped_by_name(event)
+        if not isinstance(row, dict):
+            return {}
+        choices = row.get("choices")
+        if not isinstance(choices, dict):
+            return {}
+        out = {}
+        for sel, info in choices.items():
+            if isinstance(info, dict):
+                parsed = self._parse_effect_string(info.get("effect"))
+                if parsed:
+                    out[str(sel)] = parsed
+        return out
 
     def _override_choice(self, event, preset):
         overrides = (preset or {}).get("event_overrides") or {}
@@ -335,7 +467,7 @@ class EventManager:
             if any(token in text for token in ("mood down", "motivation down", "motivation -", "mood -")):
                 score += tb_rules.EVENT_MOOD_LOSS_PENALTY; reason.append("mood_loss")
             if "energy" in text or "vital" in text or "hp" in text:
-                score += self._energy_bonus(chara, 10, preset); reason.append("energy")
+                score += self._energy_bonus(chara, 10, preset, turn); reason.append("energy")
             if "skill" in text and "hint" in text:
                 score += tb_rules.EVENT_SKILL_HINT_BONUS; reason.append("skill_hint")
             if "bond" in text and ("up" in text or "+" in text):
@@ -348,7 +480,7 @@ class EventManager:
                 score += tb_rules.EVENT_POSITIVE_STATUS_BONUS; reason.append("positive_status")
 
         if reward_detail is not None:
-            score += self._score_reward_detail(reward_detail, preset, chara, reason)
+            score += self._score_reward_detail(reward_detail, preset, chara, reason, turn)
         return score, ",".join(reason) or "neutral"
 
     def _event_display_labels(self, reward):
@@ -374,7 +506,7 @@ class EventManager:
                 labels.append(f"item:{row.get('name')}")
         return list(dict.fromkeys(labels))
 
-    def _score_reward_detail(self, reward, preset, chara, reason):
+    def _score_reward_detail(self, reward, preset, chara, reason, turn=0):
         if isinstance(reward, list):
             reward = {"params_inc_dec_info_array": reward}
         if not isinstance(reward, dict):
@@ -408,14 +540,14 @@ class EventManager:
                     score += val
                     reason.append("skill_points")
                 elif val > 0:
-                    score += val + stat_bonus.get(target, 0)
+                    score += (val + stat_bonus.get(target, 0)) * self._stat_cap_factor(chara, target)
                     reason.append(f"stat_{STAT_KEYS[target]}")
                 else:
                     score += val
                     reason.append(f"stat_loss_{STAT_KEYS[target]}")
                 continue
             if target_type_int in VITAL_TARGET_TYPES:
-                score += self._energy_bonus(chara, val, preset)
+                score += self._energy_bonus(chara, val, preset, turn)
                 reason.append("vital")
                 continue
             if target_type_int in MOTIVATION_TARGET_TYPES:
@@ -446,7 +578,7 @@ class EventManager:
         for key in ("vital", "energy", "hp"):
             val = self._numeric_value(reward, key, default=None)
             if val is not None:
-                score += self._energy_bonus(chara, val, preset)
+                score += self._energy_bonus(chara, val, preset, turn)
                 reason.append("vital")
         for key in ("motivation", "mood"):
             val = self._numeric_value(reward, key, default=None)
@@ -475,7 +607,7 @@ class EventManager:
                 if val is None:
                     continue
                 if val > 0:
-                    score += val + stat_bonus.get(idx, 0)
+                    score += (val + stat_bonus.get(idx, 0)) * self._stat_cap_factor(chara, idx)
                     reason.append(f"stat_{key}")
                 else:
                     score += val
@@ -571,7 +703,7 @@ class EventManager:
                 result[idx] = 0.0
         return result
 
-    def _energy_bonus(self, chara, value, preset=None):
+    def _energy_bonus(self, chara, value, preset=None, turn=0):
         try:
             value = float(value)
         except (TypeError, ValueError):
@@ -582,14 +714,53 @@ class EventManager:
             # Energy loss hurts most when already low, but do not multiply it by
             # the extreme prioritize-energy setting or it can swamp everything.
             return value * max(1, self._energy_multiplier(chara))
+        # v1.5: energy gains are worth more in summer camp (fuels training) and
+        # late-senior turns (fuels finale race chains). Multiplier is >= 1.0 so it
+        # only ever boosts a real gain, never flips the full-energy zeroing below.
+        tm = self._turn_energy_multiplier(turn)
         if (preset or {}).get("prioritize_event_energy") or (preset or {}).get("prioritize_energy"):
             mult = float((preset or {}).get("event_energy_priority_multiplier") or tb_rules.EVENT_ENERGY_PRIORITIZE_MULTIPLIER)
-            return value * max(1.0, mult)
+            return value * max(1.0, mult) * tm
         hp = int((chara or {}).get("vital") or 50)
         max_vital = int((chara or {}).get("max_vital") or 100)
         if max_vital > 0 and hp >= max_vital:
             return 0.0
-        return value * self._energy_multiplier(chara)
+        return value * self._energy_multiplier(chara) * tm
+
+    def _turn_energy_multiplier(self, turn):
+        """Energy is more valuable in summer camp and the late/finale stretch."""
+        try:
+            t = int(turn or 0)
+        except (TypeError, ValueError):
+            return 1.0
+        if t in (37, 38, 39, 40, 61, 62, 63, 64):  # summer camp turns
+            return 1.25
+        if t >= 66:  # late senior / finale lead-in
+            return 1.2
+        return 1.0
+
+    # Game stat ceiling; positive stat rewards lose value as a stat nears it so
+    # the scorer stops over-valuing points dumped into an already-maxed stat.
+    _STAT_CAP = 1200
+    _STAT_CAP_WINDOW = 250
+
+    def _stat_cap_factor(self, chara, stat_idx):
+        if not isinstance(chara, dict) or not (0 <= stat_idx < len(STAT_KEYS)):
+            return 1.0
+        key = STAT_KEYS[stat_idx]
+        cur = chara.get(key)
+        if cur is None and key == "wiz":
+            cur = chara.get("wit")
+        try:
+            cur = float(cur)
+        except (TypeError, ValueError):
+            return 1.0
+        if cur <= 0:
+            return 1.0
+        headroom = (self._STAT_CAP - cur) / self._STAT_CAP_WINDOW
+        if headroom >= 1.0:
+            return 1.0
+        return max(0.1, headroom)
 
     def _energy_multiplier(self, chara):
         hp = int((chara or {}).get("vital") or 50)

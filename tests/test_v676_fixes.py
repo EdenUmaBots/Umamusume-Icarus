@@ -107,17 +107,18 @@ class UserdataConfigStoreTests(unittest.TestCase):
     def test_userdata_dir_receives_settings(self):
         from career_bot.config_store import ConfigStore
         cs = ConfigStore(str(self.build_dir), userdata_dir=str(self.user_dir))
-        # Settings file should now live under userdata, not build
+        # Config now lives under userdata as per-file presets (v7.6).
         self.assertEqual(cs.data_dir, self.user_dir / "data")
-        self.assertTrue((self.user_dir / "data" / "settings_presets.json").exists())
+        self.assertTrue((self.user_dir / "data" / "presets").exists())
+        self.assertTrue((self.user_dir / "data" / "presets" / "MyCustom.json").exists())
 
     def test_migration_copies_existing_settings(self):
         from career_bot.config_store import ConfigStore
         cs = ConfigStore(str(self.build_dir), userdata_dir=str(self.user_dir))
-        # The user's "MyCustom" preset should have been carried forward
-        payload = json.loads((self.user_dir / "data" / "settings_presets.json").read_text(encoding="utf-8"))
+        # The user's "MyCustom" preset is carried forward into the per-file store.
+        payload = cs.read_settings_presets()
         self.assertEqual(payload["active"], "MyCustom")
-        self.assertEqual(payload["presets"][0]["name"], "MyCustom")
+        self.assertIn("MyCustom", {p["name"] for p in payload["presets"]})
 
     def test_userdata_none_uses_in_build_path(self):
         """When userdata_dir is None or equals base_dir, behavior is the
@@ -129,26 +130,24 @@ class UserdataConfigStoreTests(unittest.TestCase):
         self.assertFalse(self.user_dir.exists())
 
     def test_userdata_preserves_user_changes_on_upgrade(self):
-        """If userdata already has a file, the migration must NOT
-        overwrite it with the build's default."""
-        # First-time migration
+        """User presets in userdata must survive a build upgrade that ships
+        a different default."""
         from career_bot.config_store import ConfigStore
-        ConfigStore(str(self.build_dir), userdata_dir=str(self.user_dir))
-        # User customizes their preset
-        custom = json.loads((self.user_dir / "data" / "settings_presets.json").read_text(encoding="utf-8"))
-        custom["active"] = "UserEdited"
-        (self.user_dir / "data" / "settings_presets.json").write_text(json.dumps(custom), encoding="utf-8")
-        # Simulate v6.7.7 upgrade: re-init ConfigStore with a NEW build
-        # that ships a different default
-        new_build = self.tmp / "SweepyClaudev6.7.7"
+        cs = ConfigStore(str(self.build_dir), userdata_dir=str(self.user_dir))
+        # User adds/customizes a preset through the store.
+        cs.save_settings_preset({"name": "UserEdited", "scenario_id": 4})
+        self.assertEqual(cs.read_settings_presets()["active"], "UserEdited")
+        # Simulate an upgrade: re-init with a NEW build shipping a different default.
+        new_build = self.tmp / "SweepyClaudev7.7"
         (new_build / "data").mkdir(parents=True)
         (new_build / "data" / "settings_presets.json").write_text(json.dumps({
             "active": "NewDefault", "presets": [{"name": "NewDefault"}],
         }), encoding="utf-8")
-        ConfigStore(str(new_build), userdata_dir=str(self.user_dir))
-        # The user's customization survives
-        final = json.loads((self.user_dir / "data" / "settings_presets.json").read_text(encoding="utf-8"))
-        self.assertEqual(final["active"], "UserEdited")
+        cs2 = ConfigStore(str(new_build), userdata_dir=str(self.user_dir))
+        # The user's customization survives (per-file store already migrated).
+        payload = cs2.read_settings_presets()
+        self.assertEqual(payload["active"], "UserEdited")
+        self.assertIn("UserEdited", {p["name"] for p in payload["presets"]})
 
 
 # --- 3. Auto-pick default ---------------------------------------------------

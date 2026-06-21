@@ -3,6 +3,7 @@ import json
 import re
 import subprocess
 import sys
+import glob as _glob
 
 
 def _check_required_packages():
@@ -40,6 +41,7 @@ from copy import deepcopy
 import random
 import time
 import threading
+import asyncio
 import requests
 from urllib.parse import urlparse
 from urllib.request import Request as UrlRequest, urlopen
@@ -51,6 +53,7 @@ from career_bot import ai_dataset, ai_advisor, ai_trainer, local_llm, event_outc
 from career_bot.config_store import ConfigStore
 from career_bot.runner import CareerRunner, runtime_output_root
 from uma_api.client import UmaClient, get_ticket
+from uma_api.career_recovery import is_career_in_progress_error, resume_active_career
 
 PROCESS_NAME = "UmamusumePrettyDerby.exe"
 APP_ID = "3224770"
@@ -209,27 +212,34 @@ DIR = os.path.dirname(os.path.abspath(__file__))
 def _userdata_pointer_dir():
     """OS-user-scoped directory holding the cross-version userdata pointer.
 
-    Lives at ``~/.sweepycl`` on every OS. Independent of the build folder so
-    a fresh v7.x install can find the userdata path the user configured
-    under a previous version, even if they didn't overwrite the old build.
+    Lives at ``~/.icarus`` on every OS (with ``~/.sweepycl`` honored as a
+    legacy fallback for reads). Independent of the build folder so a fresh
+    install can find the userdata path the user configured under a previous
+    version, even if they didn't overwrite the old build.
     """
-    return Path.home() / ".sweepycl"
+    return Path.home() / ".icarus"
 
 
 def _userdata_pointer_path():
     return _userdata_pointer_dir() / "userdata_pointer.json"
 
 
+def _legacy_userdata_pointer_paths():
+    # Older builds wrote the pointer under ~/.sweepycl; still read it so a
+    # rebrand never orphans a user-configured userdata location.
+    return [Path.home() / ".sweepycl" / "userdata_pointer.json"]
+
+
 def _read_userdata_pointer():
-    """Read the pointer file. Returns dict or empty dict if absent/invalid."""
-    p = _userdata_pointer_path()
-    try:
-        if p.exists():
-            data = json.loads(p.read_text(encoding="utf-8"))
-            if isinstance(data, dict):
-                return data
-    except Exception:
-        pass
+    """Read the pointer file (primary, then legacy). Returns dict or empty."""
+    for p in [_userdata_pointer_path(), *_legacy_userdata_pointer_paths()]:
+        try:
+            if p.exists():
+                data = json.loads(p.read_text(encoding="utf-8"))
+                if isinstance(data, dict):
+                    return data
+        except Exception:
+            pass
     return {}
 
 
@@ -243,7 +253,7 @@ def _write_userdata_pointer(patch):
         p.write_text(json.dumps(merged, ensure_ascii=False, indent=2), encoding="utf-8")
         return merged
     except Exception as exc:
-        print(f"SweepyCL: writing userdata pointer failed: {exc}")
+        print(f"Icarus: writing userdata pointer failed: {exc}")
         return None
 
 
@@ -274,7 +284,8 @@ def _resolve_userdata_dir():
 
     # 1-2: env vars
     for env_name, source_label in (
-        ("SWEEPYCL_USERDATA_DIR", "env_sweepycl"),
+        ("ICARUS_USERDATA_DIR", "env_icarus"),
+        ("SWEEPYCL_USERDATA_DIR", "env_legacy_sweepycl"),
         ("SWEEPYCLAUDE_USERDATA_DIR", "env_legacy_sweepyclaude"),
     ):
         env = os.environ.get(env_name, "").strip()
@@ -285,7 +296,7 @@ def _resolve_userdata_dir():
                 USERDATA_SOURCE = source_label
                 return str(p)
             except Exception as exc:
-                print(f"SweepyCL: env {env_name} resolution failed: {exc}")
+                print(f"Icarus: env {env_name} resolution failed: {exc}")
                 USERDATA_DETECTION_WARNING = f"Env var {env_name} is set but failed to resolve: {exc}"
 
     # 3: cross-version pointer file
@@ -312,7 +323,8 @@ def _resolve_userdata_dir():
 
     # 4-5: sibling folder conventions
     for sibling_name, source_label in (
-        ("SweepyCL_userdata", "sibling_sweepycl"),
+        ("Icarus_userdata", "sibling_icarus"),
+        ("SweepyCL_userdata", "sibling_legacy_sweepycl"),
         ("SweepyClaude_userdata", "sibling_legacy_sweepyclaude"),
     ):
         sibling = Path(DIR).parent / sibling_name
@@ -394,6 +406,23 @@ def _save_auth_config_both(save_cfg, profile_name):
         print(f"[-] userdata auth_config write failed: {exc}")
 
 
+def _persist_refreshed_ticket(sid, tkt):
+    """Persist a mid-run-refreshed Steam session ticket back to auth_config so it
+    survives to the next run. Preserves all other (obfuscated) fields. Wired as
+    UmaClient.on_ticket_refreshed; best-effort, never raises."""
+    try:
+        path = _user_auth_config_path(PROFILE_NAME)
+        cfg = json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
+        if not isinstance(cfg, dict):
+            cfg = {}
+        cfg["steam_id"] = str(sid)
+        cfg["steam_session_ticket"] = tkt
+        _save_auth_config_both(cfg, PROFILE_NAME)
+        print("[+] Refreshed Steam ticket persisted to auth_config.", flush=True)
+    except Exception as exc:
+        print(f"[-] Failed to persist refreshed Steam ticket: {exc}")
+
+
 def _migrate_to_userdata_dir():
     """One-way migration: copy in-build default files into the userdata
     folder when the userdata folder is in use but doesn't already have
@@ -427,7 +456,7 @@ def _migrate_to_userdata_dir():
                 if not target.exists():
                     target.write_bytes(f.read_bytes())
     except Exception as exc:
-        print(f"SweepyCL: userdata migration partial: {exc}")
+        print(f"Icarus: userdata migration partial: {exc}")
 
 
 PROFILE_NAME = "default"
@@ -549,7 +578,24 @@ RUNTIME_DIR = os.path.join(DIR, "uma_runtime", PROFILE_NAME)
 os.makedirs(RUNTIME_DIR, exist_ok=True)
 os.environ["UMA_RUNTIME_DIR"] = RUNTIME_DIR
 
-app = FastAPI()
+
+from contextlib import asynccontextmanager
+
+
+@asynccontextmanager
+async def _lifespan(app):
+    # Startup: kick off the background AI auto-trainer (best-effort).
+    # (Replaces the deprecated @app.on_event("startup") hook.)
+    try:
+        ai_trainer.start_background_trainer(
+            base_dir, runner_active=lambda: bool(career_runner.snapshot().get("running"))
+        )
+    except Exception as exc:
+        print(f"AI auto-trainer startup skipped: {exc}")
+    yield
+
+
+app = FastAPI(lifespan=_lifespan)
 
 chara_map = {}
 support_map = {}
@@ -564,14 +610,6 @@ raw_load_index_response = None
 active_selection = {"deck": None, "friend": None, "trainee": None, "veterans": [], "guestParents": []}
 
 
-
-
-@app.on_event("startup")
-async def _start_ai_auto_trainer():
-    try:
-        ai_trainer.start_background_trainer(base_dir, runner_active=lambda: bool(career_runner.snapshot().get("running")))
-    except Exception as exc:
-        print(f"AI auto-trainer startup skipped: {exc}")
 
 
 def _empty_ui_selection():
@@ -607,6 +645,23 @@ turn_delay_max_sec = 5.0
 turn_delay_restore_min_sec = 2.5
 turn_delay_restore_max_sec = 5.0
 turn_delay_disabled = False
+# Speed dropdown (replaces the old Tempt-Fate on/off toggle). Each level maps to
+# the inter-turn pacing (disabled?), the client's raw min-call-spacing floor, AND
+# an api_scale that multiplies the per-call API delay budget (the dominant pacing
+# lever). Before v1.5 all three non-Safe levels set disabled=True, which zeroed
+# the API delays identically, so Fast/Faster/Ludicrous ran at the same real
+# speed. Now api_scale graduates them: Safe 1.0 → Fast 0.4 → Faster 0.15 →
+# Ludicrous 0.0 (fully off, the old non-Safe behavior).
+SPEED_PRESETS = {
+    "safe":      {"label": "Safe",      "disabled": False, "call_floor": 0.14, "api_scale": 1.0},
+    "fast":      {"label": "Fast",      "disabled": True,  "call_floor": 0.14, "api_scale": 0.4},
+    "faster":    {"label": "Faster",    "disabled": True,  "call_floor": 0.05, "api_scale": 0.15},
+    "ludicrous": {"label": "Ludicrous", "disabled": True,  "call_floor": 0.0,  "api_scale": 0.0},
+}
+speed_level = "safe"
+# Multiplier applied to per-call API delays (set by set_speed_level). 1.0 = full
+# human-like timing; 0.0 = no API delay. Read live in wait_for_game_turn_delay.
+api_delay_scale = 1.0
 preset_store = ConfigStore(DIR, userdata_dir=USERDATA_DIR)
 career_runner = CareerRunner(DIR)
 
@@ -629,6 +684,7 @@ elif master_data_startup_status.get("requires_user_action"):
 chara_path = base_dir / "data" / "chara_list.json"
 support_path = base_dir / "data" / "support_list.json"
 images_dir = base_dir / "data" / "images"
+skill_icons_dir = base_dir / "data" / "skill_icons"
 
 if chara_path.exists():
     with open(chara_path, "r", encoding="utf-8") as f:
@@ -840,6 +896,36 @@ def get_turn_delay():
     }
 
 
+def set_speed_level(level):
+    """Apply a Speed dropdown level: toggles inter-turn pacing AND the client's
+    raw min-call-spacing floor. Higher levels = fewer/zero delays = faster careers."""
+    global speed_level, api_delay_scale
+    level = str(level or "").strip().lower()
+    if level not in SPEED_PRESETS:
+        level = "safe"
+    speed_level = level
+    spec = SPEED_PRESETS[level]
+    if spec["disabled"]:
+        set_turn_delay(0, 0, disabled=True)
+    else:
+        set_turn_delay(turn_delay_restore_min_sec, turn_delay_restore_max_sec, disabled=False)
+    # v1.5: the dominant pacing lever — scales the per-call API delay budget so the
+    # levels are actually distinct (previously all non-Safe levels collapsed to 0).
+    api_delay_scale = float(spec.get("api_scale", 1.0 if level == "safe" else 0.0))
+    import uma_api.client as _uma_client
+    _uma_client.MIN_CALL_SPACING = float(spec["call_floor"])
+    return get_speed()
+
+
+def get_speed():
+    return {
+        "success": True,
+        "level": speed_level,
+        "levels": [{"id": k, "label": v["label"]} for k, v in SPEED_PRESETS.items()],
+        "disabled": turn_delay_disabled,
+    }
+
+
 # Umabot-compatible TP recovery settings. This intentionally replaces the old
 # Toughness/Carats restore selector with a single item-aware mode stored in
 # settings.json so the browser UI and loop runner share the same policy.
@@ -891,62 +977,6 @@ def tp_recovery_label(mode):
     }.get(mode, "TP items first, Jewels fallback")
 
 
-# v6.7.27 — Bot speed (per-endpoint anti-detection delay scale).
-# Persisted under settings.json `bot_speed_scale`. Applied on startup and on
-# every config write. See career_bot/delay.py:DELAY_SCALE for the runtime knob.
-BOT_SPEED_PRESETS = {
-    "realistic": 1.0,
-    "brisk":     0.5,
-    "fast":      0.25,
-    "speedrun":  0.05,
-}
-
-
-def load_bot_speed_scale():
-    raw = _read_settings().get("bot_speed_scale", 1.0)
-    try:
-        v = float(raw)
-    except (TypeError, ValueError):
-        v = 1.0
-    return max(0.0, min(2.0, v))
-
-
-def set_bot_speed_scale(scale):
-    try:
-        v = float(scale)
-    except (TypeError, ValueError):
-        v = 1.0
-    v = max(0.0, min(2.0, v))
-    data = _read_settings()
-    data["bot_speed_scale"] = v
-    _write_settings(data)
-    # Apply immediately to the running delay module so the next call sees it.
-    try:
-        from career_bot import delay as _delay_mod
-        _delay_mod.set_delay_scale(v)
-    except Exception:
-        pass
-    return v
-
-
-def bot_speed_label(scale):
-    s = float(scale)
-    if abs(s - 1.0) < 0.01: return "Realistic (1.0×)"
-    if abs(s - 0.5) < 0.01: return "Brisk (0.5×)"
-    if abs(s - 0.25) < 0.01: return "Fast (0.25×)"
-    if abs(s - 0.05) < 0.01: return "Speedrun (0.05×)"
-    if s <= 0.0: return f"Off (machine-speed)"
-    return f"Custom ({s:.2f}×)"
-
-
-# Apply persisted bot speed on startup so the value survives restarts.
-try:
-    from career_bot import delay as _delay_mod_startup
-    _delay_mod_startup.set_delay_scale(load_bot_speed_scale())
-except Exception:
-    pass
-
-
 def _runtime_json_path(name):
     return Path(RUNTIME_DIR) / name
 
@@ -974,254 +1004,6 @@ def _event_choice_paths():
         _runtime_json_path("event_overrides.json"),
         base_dir / "data" / "event_outcomes.json",
     )
-
-
-# ===========================================================================
-# v6.7.26 — Dumper Watcher
-#
-# A background poller that imports event outcome data from the community
-# dumper tool's outcomes.json into a STAGING file. Staging is intentionally
-# isolated from the bot's live decision path:
-#
-#   - Live file:    data/event_outcomes.json
-#                   (read by career_bot/events.py:EventManager during runs)
-#
-#   - Staging file: data/event_outcomes_staging.json
-#                   (read by nothing in the runner; only by /api/dumper-watcher/*)
-#
-# Until the user explicitly clicks PROMOTE in the dashboard, staged data has
-# zero effect on bot decisions. This lets observations accumulate without
-# polluting the auto-pick KB until the user has reviewed them.
-# ===========================================================================
-
-_DUMPER_WATCHER_DEFAULT_INTERVAL = 30
-_DUMPER_WATCHER_MIN_INTERVAL = 5
-_dumper_watcher_thread = None
-_dumper_watcher_stop = threading.Event()
-_dumper_watcher_lock = threading.Lock()
-
-
-def _dumper_watcher_state_path():
-    return _runtime_json_path("dumper_watcher_state.json")
-
-
-def _dumper_watcher_read_state():
-    return _read_json_file(_dumper_watcher_state_path()) or {}
-
-
-def _dumper_watcher_write_state(state):
-    _write_json_file(_dumper_watcher_state_path(), state)
-
-
-def _dumper_watcher_config():
-    settings = _read_settings()
-    cfg = settings.get("dumper_watcher") if isinstance(settings.get("dumper_watcher"), dict) else {}
-    return {
-        "enabled": bool(cfg.get("enabled", False)),
-        "source_path": str(cfg.get("source_path") or "").strip(),
-        "poll_interval_sec": max(_DUMPER_WATCHER_MIN_INTERVAL, int(cfg.get("poll_interval_sec") or _DUMPER_WATCHER_DEFAULT_INTERVAL)),
-    }
-
-
-def _dumper_watcher_save_config(patch):
-    settings = _read_settings()
-    current = settings.get("dumper_watcher") if isinstance(settings.get("dumper_watcher"), dict) else {}
-    merged = {**current, **(patch or {})}
-    # Normalize before persisting.
-    merged["enabled"] = bool(merged.get("enabled"))
-    merged["source_path"] = str(merged.get("source_path") or "").strip()
-    try:
-        merged["poll_interval_sec"] = max(_DUMPER_WATCHER_MIN_INTERVAL, int(merged.get("poll_interval_sec") or _DUMPER_WATCHER_DEFAULT_INTERVAL))
-    except (TypeError, ValueError):
-        merged["poll_interval_sec"] = _DUMPER_WATCHER_DEFAULT_INTERVAL
-    settings["dumper_watcher"] = merged
-    _write_settings(settings)
-    return merged
-
-
-def _dumper_watcher_staging_path():
-    return base_dir / "data" / "event_outcomes_staging.json"
-
-
-def _dumper_watcher_live_path():
-    return base_dir / "data" / "event_outcomes.json"
-
-
-def _dumper_watcher_run_once(source_path=None):
-    """Single poll: stat the source, import to staging if changed."""
-    with _dumper_watcher_lock:
-        cfg = _dumper_watcher_config()
-        state = _dumper_watcher_read_state()
-        state["last_poll_at"] = time.time()
-        src = (source_path or cfg["source_path"] or "").strip()
-        if not src:
-            state["last_error"] = "No source_path configured."
-            _dumper_watcher_write_state(state)
-            return {"success": False, "detail": state["last_error"], "state": state}
-        p = Path(src).expanduser()
-        if not p.exists():
-            state["last_error"] = f"Source file not found: {p}"
-            _dumper_watcher_write_state(state)
-            return {"success": False, "detail": state["last_error"], "state": state}
-        try:
-            st = p.stat()
-            mtime = st.st_mtime
-            size = st.st_size
-        except Exception as exc:
-            state["last_error"] = f"Stat failed: {exc}"
-            _dumper_watcher_write_state(state)
-            return {"success": False, "detail": state["last_error"], "state": state}
-        state["source_path"] = str(p)
-        state["source_mtime"] = mtime
-        state["source_size"] = size
-        last_mtime = state.get("last_imported_mtime")
-        last_size = state.get("last_imported_size")
-        if last_mtime == mtime and last_size == size:
-            state["last_error"] = None
-            _dumper_watcher_write_state(state)
-            return {"success": True, "changed": False, "state": state}
-        # Run the staging import.
-        try:
-            report = event_outcomes.import_outcomes_to_staging(base_dir, source_path=str(p))
-        except Exception as exc:
-            state["last_error"] = f"Staging import failed: {exc}"
-            _dumper_watcher_write_state(state)
-            return {"success": False, "detail": state["last_error"], "state": state}
-        state["last_imported_at"] = time.time()
-        state["last_imported_mtime"] = mtime
-        state["last_imported_size"] = size
-        state["last_import_report"] = report
-        state["last_error"] = None
-        _dumper_watcher_write_state(state)
-        return {"success": True, "changed": True, "state": state, "report": report}
-
-
-def _dumper_watcher_loop():
-    """Background poll loop. Quietly idles when disabled or unconfigured."""
-    backoff_when_idle = 5
-    while not _dumper_watcher_stop.is_set():
-        try:
-            cfg = _dumper_watcher_config()
-            if not cfg["enabled"] or not cfg["source_path"]:
-                _dumper_watcher_stop.wait(timeout=backoff_when_idle)
-                continue
-            try:
-                _dumper_watcher_run_once()
-            except Exception:
-                pass  # state already records the error
-            _dumper_watcher_stop.wait(timeout=cfg["poll_interval_sec"])
-        except Exception:
-            _dumper_watcher_stop.wait(timeout=10)
-
-
-def start_dumper_watcher():
-    """Idempotent — safe to call repeatedly. The loop self-gates on enabled."""
-    global _dumper_watcher_thread
-    if _dumper_watcher_thread and _dumper_watcher_thread.is_alive():
-        return
-    _dumper_watcher_stop.clear()
-    _dumper_watcher_thread = threading.Thread(
-        target=_dumper_watcher_loop,
-        daemon=True,
-        name="DumperWatcher",
-    )
-    _dumper_watcher_thread.start()
-
-
-def _dumper_watcher_diff_summary():
-    """Compare staging vs live keys WITHOUT touching either file."""
-    live = _read_json_file(_dumper_watcher_live_path()) or {}
-    staging = _read_json_file(_dumper_watcher_staging_path()) or {}
-    live_keys = set(live.keys())
-    staging_keys = set(staging.keys())
-    new_keys = sorted(staging_keys - live_keys)
-    overlap = staging_keys & live_keys
-    # v6.7.26 — Strip provenance/meta fields before comparing so events whose
-    # only delta is the import source attribution don't show up as "updated".
-    # The user cares about actual outcome data changes, not which file the
-    # entry came from.
-    META_FIELDS = ("source",)
-    def _meaningful(entry):
-        if not isinstance(entry, dict):
-            return entry
-        return {k: v for k, v in entry.items() if k not in META_FIELDS}
-    updated_keys = sorted(k for k in overlap if _meaningful(staging.get(k)) != _meaningful(live.get(k)))
-    return {
-        "staging_total": len(staging),
-        "live_total": len(live),
-        "new_count": len(new_keys),
-        "updated_count": len(updated_keys),
-        "unchanged_count": len(overlap) - len(updated_keys),
-        "new_sample": new_keys[:20],
-        "updated_sample": updated_keys[:20],
-    }
-
-
-def _dumper_watcher_promote(mode="new_only"):
-    """Promote staging -> live. mode in {'new_only', 'all'}."""
-    live_path = _dumper_watcher_live_path()
-    staging_path = _dumper_watcher_staging_path()
-    live = _read_json_file(live_path) or {}
-    staging = _read_json_file(staging_path) or {}
-    if not staging:
-        return {"success": False, "detail": "Staging is empty — nothing to promote."}
-    # Same meta filter so promote-all doesn't churn the live file when only
-    # the attribution string differs.
-    META_FIELDS = ("source",)
-    def _meaningful(entry):
-        if not isinstance(entry, dict):
-            return entry
-        return {k: v for k, v in entry.items() if k not in META_FIELDS}
-    promoted = 0
-    for key, entry in staging.items():
-        if not isinstance(entry, dict):
-            continue
-        if mode == "new_only" and key in live:
-            continue
-        if key in live and _meaningful(live.get(key)) == _meaningful(entry):
-            continue
-        live[key] = entry
-        promoted += 1
-    _write_json_file(live_path, live)
-    return {
-        "success": True,
-        "mode": mode,
-        "promoted": promoted,
-        "live_total_now": len(live),
-        "staging_total": len(staging),
-    }
-
-
-def _dumper_watcher_clear_staging():
-    """Wipe the staging file and reset the watcher mtime so next poll re-imports."""
-    staging_path = _dumper_watcher_staging_path()
-    staging = _read_json_file(staging_path) or {}
-    cleared = len(staging)
-    _write_json_file(staging_path, {})
-    state = _dumper_watcher_read_state()
-    state.pop("last_imported_mtime", None)
-    state.pop("last_imported_size", None)
-    _dumper_watcher_write_state(state)
-    return {"success": True, "cleared": cleared}
-
-
-def _dumper_watcher_status_payload():
-    cfg = _dumper_watcher_config()
-    state = _dumper_watcher_read_state()
-    diff = _dumper_watcher_diff_summary()
-    return {
-        "success": True,
-        "config": cfg,
-        "state": state,
-        "diff": diff,
-        "thread_alive": bool(_dumper_watcher_thread and _dumper_watcher_thread.is_alive()),
-        "staging_file": str(_dumper_watcher_staging_path()),
-        "live_file": str(_dumper_watcher_live_path()),
-        "isolation_note": (
-            "Staging data is read by neither EventManager nor the AI Dataset. "
-            "It cannot influence bot decisions until you click PROMOTE."
-        ),
-    }
 
 
 def _discord_logging_config(redacted=False):
@@ -1253,13 +1035,13 @@ def _save_discord_logging_config(patch):
 
 def _send_discord_webhook_test(url):
     payload = {
-        "username": "SweepyCL",
-        "content": "SweepyCL Discord webhook test: configuration saved successfully.",
+        "username": "Icarus",
+        "content": "Icarus Discord webhook test: configuration saved successfully.",
     }
     req = UrlRequest(
         str(url),
         data=json.dumps(payload).encode("utf-8"),
-        headers={"Content-Type": "application/json", "User-Agent": "SweepyCL/7.0"},
+        headers={"Content-Type": "application/json", "User-Agent": "Icarus/1.0"},
         method="POST",
     )
     with urlopen(req, timeout=12) as resp:
@@ -1281,7 +1063,15 @@ GLOBAL_SESSION_JITTER = random.uniform(-0.08, 0.08)
 
 
 def wait_for_game_turn_delay(delay_type="turn", endpoint=None):
-    if turn_delay_disabled:
+    # v1.5: API call delays are governed by the Speed level's api_delay_scale
+    # (set by set_speed_level), NOT by the inter-turn pacing toggle. Previously a
+    # single `if turn_delay_disabled: return 0.0` zeroed BOTH, which made every
+    # non-Safe speed level identical. Now the inter-turn ("turn"/"complex") path
+    # still honors turn_delay_disabled, while the "api" path scales by api_delay_scale.
+    if delay_type == "api":
+        if api_delay_scale <= 0.0:
+            return 0.0
+    elif turn_delay_disabled:
         return 0.0
 
     import math
@@ -1303,7 +1093,7 @@ def wait_for_game_turn_delay(delay_type="turn", endpoint=None):
                 for ep in ["tool/pre_signup", "tool/start_session"]
             ):
                 seconds = random.uniform(0.011, 0.021)
-                return seconds
+                return seconds * api_delay_scale
             elif any(endpoint.endswith(ep) for ep in ["race_entry", "read_info/index"]):
                 target_mean = 0.05 * _T_M[1]
                 sigma = 0.3 * _S_M[1]
@@ -1392,7 +1182,7 @@ def wait_for_game_turn_delay(delay_type="turn", endpoint=None):
         mu = math.log(target_mean) - (sigma**2) / 2.0
         roll = random.lognormvariate(mu, sigma)
         seconds = min(max_cap, max(min_cap, roll))
-        return seconds
+        return seconds * api_delay_scale
 
     elif delay_type == "complex":
         range_span = turn_delay_max_sec - turn_delay_min_sec
@@ -2071,6 +1861,52 @@ def _has_rental_parent(req):
     )
 
 
+def friendly_steam_login_error(msg):
+    """Turn a raw Steam/login error into user-facing guidance + a suggested UI
+    cooldown (seconds). The Steam node helper surfaces errors like
+    'ERROR:RateLimitExceeded' verbatim; show something actionable instead."""
+    text = str(msg or "")
+    low = text.lower()
+    if "ratelimit" in low or "rate limit" in low:
+        return (
+            "Steam temporarily blocked sign-ins after too many attempts. Wait about "
+            "15-30 minutes, then try again. Double-check your password and that the "
+            "Steam Guard code is current (codes refresh every 30 seconds).",
+            60,
+        )
+    if "invalidpassword" in low or "invalid password" in low:
+        return ("Steam rejected the username or password. Re-check both and try again.", 20)
+    if "invalidcode" in low or "twofactor" in low or "two_factor" in low or "invalid code" in low:
+        return (
+            "That Steam Guard code wasn't accepted. Wait for a fresh code in your "
+            "authenticator (they refresh every 30 seconds), then try again.",
+            20,
+        )
+    # Unknown error: strip the node helper's 'ERROR:' prefix for readability.
+    cleaned = text.split("ERROR:", 1)[-1].strip() if "ERROR:" in text else text
+    return (cleaned or "Login failed.", 15)
+
+
+def _rental_trained_chara_id(guest, viewer_id):
+    """Return a *genuine* trained_chara_id for a rental/guest entry, else 0.
+
+    Lightweight "followed trainer" rows can carry a synthetic instance_id
+    (e.g. ``follow-123`` or ``src:card:viewer``) or fall back to the viewer_id.
+    Sending any of those as ``rental_succession_trained_chara.trained_chara_id``
+    makes ``single_mode_free/start`` return result_code 500 (the chara isn't
+    borrowable).  A real trained-chara id is numeric, > 0, and never equals the
+    viewer_id -- enforce that so we only ever send a borrowable id.
+    """
+    if not isinstance(guest, dict):
+        return 0
+    viewer_id = _safe_int(viewer_id)
+    for key in ("trained_chara_id", "instance_id", "id"):
+        tid = _safe_int(guest.get(key))
+        if tid and tid != viewer_id:
+            return tid
+    return 0
+
+
 def _guest_matches_start_request(req, guest):
     if not isinstance(guest, dict):
         return False
@@ -2082,8 +1918,11 @@ def _guest_matches_start_request(req, guest):
     guest_trained = str(guest.get("instance_id") or guest.get("trained_chara_id") or guest.get("id") or "")
     if req_trained and guest_trained and req_trained == guest_trained:
         return True
+    # Only confirm a viewer+card match when the row is actually borrowable --
+    # i.e. it exposes a real trained-chara id.  Otherwise the refresh would
+    # rewrite the request with a viewer_id/synthetic value and 500 at start.
     if req_viewer and req_card and guest_viewer == req_viewer and guest_card == req_card:
-        return True
+        return _rental_trained_chara_id(guest, guest_viewer) > 0
     return False
 
 
@@ -2116,16 +1955,20 @@ def _refresh_guest_parent_for_start(req, data):
                 "rental list. Refresh Guest Parents and reselect before starting another loop."
             ),
         }
-    trained_id = _safe_int(match.get("instance_id") or match.get("trained_chara_id") or match.get("id"))
     viewer_id = _safe_int(match.get("viewer_id"), _safe_int(getattr(req, "rental_viewer_id", 0)))
     card_id = _safe_int(match.get("card_id"), _safe_int(getattr(req, "rental_card_id", 0)))
+    # Use only a genuine trained-chara id (never a viewer_id/synthetic fallback);
+    # sending those is the cause of the result_code 500 on guest-parent starts.
+    trained_id = _rental_trained_chara_id(match, viewer_id)
     if not viewer_id or not trained_id:
         return {
             "success": False,
             "fatal_start": True,
             "detail": (
-                "Selected guest parent was refreshed, but the fresh entry is missing "
-                "viewer_id or trained_chara_id. Refresh Guest Parents and reselect."
+                "The selected guest parent is not currently borrowable (no valid "
+                "trained-chara id in the fresh rental list -- it may have expired or "
+                "be a follow-only entry). Refresh Guest Parents and reselect, or start "
+                "without a guest parent."
             ),
         }
     req.rental_viewer_id = viewer_id
@@ -2786,33 +2629,6 @@ async def set_tp_recovery_settings(req: TpRecoveryRequest):
     return {"success": True, "mode": mode, "label": tp_recovery_label(mode)}
 
 
-# v6.7.27 — Bot speed settings.
-class BotSpeedRequest(BaseModel):
-    scale: float = 1.0
-
-
-@app.get("/api/settings/bot-speed")
-async def get_bot_speed_settings():
-    scale = load_bot_speed_scale()
-    return {
-        "success": True,
-        "scale": scale,
-        "label": bot_speed_label(scale),
-        "presets": BOT_SPEED_PRESETS,
-        "note": (
-            "Scales per-endpoint anti-detection delays. 1.0 = original behavior. "
-            "Lower values mean faster careers but more bot-obvious traffic patterns. "
-            "Error-recovery backoffs are NOT scaled."
-        ),
-    }
-
-
-@app.post("/api/settings/bot-speed")
-async def set_bot_speed_settings(req: BotSpeedRequest):
-    scale = set_bot_speed_scale(req.scale)
-    return {"success": True, "scale": scale, "label": bot_speed_label(scale)}
-
-
 # v7.1 — Userdata folder management.
 #
 # The dashboard pops up a window on first load to walk the user through
@@ -2826,6 +2642,7 @@ class UserdataSetPathRequest(BaseModel):
 
 class UserdataIntroDismissRequest(BaseModel):
     dont_show_again: bool = True
+    suppress_permanently: bool = False  # v7.6: "Do not show again" checkbox
 
 
 def _userdata_info_payload():
@@ -2839,14 +2656,27 @@ def _userdata_info_payload():
         except Exception:
             pointer_exists_on_disk = False
     is_fallback = (USERDATA_DIR == DIR)
-    is_legacy = USERDATA_SOURCE in ("env_legacy_sweepyclaude", "sibling_legacy_sweepyclaude")
+    is_legacy = USERDATA_SOURCE in (
+        "env_legacy_sweepycl", "sibling_legacy_sweepycl",
+        "env_legacy_sweepyclaude", "sibling_legacy_sweepyclaude",
+    )
     intro_seen = bool(pointer.get("intro_seen"))
-    # The popup is "needed" if any of:
-    #   - the user has never dismissed the intro
-    #   - there's a detection warning (pointer points nowhere, or we're on fallback)
-    #   - we're using the in-build fallback (no real userdata)
+    intro_suppressed = bool(pointer.get("intro_suppressed"))
+    # The user has a working, version-stable userdata folder when the pointer
+    # resolves to a real directory and we aren't on the in-build fallback.
+    has_valid_userdata = pointer_exists_on_disk and not is_fallback
     needs_attention = bool(USERDATA_DETECTION_WARNING) or is_fallback
-    should_show_intro = needs_attention or not intro_seen
+    # v7.6: don't nag users who are already set up.
+    #   - If they ticked "Do not show again", never auto-show again.
+    #   - If a valid userdata folder is already configured (and there's no
+    #     detection warning), they're set up -> skip the popup entirely.
+    #   - Otherwise fall back to first-run / needs-attention behavior.
+    if intro_suppressed:
+        should_show_intro = False
+    elif has_valid_userdata and not USERDATA_DETECTION_WARNING:
+        should_show_intro = False
+    else:
+        should_show_intro = needs_attention or not intro_seen
     return {
         "success": True,
         "current_path": USERDATA_DIR,
@@ -2858,10 +2688,12 @@ def _userdata_info_payload():
         "pointer_exists_on_disk": pointer_exists_on_disk,
         "detection_warning": USERDATA_DETECTION_WARNING,
         "intro_seen": intro_seen,
+        "intro_suppressed": intro_suppressed,
+        "has_valid_userdata": has_valid_userdata,
         "should_show_intro": should_show_intro,
         "needs_attention": needs_attention,
         "build_dir": DIR,
-        "suggested_sibling": str(Path(DIR).parent / "SweepyCL_userdata"),
+        "suggested_sibling": str(Path(DIR).parent / "Icarus_userdata"),
         "restart_required": False,  # set true after a path change in this session
     }
 
@@ -2924,24 +2756,31 @@ async def set_userdata_path(req: UserdataSetPathRequest):
                 migrated_files += 1
         except Exception as exc:
             # Non-fatal — the path is saved, migration partly succeeded.
-            print(f"SweepyCL: userdata migration during set-path failed: {exc}")
+            print(f"Icarus: userdata migration during set-path failed: {exc}")
     # Persist the pointer.
     saved = _write_userdata_pointer({"userdata_path": str(p)})
     if saved is None:
-        raise HTTPException(status_code=500, detail="Failed to write pointer file. Check that ~/.sweepycl is writable.")
+        raise HTTPException(status_code=500, detail="Failed to write pointer file. Check that ~/.icarus is writable.")
     _userdata_restart_pending = True
     payload = _userdata_info_payload()
     payload["restart_required"] = True
     payload["migrated_files"] = migrated_files
-    payload["message"] = "Path saved. Restart SweepyCL for the new location to take effect."
+    payload["message"] = "Path saved. Restart Icarus for the new location to take effect."
     return payload
 
 
 @app.post("/api/userdata/intro-dismissed")
 async def dismiss_userdata_intro(req: UserdataIntroDismissRequest = None):
     payload = req or UserdataIntroDismissRequest()
+    patch = {}
     if payload.dont_show_again:
-        _write_userdata_pointer({"intro_seen": True})
+        patch["intro_seen"] = True
+    if payload.suppress_permanently:
+        # "Do not show again" — never auto-open the popup on load again.
+        patch["intro_seen"] = True
+        patch["intro_suppressed"] = True
+    if patch:
+        _write_userdata_pointer(patch)
     info = _userdata_info_payload()
     info["restart_required"] = _userdata_restart_pending
     return info
@@ -2951,7 +2790,7 @@ async def dismiss_userdata_intro(req: UserdataIntroDismissRequest = None):
 async def reopen_userdata_intro():
     """Reset the intro_seen flag so the popup shows again on next dashboard load.
     Useful when a user wants to revisit the setup walkthrough."""
-    _write_userdata_pointer({"intro_seen": False})
+    _write_userdata_pointer({"intro_seen": False, "intro_suppressed": False})
     info = _userdata_info_payload()
     info["restart_required"] = _userdata_restart_pending
     return info
@@ -2986,6 +2825,8 @@ class StartCareerRequest(BaseModel):
     is_boost: int = 0
     boost_story_event_id: int = 0
     burn_clocks: bool = False
+    carats_enabled: bool = False
+    max_clocks_per_career: int = 0
     tp_restore_currency: str = "carats"
     tp_restore_mode: str = ""
     tp_restore_allow_carats_fallback: bool = False
@@ -3012,6 +2853,8 @@ class RunCareerRequest(BaseModel):
     preset_name: str = ""
     max_steps: int = 2500
     burn_clocks: bool = False
+    carats_enabled: bool = False
+    max_clocks_per_career: int = 0
     dev_mode: bool = False
     run_count: int = 1  # 1 = one career, N = bounded loop, 0 = loop until stopped.
     tp_restore_currency: str = "carats"
@@ -3044,19 +2887,8 @@ class EventOutcomeImportRequest(BaseModel):
     replace: bool = False
 
 
-# v6.7.26 — Dumper Watcher request models.
-class DumperWatcherConfigRequest(BaseModel):
-    enabled: bool = False
-    source_path: str = ""
-    poll_interval_sec: int = 30
-
-
-class DumperWatcherRunRequest(BaseModel):
-    source_path: str = ""  # optional override for one-shot
-
-
-class DumperWatcherPromoteRequest(BaseModel):
-    mode: str = "new_only"  # "new_only" or "all"
+class NativeCaptureRequest(BaseModel):
+    enabled: bool = True
 
 
 class DiscordWebhookRequest(BaseModel):
@@ -3078,10 +2910,12 @@ class SaveSettingsPresetRequest(BaseModel):
 
 class SaveSkillConfigRequest(BaseModel):
     config: dict
+    preset: str = ""  # v7.6 — target preset (defaults to active)
 
 
 class SaveSmartSolverConfigRequest(BaseModel):
     config: dict
+    preset: str = ""  # v7.6 — target preset (defaults to active)
 
 
 class CareerActionRequest(BaseModel):
@@ -3118,12 +2952,64 @@ async def set_turn_delay_settings(req: ApiDelayRequest):
     return set_turn_delay(req.min, req.max, req.disabled)
 
 
+class SpeedRequest(BaseModel):
+    level: str = "safe"
+
+
+@app.get("/api/settings/speed")
+async def get_speed_settings():
+    return get_speed()
+
+
+@app.post("/api/settings/speed")
+async def set_speed_settings(req: SpeedRequest):
+    return set_speed_level(req.level)
+
+
+class ApiThemeRequest(BaseModel):
+    theme: str = ""
+
+
+@app.get("/api/settings/theme")
+async def get_ui_theme():
+    # Server-side theme persistence so the selected theme survives across
+    # browsers/origins and server restarts (localStorage alone is per-origin).
+    return {"theme": str(_read_settings().get("ui_theme") or "")}
+
+
+@app.post("/api/settings/theme")
+async def set_ui_theme(req: ApiThemeRequest):
+    theme = str(req.theme or "").strip()
+    data = _read_settings()
+    data["ui_theme"] = theme
+    _write_settings(data)
+    return {"theme": theme}
+
+
+# v7.6 — scraped gametora event-effect overlay. Fills "effect not in database"
+# gaps for events the bot has seen, joined purely on numeric story_id.
+_EVENT_EFFECTS_SCRAPED = {"data": None}
+
+
+def _load_event_effects_scraped():
+    if _EVENT_EFFECTS_SCRAPED["data"] is None:
+        try:
+            p = base_dir / "data" / "event_effects_scraped.json"
+            _EVENT_EFFECTS_SCRAPED["data"] = json.loads(p.read_text(encoding="utf-8")) if p.exists() else {}
+        except Exception:
+            _EVENT_EFFECTS_SCRAPED["data"] = {}
+    return _EVENT_EFFECTS_SCRAPED["data"]
+
+
 @app.get("/api/events")
 async def get_event_choices(cards: str = ""):
     seen_path, overrides_path, db_path = _event_choice_paths()
     seen = _read_json_file(seen_path)
-    overrides = _read_json_file(overrides_path)
+    # Per-preset event choices live on the active preset; merge the legacy global
+    # file underneath for display so pre-migration overrides still show.
+    overrides = {**(_read_json_file(overrides_path) or {}), **preset_store.read_event_overrides()}
     db = _read_json_file(db_path)
+    scraped = _load_event_effects_scraped()
     support_filter = {int(x) for x in re.split(r"[,\s]+", str(cards or "")) if x.strip().isdigit()}
 
     merged = {}
@@ -3134,44 +3020,76 @@ async def get_event_choices(cards: str = ""):
         if support_filter and support_card_id and support_card_id not in support_filter:
             continue
         outcomes = db_row.get("outcomes") or {}
+        # Overlay scraped effects only when we don't already have outcomes, so
+        # curated/dumper-imported data always wins.
+        scraped_row = scraped.get(sid) if isinstance(scraped.get(sid), dict) else {}
+        filled_from_scrape = False
+        if (not outcomes) and scraped_row:
+            sc = scraped_row.get("choices") or {}
+            outcomes = {str(k): (v.get("effect") or "") for k, v in sc.items() if isinstance(v, dict) and v.get("effect")}
+            filled_from_scrape = bool(outcomes)
+        # v7.6.3: surface how well-backed the outcome data is. Natively-observed
+        # entries (recorded from the bot's own runs) carry an observation count
+        # and confidence; this lets the UI show an "observed Nx" badge so users
+        # can tell data-backed events from guesses.
+        observations = _safe_int(db_row.get("observations"))
+        confidence = str(db_row.get("confidence") or "")
+        kb_source = str(db_row.get("source") or "")
         merged[sid] = {
             "story_id": sid,
             "event_id": seen_row.get("event_id", ""),
-            "event_name": seen_row.get("event_name") or db_row.get("event_name") or "",
+            "event_name": seen_row.get("event_name") or db_row.get("event_name") or scraped_row.get("event_name") or "",
             "support_card_id": support_card_id,
             "num_choices": int(seen_row.get("num_choices") or len(outcomes) or 0),
             "auto_pick": seen_row.get("picked"),
-            "auto_source": seen_row.get("source") or ("db" if db_row else ""),
+            "auto_source": seen_row.get("source") or ("db" if db_row else ("gametora" if filled_from_scrape else "")),
             "count": int(seen_row.get("count") or 0),
             "override": int(overrides[sid]) if sid in overrides else None,
             "outcomes": outcomes if isinstance(outcomes, dict) else {},
+            "observations": observations,
+            "confidence": confidence,
+            "data_source": kb_source or ("gametora" if filled_from_scrape else ("db" if db_row else "")),
         }
     events = sorted(merged.values(), key=lambda row: (row.get("support_card_id") or 0, -int(row.get("count") or 0), row.get("event_name") or "~", row.get("story_id") or ""))
     return {"success": True, "events": events}
 
 
+def _migrate_legacy_event_overrides():
+    """Fold any entries from the legacy global event_overrides.json into the
+    active preset's per-preset event_overrides, then empty the global file so it
+    no longer wins over the preset in the runner. Returns the merged dict."""
+    overrides = preset_store.read_event_overrides()
+    _, overrides_path, _ = _event_choice_paths()
+    legacy = _read_json_file(overrides_path) or {}
+    if legacy:
+        for k, v in legacy.items():
+            overrides.setdefault(str(k), v)
+        _write_json_file(overrides_path, {})
+    return overrides
+
+
 @app.post("/api/events/override")
 async def set_event_choice_override(req: EventOverrideRequest):
-    _, overrides_path, _ = _event_choice_paths()
-    overrides = _read_json_file(overrides_path)
     sid = str(req.story_id or "").strip()
     if not sid:
         return {"success": False, "detail": "story_id required"}
+    # Event choices are now per-preset: stored on the active preset (read by the
+    # runner via preset.event_overrides), not the shared global file.
+    overrides = _migrate_legacy_event_overrides()
     if int(req.choice) < 0:
         overrides.pop(sid, None)
     else:
         overrides[sid] = int(req.choice)
-    _write_json_file(overrides_path, overrides)
-    return {"success": True, "story_id": sid, "override": overrides.get(sid)}
+    saved = preset_store.save_event_overrides(overrides)
+    return {"success": True, "story_id": sid, "override": saved.get(sid)}
 
 
 # v6.7.25 — bulk reset: wipes every saved override so all events fall back to Auto.
 @app.post("/api/events/overrides/clear")
 async def clear_all_event_choice_overrides():
-    _, overrides_path, _ = _event_choice_paths()
-    overrides = _read_json_file(overrides_path) or {}
+    overrides = _migrate_legacy_event_overrides()
     cleared = len(overrides)
-    _write_json_file(overrides_path, {})
+    preset_store.save_event_overrides({})
     return {"success": True, "cleared": cleared}
 
 
@@ -3179,31 +3097,38 @@ async def clear_all_event_choice_overrides():
 # Resolves each card's effect values at the level implied by its LB, then
 # computes a heuristic deck score against the selected trainee's growth profile.
 _SUPPORT_TYPE_NAMES = {1: "speed", 2: "stamina", 3: "power", 4: "guts", 5: "wit", 6: "friend", 7: "group"}
-_RARITY_LABELS = {1: "SSR", 2: "SR", 3: "R"}
-_RARITY_LB0_BASE_LV = {1: 30, 2: 25, 3: 20}  # max level at LB 0
+_RARITY_LABELS = {1: "R", 2: "SR", 3: "SSR"}  # rarity == star count (id leading digit)
+_RARITY_LB0_BASE_LV = {1: 20, 2: 25, 3: 30}  # max level at LB 0 (R=20, SR=25, SSR=30)
 
+# Keys here MUST match the canonical effect names produced by
+# _SUPPORT_EFFECT_LABELS in career_bot/master_data.py.
 _BONUS_DISPLAY = [
     ("friendship_bonus", "Friendship", "%"),
     ("training_effectiveness", "Training Effect.", "%"),
-    ("motivation_bonus", "Motivation", "%"),
+    ("mood_effect", "Mood Effect", "%"),
     ("race_bonus", "Race Bonus", "%"),
     ("fan_bonus", "Fan Bonus", "%"),
     ("skill_point_bonus", "Skill Pts", "%"),
-    ("wisdom_recovery_bonus", "Wit Recovery", "%"),
+    ("wit_friendship_recovery", "Wit Recovery", ""),
     ("speed_bonus", "Speed", "%"),
     ("stamina_bonus", "Stamina", "%"),
     ("power_bonus", "Power", "%"),
     ("guts_bonus", "Guts", "%"),
-    ("wisdom_bonus", "Wit", "%"),
+    ("wit_bonus", "Wit", "%"),
     ("initial_speed", "Initial Speed", ""),
     ("initial_stamina", "Initial Stamina", ""),
     ("initial_power", "Initial Power", ""),
     ("initial_guts", "Initial Guts", ""),
-    ("initial_wisdom", "Initial Wit", ""),
+    ("initial_wit", "Initial Wit", ""),
+    ("initial_friendship_gauge", "Initial Bond", ""),
     ("initial_skill_points", "Initial SP", ""),
     ("hint_levels", "Hint Lv+", ""),
     ("hint_frequency", "Hint Rate", "%"),
     ("specialty_priority", "Specialty Priority", ""),
+    ("event_recovery", "Event Recovery", "%"),
+    ("event_effectiveness", "Event Effect.", "%"),
+    ("failure_protection", "Fail Protect", "%"),
+    ("energy_cost_reduction", "Energy Cost-", "%"),
 ]
 
 
@@ -3276,10 +3201,10 @@ def _compute_deck_score(cards_out, trainee_profile):
     total_lb = sum(int(c.get("lb") or 0) for c in known)
     lb_score = min(1.0, total_lb / float(max(1, 4 * n)))
     # Rarity weighted (SSR=3, SR=2, R=1)
-    rarity_score = min(1.0, sum({1: 3, 2: 2, 3: 1}.get(int(c.get("rarity") or 3), 1) for c in known) / float(3 * n))
+    rarity_score = min(1.0, sum({1: 1, 2: 2, 3: 3}.get(int(c.get("rarity") or 3), 1) for c in known) / float(3 * n))
     # Effect strength: sum of friendship/training/race/skill_pt across the deck
     eff_keys = ("friendship_bonus", "training_effectiveness", "race_bonus",
-                "skill_point_bonus", "motivation_bonus")
+                "skill_point_bonus", "mood_effect")
     eff_sum = 0
     for c in known:
         eff = c.get("effects") or {}
@@ -3427,9 +3352,86 @@ async def get_support_details(ids: str = "", lbs: str = "", trainee_card_id: int
     }
 
 
+def _native_capture_enabled():
+    return bool(_read_settings().get("native_event_capture", True))
+
+
+def _skill_optimizer_enabled():
+    # #7 — value-per-SP skill-purchase optimizer. OFF by default so the existing
+    # priority-order buying is unchanged unless the user opts in.
+    return bool(_read_settings().get("skill_optimizer", False))
+
+
+def _goal_lookahead_enabled():
+    # #6 — goal-aware training lookahead (pace-to-target urgency in the
+    # goal-aware scorer). OFF by default; default training behavior is unchanged.
+    return bool(_read_settings().get("goal_lookahead", False))
+
+
+@app.get("/api/training/goal-lookahead")
+async def get_goal_lookahead():
+    return {"success": True, "enabled": _goal_lookahead_enabled()}
+
+
+@app.post("/api/training/goal-lookahead")
+async def set_goal_lookahead(req: NativeCaptureRequest = None):
+    payload = req or NativeCaptureRequest()
+    settings = _read_settings()
+    settings["goal_lookahead"] = bool(payload.enabled)
+    _write_settings(settings)
+    try:
+        career_runner.goal_lookahead = bool(payload.enabled)
+    except Exception:
+        pass
+    return {"success": True, "enabled": bool(payload.enabled)}
+
+
+@app.get("/api/skills/optimizer")
+async def get_skill_optimizer():
+    return {"success": True, "enabled": _skill_optimizer_enabled()}
+
+
+@app.post("/api/skills/optimizer")
+async def set_skill_optimizer(req: NativeCaptureRequest = None):
+    payload = req or NativeCaptureRequest()
+    settings = _read_settings()
+    settings["skill_optimizer"] = bool(payload.enabled)
+    _write_settings(settings)
+    return {"success": True, "enabled": bool(payload.enabled)}
+
+
 @app.get("/api/events/outcome-kb")
 async def get_event_outcome_kb():
-    return event_outcomes.summary(base_dir)
+    data = event_outcomes.summary(base_dir)
+    # v7.6.2: surface native capture state so the KB panel can show that the
+    # bot auto-records outcomes from its own runs (no Frida/dumper required).
+    try:
+        data["native_capture_enabled"] = _native_capture_enabled()
+        data["native_observed_events"] = sum(
+            1 for row in (event_outcomes.load_outcomes(base_dir) or {}).values()
+            if isinstance(row, dict) and str(row.get("source") or "").startswith("native")
+        )
+    except Exception:
+        pass
+    return data
+
+
+@app.get("/api/events/native-capture")
+async def get_native_capture():
+    return {"success": True, "enabled": _native_capture_enabled()}
+
+
+@app.post("/api/events/native-capture")
+async def set_native_capture(req: NativeCaptureRequest = None):
+    payload = req or NativeCaptureRequest()
+    settings = _read_settings()
+    settings["native_event_capture"] = bool(payload.enabled)
+    _write_settings(settings)
+    try:
+        career_runner.native_event_capture = bool(payload.enabled)
+    except Exception:
+        pass
+    return {"success": True, "enabled": bool(payload.enabled)}
 
 
 @app.post("/api/events/outcome-kb/import")
@@ -3443,75 +3445,6 @@ async def import_event_outcome_kb(req: EventOutcomeImportRequest = None):
         )
     except Exception as exc:
         raise HTTPException(status_code=400, detail=f"Event outcome import failed: {exc}")
-
-
-# ===========================================================================
-# v6.7.26 — Dumper Watcher endpoints.
-#
-# All write operations go to the STAGING file (event_outcomes_staging.json).
-# The only path that mutates the live event_outcomes.json is /promote, and
-# that requires an explicit user click in the dashboard.
-# ===========================================================================
-
-@app.get("/api/dumper-watcher/status")
-async def dumper_watcher_status():
-    return _dumper_watcher_status_payload()
-
-
-@app.post("/api/dumper-watcher/config")
-async def dumper_watcher_set_config(req: DumperWatcherConfigRequest = None):
-    payload = req or DumperWatcherConfigRequest()
-    merged = _dumper_watcher_save_config({
-        "enabled": payload.enabled,
-        "source_path": payload.source_path,
-        "poll_interval_sec": payload.poll_interval_sec,
-    })
-    # Make sure the watcher loop is alive (no-op if already running).
-    start_dumper_watcher()
-    return {"success": True, "config": merged}
-
-
-@app.post("/api/dumper-watcher/run-now")
-async def dumper_watcher_run_now(req: DumperWatcherRunRequest = None):
-    payload = req or DumperWatcherRunRequest()
-    # If user passed an ad-hoc source_path, honor it but don't persist it.
-    src = (payload.source_path or "").strip() or None
-    try:
-        result = _dumper_watcher_run_once(source_path=src)
-    except Exception as exc:
-        raise HTTPException(status_code=400, detail=f"Watcher tick failed: {exc}")
-    return result
-
-
-@app.get("/api/dumper-watcher/diff")
-async def dumper_watcher_diff():
-    return {"success": True, "diff": _dumper_watcher_diff_summary()}
-
-
-@app.post("/api/dumper-watcher/promote")
-async def dumper_watcher_promote(req: DumperWatcherPromoteRequest = None):
-    payload = req or DumperWatcherPromoteRequest()
-    mode = (payload.mode or "new_only").strip().lower()
-    if mode not in ("new_only", "all"):
-        raise HTTPException(status_code=400, detail="mode must be 'new_only' or 'all'")
-    try:
-        return _dumper_watcher_promote(mode=mode)
-    except Exception as exc:
-        raise HTTPException(status_code=500, detail=f"Promote failed: {exc}")
-
-
-@app.post("/api/dumper-watcher/clear-staging")
-async def dumper_watcher_clear_staging():
-    try:
-        return _dumper_watcher_clear_staging()
-    except Exception as exc:
-        raise HTTPException(status_code=500, detail=f"Clear failed: {exc}")
-
-
-@app.on_event("startup")
-async def _startup_dumper_watcher():
-    # Idempotent; safe even when watcher is disabled in settings.
-    start_dumper_watcher()
 
 
 @app.get("/api/settings/discord-webhook")
@@ -3613,7 +3546,7 @@ class TrackblazerPlanRequest(BaseModel):
     primary_distances: list = Field(default_factory=list)
     distance_preference_mode: str = "balanced"
     fan_bonus: float = 0
-    max_races_in_row: int = 2
+    max_races_in_row: int = 5
     include_op: bool = False
     min_aptitude_floor: int = 6
     solver: str = "auto"
@@ -3638,48 +3571,57 @@ class WeightedSkillPreviewRequest(BaseModel):
 
 
 def _trackblazer_profile_aptitudes(req):
-    """Build Trackblazer aptitude payload from an explicit selected trainee.
+    """Build the Trackblazer planning aptitude payload for a selected trainee.
 
-    Generic fallback profiles are intentionally not used here.  An empty
-    aptitude payload means "planner default" and is safer than passing C/C/C/C,
-    which filters every race at the default B floor.
+    v6.8 fix: plan from the trainee's BASE (career-start) aptitudes taken from
+    the authoritative master-data profile -- NOT from whatever the dashboard
+    inferred off the live/last-run trainee.  Aptitudes never start a career at S;
+    the live values reflect inheritance/sparks gained at start, so trusting them
+    inflated the schedule (e.g. Mile/Medium/Long shown as S when Oguri's base is
+    A/A/B).  The running career still re-validates every race against the live
+    in-game aptitudes (RacePlanner.check_aptitude), so inheritance is honoured at
+    run time -- the *plan* just stops over-promising on ranks the card lacks.
     """
-    explicit_aptitudes = bool(req.aptitudes)
-    aptitudes = dict(req.aptitudes or {})
     key_map = {
         "sprint": "Sprint", "mile": "Mile", "medium": "Medium", "middle": "Medium", "long": "Long",
         "turf": "Turf", "dirt": "Dirt",
         "front": "Front", "pace": "Pace", "late": "Late", "end": "End",
     }
-    for distance in req.primary_distances or []:
-        mapped = key_map.get(str(distance).lower(), str(distance))
-        aptitudes.setdefault(mapped, "A")
-    if req.running_style:
-        mapped = key_map.get(str(req.running_style).lower(), str(req.running_style))
-        aptitudes.setdefault(mapped, "A")
-
+    aptitudes = {}
     has_specific_trainee = bool(str(req.trainee_name or "").strip() or str(req.trainee_id or "").strip())
-    if not aptitudes and has_specific_trainee:
+
+    # 1) Authoritative base aptitudes from the trainee's master-data profile.
+    if has_specific_trainee:
         try:
             from career_bot.dynamic_skill_profiles import find_profile
             profile = find_profile(DIR, req.trainee_name or "", req.trainee_id or None)
             if profile and profile.get("name") != "__fallback__" and profile.get("profile_source") != "fallback":
-                for key, value in (profile.get("distance_aptitude") or {}).items():
-                    aptitudes[key_map.get(str(key).lower(), str(key))] = value
-                for key, value in (profile.get("track_aptitude") or {}).items():
-                    aptitudes[key_map.get(str(key).lower(), str(key))] = value
-                if profile.get("recommended_style"):
-                    mapped = key_map.get(str(profile.get("recommended_style")).lower(), str(profile.get("recommended_style")))
-                    aptitudes.setdefault(mapped, "A")
+                for group in ("distance_aptitude", "track_aptitude", "style_aptitude"):
+                    for key, value in (profile.get(group) or {}).items():
+                        if value:
+                            aptitudes[key_map.get(str(key).lower(), str(key))] = value
         except Exception:
             pass
 
+    # 2) Fall back to caller-supplied aptitudes only when no base profile
+    #    resolved (e.g. an unknown trainee with no master-data entry).
+    if not aptitudes and req.aptitudes:
+        for key, value in dict(req.aptitudes).items():
+            if value:
+                aptitudes[key_map.get(str(key).lower(), str(key))] = value
+
+    # 3) Distance / running-style hints only FILL gaps (never override base).
+    for distance in req.primary_distances or []:
+        aptitudes.setdefault(key_map.get(str(distance).lower(), str(distance)), "A")
+    if req.running_style:
+        aptitudes.setdefault(key_map.get(str(req.running_style).lower(), str(req.running_style)), "A")
+
+    # 4) Floor guard: if every distance is below the Trackblazer B floor, fall
+    #    back to broad planning aptitudes instead of a zero-race route.
     rank_value = {"S": 8, "A": 7, "B": 6, "C": 5, "D": 4, "E": 3, "F": 2, "G": 1}
     distance_keys = {"Sprint", "Mile", "Medium", "Long"}
     distance_values = [rank_value.get(str(aptitudes.get(k, "")).upper(), 0) for k in distance_keys if k in aptitudes]
-    # If every supplied distance is below the Trackblazer floor, replace with
-    # broad planning aptitudes instead of returning a zero-race route.
-    if not explicit_aptitudes and distance_values and max(distance_values) < 6:
+    if distance_values and max(distance_values) < 6:
         for key in distance_keys:
             aptitudes[key] = "B"
         aptitudes.setdefault("Turf", "A")
@@ -3747,6 +3689,168 @@ def api_trainee_profile(req: TraineeProfileRequest):
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc))
 
+
+
+_SUPPORT_TYPE_TO_STAT = {
+    "Speed": "speed",
+    "Stamina": "stamina",
+    "Power": "power",
+    "Guts": "guts",
+    "Wit": "wit",
+}
+_RARITY_WEIGHT = {"SSR": 3, "SR": 2, "R": 1}
+_DEFAULT_STAT_PRIORITY = ["speed", "power", "wit", "stamina", "guts"]
+
+
+def _trainee_stat_priority(card_id):
+    """Resolve a trainee's stat priority list from character_profiles, with a
+    sensible meta default. Returns (priority_list, profile_name)."""
+    base = base_dir / "data" / "character_profiles"
+    cid = str(card_id or "")
+    chara = cid[:4]
+    profile_name = "default"
+    try:
+        index = json.loads((base / "index.json").read_text(encoding="utf-8"))
+        profile_name = (
+            index.get("by_card_id", {}).get(cid)
+            or index.get("by_chara_id", {}).get(chara)
+            or "default"
+        )
+    except Exception:
+        pass
+    priority = []
+    try:
+        prof = json.loads((base / f"{profile_name}.json").read_text(encoding="utf-8"))
+        priority = (prof.get("training_scorer_overrides") or {}).get("stat_priority") or []
+    except Exception:
+        priority = []
+    priority = [str(s).lower() for s in priority if s]
+    if not priority:
+        priority = list(_DEFAULT_STAT_PRIORITY)
+    return priority, profile_name
+
+
+@app.get("/api/trainee/recommended-supports")
+def api_trainee_recommended_supports(card_id: str = "", limit: int = 8):
+    """Recommend support cards from the player's OWNED cards for a trainee.
+
+    No explicit per-trainee support recommendations exist in the data, so this
+    derives them: rank owned supports by how well their type matches the
+    trainee's stat priority, then by rarity. Returns the top matches plus the
+    derived stat focus for transparency.
+    """
+    try:
+        priority, profile_name = _trainee_stat_priority(card_id)
+        rank = {stat: len(priority) - i for i, stat in enumerate(priority)}
+        owned = []
+        if active_dashboard_data and active_dashboard_data.get("supports"):
+            owned = active_dashboard_data["supports"]
+        scored = []
+        for card in owned:
+            ctype = str(card.get("type") or "")
+            stat = _SUPPORT_TYPE_TO_STAT.get(ctype)
+            if stat:
+                type_score = rank.get(stat, 1)
+                reason = f"{ctype} card — matches {stat.title()} focus"
+            elif ctype == "Pal":
+                type_score = max(1, len(priority) // 2)
+                reason = "Pal card — flexible, broadly useful"
+            else:
+                type_score = 1
+                reason = ctype or "Support card"
+            rarity = str(card.get("rarity") or "")
+            rarity_score = _RARITY_WEIGHT.get(rarity.upper(), 0)
+            total = type_score * 10 + rarity_score
+            scored.append({**card, "score": total, "reason": reason})
+        scored.sort(key=lambda c: (-c["score"], str(c.get("name") or "")))
+        top = scored[: max(1, int(limit or 8))]
+        return {
+            "success": True,
+            "card_id": card_id,
+            "profile": profile_name,
+            "stat_priority": priority,
+            "owned_count": len(owned),
+            "recommended": top,
+        }
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+# v7.6 — scraped Game8 Trackblazer support-card setups per trainee.
+_TRAINEE_SUPPORT_SETUPS = {"data": None}
+
+
+def _load_trainee_support_setups():
+    if _TRAINEE_SUPPORT_SETUPS["data"] is None:
+        try:
+            p = base_dir / "data" / "trainee_support_setups.json"
+            _TRAINEE_SUPPORT_SETUPS["data"] = json.loads(p.read_text(encoding="utf-8")) if p.exists() else {}
+        except Exception:
+            _TRAINEE_SUPPORT_SETUPS["data"] = {}
+    return _TRAINEE_SUPPORT_SETUPS["data"]
+
+
+def _find_support_setup_entry(card_id):
+    """Match a trainee card_id to a scraped setup entry. Game8 keys by name and
+    many trainees have multiple game versions sharing a base name, so the scrape
+    exposes card_id (unambiguous) and card_id_candidates (ambiguous versions)."""
+    data = _load_trainee_support_setups()
+    try:
+        cid = int(card_id)
+    except Exception:
+        return None, None
+    for name, entry in data.items():
+        if entry.get("card_id") == cid:
+            return name, entry
+    for name, entry in data.items():
+        if cid in (entry.get("card_id_candidates") or []):
+            return name, entry
+    return None, None
+
+
+@app.get("/api/trainee/support-setups")
+def api_trainee_support_setups(card_id: str = ""):
+    """Scraped Game8 Trackblazer recommended support setups for a trainee:
+    multiple setups, a budget build, and alternate cards. Each card is marked
+    with whether the player owns it (and at what limit break)."""
+    try:
+        name, entry = _find_support_setup_entry(card_id)
+        owned_by_id = {}
+        if active_dashboard_data and active_dashboard_data.get("supports"):
+            for c in active_dashboard_data["supports"]:
+                owned_by_id[str(c.get("id"))] = c
+
+        def mark(cards):
+            out = []
+            for c in (cards or []):
+                cc = dict(c)
+                ownc = owned_by_id.get(str(c.get("card_id")))
+                cc["owned"] = bool(ownc)
+                cc["owned_limit_break"] = ownc.get("limit_break") if ownc else None
+                out.append(cc)
+            return out
+
+        if not entry:
+            return {"success": True, "card_id": card_id, "trainee_name": name,
+                    "found": False, "setups": [], "budget": None, "alternates": []}
+        setups = [{"label": s.get("label"), "cards": mark(s.get("cards")), "race_bonus": s.get("race_bonus")}
+                  for s in (entry.get("setups") or [])]
+        budget = None
+        if entry.get("budget"):
+            budget = {"label": entry["budget"].get("label"), "cards": mark(entry["budget"].get("cards")), "race_bonus": entry["budget"].get("race_bonus")}
+        return {
+            "success": True,
+            "card_id": card_id,
+            "trainee_name": name,
+            "found": True,
+            "setups": setups,
+            "budget": budget,
+            "alternates": mark(entry.get("alternates")),
+            "source_url": entry.get("source_url"),
+            "notes": entry.get("notes") or [],
+        }
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
 
 
 @app.get("/api/skills")
@@ -3824,6 +3928,12 @@ def api_weighted_skill_preview(req: WeightedSkillPreviewRequest):
         forced = set((skill_strategy.get("forced_skills") if isinstance(skill_strategy, dict) else []) or preset.get("learn_skill_list", [[]])[0] if preset.get("learn_skill_list") else [])
         blacklist = set((skill_strategy.get("blacklist") if isinstance(skill_strategy, dict) else []) or preset.get("learn_skill_blacklist") or [])
 
+        # P3: read the community tier config ONCE, not once per skill row.
+        try:
+            community_tiers = json.loads((Path(DIR) / "data" / "community_skill_tiers.json").read_text(encoding="utf-8"))
+        except Exception:
+            community_tiers = {}
+
         for raw_id, info in raw.items():
             if not isinstance(info, dict):
                 name = str(info)
@@ -3834,12 +3944,8 @@ def api_weighted_skill_preview(req: WeightedSkillPreviewRequest):
                 continue
             community_bonus = 0
             tier = ""
-            # Simple tier hint from bundled community tier config.
-            try:
-                tiers = json.loads((Path(DIR) / "data" / "community_skill_tiers.json").read_text(encoding="utf-8"))
-            except Exception:
-                tiers = {}
-            for tier_name, names in (tiers or {}).items():
+            # Simple tier hint from bundled community tier config (hoisted above).
+            for tier_name, names in (community_tiers or {}).items():
                 if name in (names or []):
                     tier = tier_name
                     community_bonus = {"SS": 115, "S": 86, "A": 58, "B": 34}.get(str(tier_name).upper(), 20)
@@ -4252,6 +4358,81 @@ def api_character_profile_epithets(req: dict):
         raise HTTPException(status_code=500, detail=str(exc))
 
 
+@app.post("/api/character-profile/training-targets")
+def api_character_profile_training_targets(req: dict):
+    """Edit a profile's per-distance stat targets, stat priority, and the
+    parent-aware target-adaptation toggle.  Writes to the profile JSON.
+
+    Body (all fields optional except profile_id)::
+
+        {"profile_id": "oguri_cap",
+         "stat_priority": ["speed","power","stamina","wit","guts"],
+         "stat_targets": {"long": {"speed":1050,"stamina":1100, ...}, ...},
+         "adapt_targets_to_inheritance": true}
+
+    ``stat_targets`` may be partial (only the distances/stats provided are
+    updated).  Values clamp to 0..1500.  ``stat_priority`` must be a
+    permutation of the five stats.
+    """
+    STATS = ("speed", "stamina", "power", "guts", "wit")
+    DISTS = ("sprint", "mile", "medium", "long")
+    try:
+        profile_id = str((req or {}).get("profile_id") or "").strip()
+        if not profile_id or "/" in profile_id or ".." in profile_id:
+            raise HTTPException(status_code=400, detail="invalid profile_id")
+        from career_bot import character_profiles
+        path = Path(DIR) / "data" / character_profiles.PROFILES_DIRNAME / f"{profile_id}.json"
+        if not path.exists():
+            raise HTTPException(status_code=404, detail=f"profile not found: {profile_id}")
+        with path.open("r", encoding="utf-8") as f:
+            payload = json.load(f)
+        overrides = payload.get("training_scorer_overrides")
+        if not isinstance(overrides, dict):
+            overrides = {}
+            payload["training_scorer_overrides"] = overrides
+
+        if "stat_priority" in (req or {}):
+            sp = [str(s).strip().lower() for s in (req["stat_priority"] or [])]
+            if sorted(sp) != sorted(STATS):
+                raise HTTPException(status_code=400,
+                    detail="stat_priority must be a permutation of speed/stamina/power/guts/wit")
+            overrides["stat_priority"] = sp
+
+        if "stat_targets" in (req or {}):
+            incoming = req["stat_targets"] or {}
+            if not isinstance(incoming, dict):
+                raise HTTPException(status_code=400, detail="stat_targets must be an object")
+            targets = overrides.get("stat_targets")
+            targets = dict(targets) if isinstance(targets, dict) else {}
+            for dist, row in incoming.items():
+                if dist not in DISTS or not isinstance(row, dict):
+                    continue
+                cur = dict(targets.get(dist) or {})
+                for stat, val in row.items():
+                    if stat not in STATS:
+                        continue
+                    try:
+                        cur[stat] = max(0, min(1500, int(val)))
+                    except (TypeError, ValueError):
+                        continue
+                targets[dist] = cur
+            overrides["stat_targets"] = targets
+
+        if "adapt_targets_to_inheritance" in (req or {}):
+            payload["adapt_targets_to_inheritance"] = bool(req["adapt_targets_to_inheritance"])
+
+        with path.open("w", encoding="utf-8") as f:
+            json.dump(payload, f, indent=2, ensure_ascii=False)
+        return {"success": True, "profile_id": profile_id,
+                "stat_priority": overrides.get("stat_priority"),
+                "stat_targets": overrides.get("stat_targets"),
+                "adapt_targets_to_inheritance": payload.get("adapt_targets_to_inheritance", False)}
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
 @app.post("/api/trackblazer/plan")
 def api_trackblazer_plan(req: TrackblazerPlanRequest):
     try:
@@ -4315,24 +4496,31 @@ async def delete_settings_preset(req: DeletePresetByNameRequest):
     return {"success": preset_store.delete_settings_preset(req.name)}
 
 
+# v7.6 — point the store at the active preset (skill/solver config is now
+# per-preset, so switching presets in the UI must update the active pointer).
+@app.post("/api/settings-presets/active")
+async def set_active_settings_preset(req: DeletePresetByNameRequest):
+    return {"success": True, "active": preset_store.set_active(req.name)}
+
+
 @app.get("/api/skill-config")
-async def get_skill_config():
-    return {"success": True, "config": preset_store.read_skill_config()}
+async def get_skill_config(preset: str = ""):
+    return {"success": True, "config": preset_store.read_skill_config(preset or None)}
 
 
 @app.post("/api/skill-config")
 async def save_skill_config(req: SaveSkillConfigRequest):
-    return {"success": True, "config": preset_store.save_skill_config(req.config)}
+    return {"success": True, "config": preset_store.save_skill_config(req.config, (req.preset or None))}
 
 
 @app.get("/api/smart-solver/config")
-async def get_smart_solver_config():
-    return {"success": True, "config": preset_store.read_solver_config()}
+async def get_smart_solver_config(preset: str = ""):
+    return {"success": True, "config": preset_store.read_solver_config(preset or None)}
 
 
 @app.post("/api/smart-solver/config")
 async def save_smart_solver_config(req: SaveSmartSolverConfigRequest):
-    return {"success": True, "config": preset_store.save_solver_config(req.config)}
+    return {"success": True, "config": preset_store.save_solver_config(req.config, (req.preset or None))}
 
 
 # Backward-compatible preset endpoints.  They now compose/split the three new
@@ -4471,6 +4659,21 @@ def start_career_from_request(req):
     time.sleep(random.uniform(0.5, 1.5))
 
     active_start_state["tp_restore_reasoning"] = restore_reasoning
+    # Safeguard against result_code 2511: the game rejects single_mode_free/start when
+    # the support deck exceeds 6 cards (5 owned + 1 borrowed friend). The custom-deck
+    # builder caps at 5, but a saved preset or other deck path can still over-fill it
+    # and fail the whole start. Trim extras here so the run starts with a legal deck.
+    try:
+        _friend_present = bool(_safe_int(getattr(req, "friend_card_id", 0)))
+        _deck_cap = 5 if _friend_present else 6
+        if isinstance(req.support_card_ids, list) and len(req.support_card_ids) > _deck_cap:
+            print(
+                f"[deck-guard] Support deck has {len(req.support_card_ids)} cards; trimming "
+                f"to {_deck_cap} to avoid result_code 2511 (max 6 incl. borrowed friend)."
+            )
+            req.support_card_ids = req.support_card_ids[:_deck_cap]
+    except Exception:
+        pass
     try:
         result = active_client.start_career(
             card_id=req.card_id,
@@ -4505,6 +4708,25 @@ def start_career_from_request(req):
                     f"Original error: {err}"
                 ),
             }
+        # 102 = the server still holds an in-progress career, so a new start is
+        # rejected (stale account cache, or a prior run that didn't finish/abandon
+        # cleanly). Resume the existing career instead of failing so the runner
+        # can finish it and the career-looping feature keeps going. Matches the
+        # existing active-career guard in /api/career/run and the runner's own
+        # 102 reconciliation. See uma_api/career_recovery.py.
+        if is_career_in_progress_error(err):
+            recovered = resume_active_career(active_client, on_state=update_start_state)
+            if recovered is not None:
+                turn = (
+                    ((recovered.get("data") or {}).get("chara_info") or {}).get("turn", 0)
+                )
+                print(
+                    f"single_mode_free/start returned 102 (career already in progress); "
+                    f"resuming existing career at turn {turn} instead of failing."
+                )
+                if isinstance(recovered, dict):
+                    recovered["_tp_restore_reasoning"] = restore_reasoning
+                return {"success": True, "result": recovered, "resumed": True}
         raise
     if isinstance(result, dict):
         result["_tp_restore_reasoning"] = restore_reasoning
@@ -4624,6 +4846,7 @@ async def login(req: LoginRequest):
         # ------------------------------------------------------------
 
         c = attach_turn_delay(UmaClient(cfg, trace_enabled=False))
+        c.on_ticket_refreshed = _persist_refreshed_ticket
         res = c.login()
         if not res:
             raise HTTPException(status_code=401, detail="Game login failed")
@@ -4655,6 +4878,10 @@ async def login(req: LoginRequest):
         support_card_list = d.get("support_card_list", [])
         for s in support_card_list:
             sid = str(s.get("support_card_id", s.get("id", "")))
+            # v7.6: preserve limit-break level + exp so deck bonuses and the
+            # owned-card picker can compute accurate per-card effect values.
+            lb = int(s.get("limit_break_count", s.get("limit_break", 0)) or 0)
+            exp = int(s.get("exp", 0) or 0)
             info = support_map.get(sid)
             if info:
                 supports.append(
@@ -4663,6 +4890,8 @@ async def login(req: LoginRequest):
                         "name": info["name"],
                         "type": display_support_type(info["type"]),
                         "rarity": info["rarity"],
+                        "limit_break": lb,
+                        "exp": exp,
                     }
                 )
             else:
@@ -4672,8 +4901,17 @@ async def login(req: LoginRequest):
                         "name": f"Unknown ({sid})",
                         "type": "Unknown",
                         "rarity": "?",
+                        "limit_break": lb,
+                        "exp": exp,
                     }
                 )
+
+        # v7.6.2: index owned cards by id so in-game deck cards carry the
+        # player's REAL limit break (and exp). Without this, deck cards had no
+        # limit_break_count, so the Deck Bonuses panel and the deck-hover
+        # tooltip both computed every card's effects at LB0 instead of the
+        # owned level.
+        owned_by_id = {s["id"]: s for s in supports}
 
         decks = []
         deck_array = d.get("support_card_deck_array", [])
@@ -4681,6 +4919,9 @@ async def login(req: LoginRequest):
             cards = []
             for cid in deck.get("support_card_id_array", []):
                 sid = str(cid)
+                owned = owned_by_id.get(sid)
+                lb = int(owned.get("limit_break", 0)) if owned else 0
+                exp = int(owned.get("exp", 0)) if owned else 0
                 info = support_map.get(sid)
                 if info:
                     cards.append(
@@ -4689,6 +4930,8 @@ async def login(req: LoginRequest):
                             "name": info["name"],
                             "rarity": info["rarity"],
                             "type": display_support_type(info["type"]),
+                            "limit_break_count": lb,
+                            "exp": exp,
                         }
                     )
                 else:
@@ -4698,6 +4941,8 @@ async def login(req: LoginRequest):
                             "name": f"Unknown ({sid})",
                             "rarity": "?",
                             "type": "?",
+                            "limit_break_count": lb,
+                            "exp": exp,
                         }
                     )
 
@@ -4841,7 +5086,8 @@ async def login(req: LoginRequest):
         if "STEAM_GUARD_REQUIRED" in msg:
             pending_game_auth_config = cfg
             return {"success": False, "needs_2fa": True}
-        return {"success": False, "detail": str(e)}
+        detail, cooldown_seconds = friendly_steam_login_error(msg)
+        return {"success": False, "detail": detail, "cooldown_seconds": cooldown_seconds}
 
 
 # --- DIRECT CIRCLE LOOKUP ---
@@ -5081,7 +5327,18 @@ async def start_career(req: StartCareerRequest):
         account, chara_info = apply_career_result(started["result"])
         return {"success": True, "account": account, "chara_info": chara_info}
     except Exception as e:
-        return {"success": False, "detail": str(e)}
+        detail = str(e)
+        # A 500/501 at career start is usually a transient server hiccup or an
+        # invalid selection; surface something actionable instead of the raw code.
+        # (Guest/rental-parent 500s are caught earlier with a more specific message.)
+        if "500" in detail or "501" in detail:
+            detail = (
+                "The game server rejected the career start (HTTP 500/501). This is "
+                "usually a temporary server hiccup or an invalid selection (deck, "
+                "parent, or scenario). Wait a moment and try again; if it keeps "
+                "happening, re-check your Setup selections. Details: " + detail
+            )
+        return {"success": False, "detail": detail}
 
 
 backend_loop_thread = None
@@ -5100,13 +5357,10 @@ def _effective_run_count(req):
 
 
 def _validate_loop_constraints(req, target):
-    if int(target or 0) == 1:
-        return None
-    if _has_rental_parent(req) and int(target or 0) == 0:
-        return (
-            "Infinite looping is disabled when a guest/rental parent is selected. "
-            "Choose a finite run count so SweepyCL can revalidate the rental before each start."
-        )
+    # Infinite looping IS allowed with a guest/rental parent now: each start
+    # revalidates+rewrites the rental id, and the loop auto-stops when the guest is
+    # no longer borrowable (fatal_start) or the daily borrow cap is reached
+    # (default 5) -- both handled in manage_career_loop.
     return None
 
 
@@ -5120,6 +5374,8 @@ def manage_career_loop(req, preset, initial_result):
 
     while not backend_loop_stop:
         runs_done += 1
+        career_runner.native_event_capture = _native_capture_enabled()
+        career_runner.goal_lookahead = _goal_lookahead_enabled()
         career_runner.set_loop_info(runs_done, target)
         career_runner.start(
             active_client,
@@ -5127,6 +5383,8 @@ def manage_career_loop(req, preset, initial_result):
             current_result,
             max_steps,
             burn_clocks=req.burn_clocks,
+            carats_enabled=req.carats_enabled,
+            max_clocks_per_career=req.max_clocks_per_career,
             dev_mode=True,
         )
 
@@ -5147,6 +5405,17 @@ def manage_career_loop(req, preset, initial_result):
         if target and runs_done >= target:
             print(f"career loop target reached ({runs_done}/{target})", flush=True)
             break
+
+        # Guest/rental parent: each completed run consumes one daily borrow. Stop at
+        # the daily cap (default 5, override via mant_config.guest_daily_borrow_cap).
+        # The loop also auto-stops earlier if the guest is no longer borrowable
+        # (fatal_start below) -- so a finite count is no longer required.
+        if _has_rental_parent(req):
+            _mc = (preset.get("mant_config") if isinstance(preset, dict) else None) or {}
+            guest_cap = int(_mc.get("guest_daily_borrow_cap") or 5)
+            if guest_cap > 0 and runs_done >= guest_cap:
+                print(f"guest-parent daily borrow cap reached ({runs_done}/{guest_cap}); stopping loop", flush=True)
+                break
 
         for _ in range(6):
             if backend_loop_stop:
@@ -5210,9 +5479,24 @@ async def run_career(req: RunCareerRequest):
     req.preset_name = preset_name
     req.scenario_id = int(preset.get("scenario_id") or 4)
     runtime_preset = dict(preset)
+    # #7 — when the value-per-SP skill optimizer is toggled on, run the buyer in
+    # "optimize_rank" mode. When off, leave the preset's own strategy untouched
+    # (default "best_skills_first"), so nothing changes unless the user opts in.
+    if _skill_optimizer_enabled():
+        runtime_preset["skill_spending_strategy"] = "optimize_rank"
     race_mode = str(getattr(req, "race_planner_mode", "") or "smart").strip().lower()
     if race_mode not in {"manual", "smart"}:
         race_mode = "smart"
+    # v7.2 — Defense in depth. If the request explicitly says "smart" but the
+    # preset itself was saved as "manual" with a non-empty extra_race_list,
+    # respect the user's persisted choice instead of silently overriding.
+    # Without this, a stale UI state (e.g. user reloaded the page before the
+    # racePlannerMode localStorage was reapplied) could downgrade them to
+    # smart mode and run dirt races they didn't pick.
+    saved_source = str((preset or {}).get("extra_race_list_source") or "").strip().lower()
+    saved_list = (preset or {}).get("extra_race_list") or []
+    if saved_source == "manual" and saved_list and race_mode != "manual":
+        race_mode = "manual"
     runtime_preset["extra_race_list_source"] = race_mode
     if race_mode == "manual" and getattr(req, "manual_race_ids", None):
         manual_ids = []
@@ -5273,6 +5557,8 @@ async def run_career(req: RunCareerRequest):
             backend_loop_thread.start()
             time.sleep(0.5)
         else:
+            career_runner.native_event_capture = _native_capture_enabled()
+            career_runner.goal_lookahead = _goal_lookahead_enabled()
             career_runner.set_loop_info(1, 1)
             career_runner.start(
                 active_client,
@@ -5280,6 +5566,8 @@ async def run_career(req: RunCareerRequest):
                 result,
                 max(1, min(int(req.max_steps or 2500), 3000)),
                 burn_clocks=req.burn_clocks,
+                carats_enabled=req.carats_enabled,
+                max_clocks_per_career=req.max_clocks_per_career,
                 dev_mode=False,
             )
 
@@ -5497,9 +5785,17 @@ async def api_accounts_manager_start():
     log_dir = Path(DIR) / "uma_runtime" / "manager_logs"
     log_dir.mkdir(parents=True, exist_ok=True)
     log_file = open(log_dir / "dashboard-manager.log", "a", encoding="utf-8")
+    manager_env = os.environ.copy()
+    # Ensure the manager (and the per-account children it spawns) resolve the
+    # SAME userdata folder the dashboard uses. The account roster lives at
+    # ``USERDATA_DIR/accounts.json`` -- usually an external sibling folder --
+    # so without this the manager would read a stale/sample accounts.json from
+    # the build folder and never launch the accounts configured here.
+    manager_env["ICARUS_USERDATA_DIR"] = str(USERDATA_DIR)
     manager_process = subprocess.Popen(
         [sys.executable, "manager.py"],
         cwd=DIR,
+        env=manager_env,
         stdout=log_file,
         stderr=subprocess.STDOUT,
         creationflags=getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0),
@@ -5519,7 +5815,10 @@ async def api_health():
     stale_seconds = int(runner.get("stale_seconds", 0) or 0)
     if runner_running and last_heartbeat:
         stale_seconds = int(max(0, time.time() - last_heartbeat))
-    if runner_running:
+    waiting_for_server = bool(runner.get("waiting_for_server"))
+    if waiting_for_server:
+        state = "waiting-server"
+    elif runner_running:
         state = "running"
     elif logged_in and career_active:
         state = "career-open"
@@ -5527,6 +5826,7 @@ async def api_health():
         state = "logged-in"
     else:
         state = "booted"
+    chara = runner.get("current_chara") or {}
     return {
         "success": True,
         "profile": PROFILE_NAME,
@@ -5538,10 +5838,21 @@ async def api_health():
         "runner_stale_seconds": stale_seconds,
         "runner_last_error": runner.get("last_error", ""),
         "recoveries": runner.get("recoveries", 0),
+        "waiting_for_server": waiting_for_server,
+        "server_wait_reason": runner.get("server_wait_reason", ""),
         "run_id": runner.get("run_id", ""),
         "turn": runner.get("turn", career.get("turn", 0)),
         "last_action": runner.get("last_action", ""),
         "last_heartbeat": last_heartbeat,
+        # Career summary for the multi-account overview.
+        "fans": runner.get("fans_current", 0),
+        "fans_per_hour": runner.get("fans_per_hour", 0),
+        "vital": chara.get("vital"),
+        "max_vital": chara.get("max_vital"),
+        "motivation": chara.get("motivation"),
+        "card_id": chara.get("card_id"),
+        "loop_index": runner.get("loop_index", 0),
+        "loop_target": runner.get("loop_target", 0),
         "pid": os.getpid(),
         "updated_at": time.time(),
     }
@@ -5588,9 +5899,44 @@ async def download_latest_career_snapshot():
 
 
 
+# --- P1a: TTL + off-thread cache for heavy poll endpoints --------------------
+# These endpoints read large jsonl aggregates synchronously; polled every 1.5-2s
+# they starve the event loop and stall the live panels. We memo the result for a
+# short TTL and run the heavy work in a worker thread so the loop stays free.
+_POLL_CACHE = {}
+_POLL_CACHE_LOCK = threading.Lock()
+_POLL_CACHE_INFLIGHT = {}
+
+
+async def _cached_poll(key, ttl, fn):
+    now = time.time()
+    with _POLL_CACHE_LOCK:
+        ent = _POLL_CACHE.get(key)
+        if ent and (now - ent[0]) < ttl:
+            return ent[1]
+        fut = _POLL_CACHE_INFLIGHT.get(key)
+        if fut is None:
+            fut = asyncio.ensure_future(asyncio.to_thread(fn))
+            _POLL_CACHE_INFLIGHT[key] = fut
+            owner = True
+        else:
+            owner = False
+    try:
+        result = await fut
+    finally:
+        if owner:
+            with _POLL_CACHE_LOCK:
+                _POLL_CACHE[key] = (time.time(), result)
+                _POLL_CACHE_INFLIGHT.pop(key, None)
+    return result
+
+
 @app.get("/api/diagnostics/summary")
 async def diagnostics_summary():
-    return diagnostics.build_summary(base_dir, career_runner.snapshot())
+    return await _cached_poll(
+        "diagnostics_summary", 5.0,
+        lambda: diagnostics.build_summary(base_dir, career_runner.snapshot()),
+    )
 
 
 @app.get("/api/diagnostics/bundle")
@@ -5605,7 +5951,9 @@ async def diagnostics_bundle():
 @app.get("/api/ai/status")
 async def ai_dataset_status():
     """Return local AI-ready dataset counts and advisor aggregate status."""
-    return ai_dataset.dataset_status(base_dir)
+    return await _cached_poll(
+        "ai_status", 10.0, lambda: ai_dataset.dataset_status(base_dir)
+    )
 
 
 @app.post("/api/ai/rebuild-dataset")
@@ -5643,7 +5991,9 @@ async def ai_import_previous_logs(req: AiImportLogsRequest):
 
 @app.get("/api/ai/advisor/latest")
 async def ai_advisor_latest():
-    return ai_advisor.post_run_advice(base_dir)
+    return await _cached_poll(
+        "ai_advisor_latest", 10.0, lambda: ai_advisor.post_run_advice(base_dir)
+    )
 
 
 @app.get("/api/ai/dataset/download")
@@ -5807,132 +6157,6 @@ async def download_latest_decision_trace():
         raise HTTPException(status_code=404, detail="No decision trace found")
     return FileResponse(path, filename=Path(path).name, media_type="application/jsonl")
 
-
-
-def _club_circle_id_from_value(value):
-    raw = str(value or "").strip()
-    if not raw:
-        raw = os.environ.get("UMA_CIRCLE_ID") or os.environ.get("CIRCLE_ID") or os.environ.get("CIRCLE_URL") or ""
-    m = re.search(r"circles/(\d+)", raw)
-    if m:
-        return m.group(1)
-    m = re.search(r"(\d{5,})", raw)
-    return m.group(1) if m else ""
-
-
-def _club_number(value, default=0):
-    try:
-        n = float(value)
-        if n == n and n not in (float("inf"), float("-inf")):
-            return n
-    except Exception:
-        pass
-    return default
-
-
-def _club_compact_daily_fans(values):
-    if not isinstance(values, list):
-        return []
-    nums = []
-    for value in values:
-        try:
-            nums.append(int(float(value)))
-        except Exception:
-            pass
-    while len(nums) > 1 and nums[-1] == 0 and any(n > 0 for n in nums):
-        nums.pop()
-    return nums
-
-
-def _club_normalize_member(member):
-    if not isinstance(member, dict):
-        return None
-    daily_fans = _club_compact_daily_fans(member.get("daily_fans"))
-    latest = daily_fans[-1] if daily_fans else int(_club_number(member.get("fan") or member.get("fans") or member.get("circle_fans"), 0))
-    previous = daily_fans[-2] if len(daily_fans) >= 2 else latest
-    first_positive_index = next((idx for idx, n in enumerate(daily_fans) if n > 0), -1)
-    first_monthly_value = daily_fans[first_positive_index] if first_positive_index >= 0 else (daily_fans[0] if daily_fans else latest)
-    days_tracked = max(1, len(daily_fans) - 1 - first_positive_index) if first_positive_index >= 0 else 1
-    monthly_gain = max(0, latest - first_monthly_value)
-    daily_gain = max(0, latest - previous)
-    return {
-        "viewer_id": str(member.get("viewer_id") or member.get("id") or ""),
-        "name": str(member.get("trainer_name") or member.get("name") or member.get("viewer_id") or member.get("id") or "Unknown"),
-        "fans": int(latest),
-        "daily_gain": int(daily_gain),
-        "monthly_gain": int(monthly_gain),
-        "seven_day_avg": int(round(monthly_gain / days_tracked)) if days_tracked else 0,
-        "raw_daily_fans": daily_fans,
-    }
-
-
-def _club_normalize_ranking(circle):
-    if not isinstance(circle, dict):
-        return {}
-    rank = circle.get("monthly_rank", circle.get("live_rank", circle.get("rank")))
-    yesterday = circle.get("yesterday_rank")
-    rank_num = int(_club_number(rank, 0)) if rank is not None else None
-    yesterday_num = int(_club_number(yesterday, 0)) if yesterday is not None else None
-    movement = (yesterday_num - rank_num) if rank_num and yesterday_num else None
-    return {
-        "rank": rank_num,
-        "yesterday_rank": yesterday_num,
-        "movement": movement,
-        "monthly_point": int(_club_number(circle.get("monthly_point") or circle.get("point"), 0)),
-        "live_points": int(_club_number(circle.get("live_points"), 0)),
-        "last_updated": circle.get("last_live_update") or circle.get("last_updated") or circle.get("updated_at"),
-    }
-
-
-@app.get("/api/club-tracker")
-async def api_club_tracker(circle: str = "", quota: int = 0, api_key: str = ""):
-    circle_id = _club_circle_id_from_value(circle)
-    if not circle_id:
-        return {"success": False, "detail": "Set a circle id or CIRCLE_URL/UMA_CIRCLE_ID env var."}
-    quota_value = int(quota or _club_number(os.environ.get("QUOTA_DAILY_FANS"), 0) or 5000000)
-    base = (os.environ.get("UMA_API_BASE_URL") or "https://uma.moe").rstrip("/")
-    api_key = (api_key or "").strip() or os.environ.get("UMA_API_KEY") or os.environ.get("UMA_MOE_API_KEY") or ""
-    url = f"{base}/api/v4/circles?circle_id={circle_id}"
-    headers = {"accept": "application/json", "user-agent": "Sweepy-Control-Center/5.14"}
-    if api_key:
-        headers["X-API-Key"] = api_key
-    try:
-        res = requests.get(url, headers=headers, timeout=25)
-        if res.status_code >= 400:
-            return {"success": False, "detail": f"uma.moe returned {res.status_code}: {res.text[:180]}"}
-        payload = res.json()
-    except Exception as exc:
-        return {"success": False, "detail": str(exc)}
-    circle_obj = payload.get("circle") or payload.get("data", {}).get("circle") or {}
-    raw_members = payload.get("members") or payload.get("data", {}).get("members") or []
-    members = [_club_normalize_member(m) for m in raw_members]
-    members = [m for m in members if m]
-    members.sort(key=lambda item: item.get("daily_gain", 0), reverse=True)
-    on_track = [m for m in members if m.get("daily_gain", 0) >= quota_value]
-    behind = [m for m in members if m.get("daily_gain", 0) < quota_value]
-    behind.sort(key=lambda item: item.get("daily_gain", 0))
-    total_daily_gain = sum(int(m.get("daily_gain", 0)) for m in members)
-    total_monthly_gain = sum(int(m.get("monthly_gain", 0)) for m in members)
-    return {
-        "success": True,
-        "circle_id": circle_id,
-        "circle_name": circle_obj.get("name") or os.environ.get("CLUB_DISPLAY_NAME") or f"Circle {circle_id}",
-        "quota": quota_value,
-        "ranking": _club_normalize_ranking(circle_obj),
-        "summary": {
-            "member_count": len(members),
-            "on_track": len(on_track),
-            "behind": len(behind),
-            "total_daily_gain": total_daily_gain,
-            "total_monthly_gain": total_monthly_gain,
-            "avg_daily_gain": int(round(total_daily_gain / len(members))) if members else 0,
-        },
-        "members": members[:50],
-        "on_track": on_track[:20],
-        "behind": behind[:20],
-        "source": "uma.moe api-v4",
-        "checked_at": time.time(),
-    }
 
 
 def _rank_label(value):
@@ -6486,6 +6710,65 @@ async def career_live_history():
     }
 
 
+@app.get("/api/career/report")
+async def career_report():
+    """Live run monitor / post-run summary computed from the run's per-turn
+    action history: stat progression, action breakdown, races, energy lows, and
+    resilience stats. Reflects the current / most-recent run held in memory."""
+    snap = career_runner.snapshot()
+    history = [r for r in (snap.get("action_history") or []) if isinstance(r, dict)]
+    counts = {"train": 0, "race": 0, "rest": 0, "recreation": 0, "medic": 0, "event": 0, "other": 0}
+    train_by_facility = {}
+    races = []
+    low_energy_turns = []
+    curve = []
+    for row in history:
+        action = str(row.get("action") or "").lower()
+        stats = row.get("stats") or {}
+        turn = row.get("turn")
+        if action in counts:
+            counts[action] += 1
+        elif action:
+            counts["other"] += 1
+        if action == "train":
+            fac = str(row.get("facility") or "").strip() or "?"
+            train_by_facility[fac] = train_by_facility.get(fac, 0) + 1
+        elif action == "race":
+            races.append(str(row.get("facility") or row.get("detail") or "race"))
+        try:
+            if stats.get("hp") is not None and int(stats.get("hp")) < 30 and turn is not None:
+                low_energy_turns.append(turn)
+        except (TypeError, ValueError):
+            pass
+        if stats:
+            curve.append({
+                "turn": turn,
+                "speed": stats.get("speed"), "stamina": stats.get("stamina"),
+                "power": stats.get("power"), "guts": stats.get("guts"), "wit": stats.get("wit"),
+                "hp": stats.get("hp"), "motivation": stats.get("motivation"),
+            })
+    started = float(snap.get("started_at") or 0)
+    return {
+        "success": True,
+        "run_id": snap.get("run_id", ""),
+        "running": bool(snap.get("running")),
+        "finished": bool(snap.get("finished")),
+        "turns": snap.get("turn") or (curve[-1]["turn"] if curve else 0),
+        "action_counts": counts,
+        "training_by_facility": train_by_facility,
+        "races": races,
+        "race_count": len(races),
+        "low_energy_turns": low_energy_turns,
+        "final_stats": (curve[-1] if curve else {}),
+        "stat_curve": curve,
+        "fans_gained": snap.get("fans_gained", 0),
+        "fans_per_hour": snap.get("fans_per_hour", 0),
+        "recoveries": snap.get("recoveries", 0),
+        "runtime_seconds": int(max(0, time.time() - started)) if started else 0,
+        "last_error": snap.get("last_error", ""),
+    }
+
+
 @app.get("/api/career/crash_trace")
 async def career_crash_trace():
     trace_path = runtime_output_root(base_dir) / "crash_trace.txt"
@@ -6832,26 +7115,90 @@ def safe_public_path(subdir: str, file_name: str):
 async def get_image(image_name: str):
     name_no_ext = image_name.split("?")[0].replace(".png", "")
 
+    # Portraits are content-addressed by id and never change for a given id, so
+    # cache them long to avoid re-fetching the whole grid fan-out every load.
+    _img_cache = {"Cache-Control": "public, max-age=604800"}
     exact_path = images_dir / f"{name_no_ext}.png"
     if exact_path.exists():
-        return FileResponse(
-            exact_path, media_type="image/png", headers={"Cache-Control": "no-cache"}
-        )
+        return FileResponse(exact_path, media_type="image/png", headers=_img_cache)
 
     for fallback_id in ["100101", "10010", "10000", "10001"]:
         fb_path = images_dir / f"{fallback_id}.png"
         if fb_path.exists():
-            return FileResponse(
-                fb_path, media_type="image/png", headers={"Cache-Control": "no-cache"}
-            )
+            return FileResponse(fb_path, media_type="image/png", headers=_img_cache)
 
     raise HTTPException(status_code=404, detail="Image not found")
+
+
+@app.get("/api/skill-icons/{image_name}")
+async def get_skill_icon(image_name: str):
+    # Skill icons live in their own namespace because skill icon_ids collide
+    # with support-card portrait ids under /api/images (e.g. 20013 is both a
+    # card portrait and a skill icon). Serve the real skill icon here; the
+    # client falls back to /sweep.png via onerror when one is missing.
+    name_no_ext = image_name.split("?")[0].replace(".png", "")
+    icon_path = skill_icons_dir / f"{name_no_ext}.png"
+    if icon_path.exists():
+        # Skill icons are immutable per id — cache long like portraits.
+        return FileResponse(
+            icon_path, media_type="image/png", headers={"Cache-Control": "public, max-age=604800"}
+        )
+    raise HTTPException(status_code=404, detail="Skill icon not found")
+
+
+@app.get("/api/item-icons/{image_name}")
+async def get_item_icon(image_name: str):
+    # MANT/Trackblazer shop-item icons (game8 source), named by item_id.
+    # Served from public/item_icons/. Files may be .png or .jpg; pick the
+    # media type by extension. Immutable per id, so cache long.
+    path = safe_public_path("item_icons", image_name.split("?")[0])
+    if path:
+        media = "image/jpeg" if path.suffix.lower() in (".jpg", ".jpeg") else "image/png"
+        return FileResponse(
+            path, media_type=media, headers={"Cache-Control": "public, max-age=604800"}
+        )
+    raise HTTPException(status_code=404, detail="Item icon not found")
+
+
+@app.get("/api/changelog")
+async def get_changelog():
+    """Return the latest CHANGELOG.md entry + its version for the what's-new popup."""
+    path = base_dir / "CHANGELOG.md"
+    if not path.is_file():
+        raise HTTPException(status_code=404, detail="CHANGELOG.md not found")
+    text = path.read_text(encoding="utf-8")
+    lines = text.splitlines()
+    version = ""
+    title = ""
+    body_lines = []
+    capturing = False
+    for line in lines:
+        if line.startswith("## "):
+            if capturing:
+                break  # reached the next entry; stop
+            title = line[3:].strip()
+            version = title
+            capturing = True
+            continue
+        if capturing:
+            body_lines.append(line)
+    latest = "\n".join(body_lines).strip()
+    return {
+        "success": True,
+        "version": version,
+        "title": title,
+        "markdown": latest,
+        "full_markdown": text,
+    }
 
 
 @app.get("/styles.css")
 async def styles_css():
     path = base_dir / "public" / "styles.css"
     if path.exists():
+        # no-cache (not no-store): the browser caches the file but revalidates
+        # via ETag each load, so an unchanged file returns a tiny 304 instead of
+        # a full re-download. Editing the file changes its ETag, so never stale.
         return FileResponse(
             path, media_type="text/css", headers={"Cache-Control": "no-cache"}
         )
@@ -6875,7 +7222,7 @@ async def sweep_png():
     path = base_dir / "public" / "sweep.png"
     if path.exists():
         return FileResponse(
-            path, media_type="image/png", headers={"Cache-Control": "no-cache"}
+            path, media_type="image/png", headers={"Cache-Control": "no-store, no-cache, must-revalidate, max-age=0"}
         )
     raise HTTPException(status_code=404, detail="sweep.png not found")
 
@@ -6885,16 +7232,71 @@ async def broom_png():
     path = base_dir / "public" / "broom.png"
     if path.exists():
         return FileResponse(
-            path, media_type="image/png", headers={"Cache-Control": "no-cache"}
+            path, media_type="image/png", headers={"Cache-Control": "no-store, no-cache, must-revalidate, max-age=0"}
         )
     raise HTTPException(status_code=404, detail="broom.png not found")
+
+
+@app.get("/icarus-logo.png")
+async def icarus_logo_png():
+    path = base_dir / "public" / "icarus-logo.png"
+    if path.exists():
+        return FileResponse(
+            path, media_type="image/png", headers={"Cache-Control": "public, max-age=604800"}
+        )
+    raise HTTPException(status_code=404, detail="icarus-logo.png not found")
+
+
+@app.get("/icarus-space-bg.png")
+async def icarus_space_bg_png():
+    path = base_dir / "public" / "icarus-space-bg.png"
+    if path.exists():
+        return FileResponse(
+            path, media_type="image/png", headers={"Cache-Control": "public, max-age=604800"}
+        )
+    raise HTTPException(status_code=404, detail="icarus-space-bg.png not found")
+
+
+@app.get("/icarus-backdrop.jpg")
+async def icarus_backdrop_jpg():
+    # The Icarus theme backdrop, extracted from styles.css (was a 182KB base64
+    # data-URI that bloated the render-blocking stylesheet).  Served as a real,
+    # CACHEABLE file so it loads in parallel and isn't re-parsed every load.
+    # Bust the cache by bumping the ?v= query in styles.css when the image changes.
+    path = base_dir / "public" / "icarus-backdrop.jpg"
+    if path.exists():
+        return FileResponse(
+            path, media_type="image/jpeg", headers={"Cache-Control": "public, max-age=604800"}
+        )
+    raise HTTPException(status_code=404, detail="icarus-backdrop.jpg not found")
+
+
+@app.get("/uma-loading.gif")
+async def uma_loading_gif():
+    path = base_dir / "public" / "uma-loading.gif"
+    if path.exists():
+        return FileResponse(
+            path, media_type="image/gif", headers={"Cache-Control": "public, max-age=604800"}
+        )
+    raise HTTPException(status_code=404, detail="uma-loading.gif not found")
+
+
+@app.get("/sweepycl-logo.png")
+async def sweepycl_logo_png():
+    # Legacy route — serves the Icarus logo so cached references still resolve.
+    path = base_dir / "public" / "icarus-logo.png"
+    if path.exists():
+        return FileResponse(
+            path, media_type="image/png", headers={"Cache-Control": "no-store, no-cache, must-revalidate, max-age=0"}
+        )
+    raise HTTPException(status_code=404, detail="logo not found")
 
 
 @app.get("/assets/data/{file_name}")
 async def get_asset_data(file_name: str):
     path = safe_public_path("assets/data", file_name)
     if path:
-        return FileResponse(path, headers={"Cache-Control": "no-cache"})
+        return FileResponse(path, headers={"Cache-Control": "no-store, no-cache, must-revalidate, max-age=0"})
     raise HTTPException(status_code=404, detail="File not found")
 
 
@@ -6927,7 +7329,7 @@ async def root():
     index_path = base_dir / "public" / "index.html"
     if index_path.exists():
         return FileResponse(
-            index_path, media_type="text/html", headers={"Cache-Control": "no-cache"}
+            index_path, media_type="text/html", headers={"Cache-Control": "no-store, no-cache, must-revalidate, max-age=0"}
         )
     return "index.html not found"
 

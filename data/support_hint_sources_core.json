@@ -13763,6 +13763,104 @@
       "hint_level": 6
     },
     {
+      "id": 1774,
+      "hint_id": 9081040,
+      "support_card_id": 20049,
+      "support_name": "Gold City",
+      "support_rarity": 2,
+      "support_command_id": 106,
+      "support_command_label": "wit",
+      "hint_group": 1,
+      "hint_gain_type": 0,
+      "skill_id": 200232,
+      "skill_name": "Rainy Days ○",
+      "hint_level": 1
+    },
+    {
+      "id": 1775,
+      "hint_id": 9081040,
+      "support_card_id": 20049,
+      "support_name": "Gold City",
+      "support_rarity": 2,
+      "support_command_id": 106,
+      "support_command_label": "wit",
+      "hint_group": 2,
+      "hint_gain_type": 0,
+      "skill_id": 200302,
+      "skill_name": "Long Shot ○",
+      "hint_level": 1
+    },
+    {
+      "id": 1776,
+      "hint_id": 9081040,
+      "support_card_id": 20049,
+      "support_name": "Gold City",
+      "support_rarity": 2,
+      "support_command_id": 106,
+      "support_command_label": "wit",
+      "hint_group": 3,
+      "hint_gain_type": 0,
+      "skill_id": 200692,
+      "skill_name": "Watchful Eye",
+      "hint_level": 1
+    },
+    {
+      "id": 1777,
+      "hint_id": 9081040,
+      "support_card_id": 20049,
+      "support_name": "Gold City",
+      "support_rarity": 2,
+      "support_command_id": 106,
+      "support_command_label": "wit",
+      "hint_group": 4,
+      "hint_gain_type": 0,
+      "skill_id": 201611,
+      "skill_name": "Tail Held High",
+      "hint_level": 1
+    },
+    {
+      "id": 1778,
+      "hint_id": 9081040,
+      "support_card_id": 20049,
+      "support_name": "Gold City",
+      "support_rarity": 2,
+      "support_command_id": 106,
+      "support_command_label": "wit",
+      "hint_group": 5,
+      "hint_gain_type": 0,
+      "skill_id": 201641,
+      "skill_name": "Lone Wolf",
+      "hint_level": 1
+    },
+    {
+      "id": 1779,
+      "hint_id": 9081040,
+      "support_card_id": 20049,
+      "support_name": "Gold City",
+      "support_rarity": 2,
+      "support_command_id": 106,
+      "support_command_label": "wit",
+      "hint_group": 6,
+      "hint_gain_type": 1,
+      "skill_id": 5,
+      "skill_name": "5",
+      "hint_level": 6
+    },
+    {
+      "id": 1780,
+      "hint_id": 9081040,
+      "support_card_id": 20049,
+      "support_name": "Gold City",
+      "support_rarity": 2,
+      "support_command_id": 106,
+      "support_command_label": "wit",
+      "hint_group": 6,
+      "hint_gain_type": 1,
+      "skill_id": 30,
+      "skill_name": "30",
+      "hint_level": 5
+    },
+    {
       "id": 1,
       "hint_id": 9081001,
       "support_card_id": 30001,
@@ -24289,6 +24387,118 @@
       "skill_id": 4,
       "skill_name": "4",
       "hint_level": 2
+    },
+    {
+      "id": 1781,
+      "hint_id": 9081018,
+      "support_card_id": 30106,
+      "support_name": "Air Groove",
+      "support_rarity": 3,
+      "support_command_id": 102,
+      "support_command_label": "stamina",
+      "hint_group": 1,
+      "hint_gain_type": 0,
+      "skill_id": 200931,
+      "skill_name": "Flustered End Closers",
+      "hint_level": 1
+    },
+    {
+      "id": 1782,
+      "hint_id": 9081018,
+      "support_card_id": 30106,
+      "support_name": "Air Groove",
+      "support_rarity": 3,
+      "support_command_id": 102,
+      "support_command_label": "stamina",
+      "hint_group": 2,
+      "hint_gain_type": 0,
+      "skill_id": 200941,
+      "skill_name": "Hesitant End Closers",
+      "hint_level": 1
+    },
+    {
+      "id": 1783,
+      "hint_id": 9081018,
+      "support_card_id": 30106,
+      "support_name": "Air Groove",
+      "support_rarity": 3,
+      "support_command_id": 102,
+      "support_command_label": "stamina",
+      "hint_group": 3,
+      "hint_gain_type": 0,
+      "skill_id": 201382,
+      "skill_name": "Late Surger Straightaways ○",
+      "hint_level": 1
+    },
+    {
+      "id": 1784,
+      "hint_id": 9081018,
+      "support_card_id": 30106,
+      "support_name": "Air Groove",
+      "support_rarity": 3,
+      "support_command_id": 102,
+      "support_command_label": "stamina",
+      "hint_group": 4,
+      "hint_gain_type": 0,
+      "skill_id": 201442,
+      "skill_name": "Sharp Gaze",
+      "hint_level": 1
+    },
+    {
+      "id": 1785,
+      "hint_id": 9081018,
+      "support_card_id": 30106,
+      "support_name": "Air Groove",
+      "support_rarity": 3,
+      "support_command_id": 102,
+      "support_command_label": "stamina",
+      "hint_group": 5,
+      "hint_gain_type": 0,
+      "skill_id": 201692,
+      "skill_name": "Be Still",
+      "hint_level": 1
+    },
+    {
+      "id": 1786,
+      "hint_id": 9081018,
+      "support_card_id": 30106,
+      "support_name": "Air Groove",
+      "support_rarity": 3,
+      "support_command_id": 102,
+      "support_command_label": "stamina",
+      "hint_group": 6,
+      "hint_gain_type": 0,
+      "skill_id": 202122,
+      "skill_name": "Fearless",
+      "hint_level": 1
+    },
+    {
+      "id": 1788,
+      "hint_id": 9081018,
+      "support_card_id": 30106,
+      "support_name": "Air Groove",
+      "support_rarity": 3,
+      "support_command_id": 102,
+      "support_command_label": "stamina",
+      "hint_group": 7,
+      "hint_gain_type": 1,
+      "skill_id": 2,
+      "skill_name": "2",
+      "hint_level": 2
+    },
+    {
+      "id": 1787,
+      "hint_id": 9081018,
+      "support_card_id": 30106,
+      "support_name": "Air Groove",
+      "support_rarity": 3,
+      "support_command_id": 102,
+      "support_command_label": "stamina",
+      "hint_group": 7,
+      "hint_gain_type": 1,
+      "skill_id": 3,
+      "skill_name": "3",
+      "hint_level": 6
     }
   ],
   "by_support_card": {
@@ -38292,6 +38502,106 @@
         "hint_level": 6
       }
     ],
+    "20049": [
+      {
+        "id": 1774,
+        "hint_id": 9081040,
+        "support_card_id": 20049,
+        "support_name": "Gold City",
+        "support_rarity": 2,
+        "support_command_id": 106,
+        "support_command_label": "wit",
+        "hint_group": 1,
+        "hint_gain_type": 0,
+        "skill_id": 200232,
+        "skill_name": "Rainy Days ○",
+        "hint_level": 1
+      },
+      {
+        "id": 1775,
+        "hint_id": 9081040,
+        "support_card_id": 20049,
+        "support_name": "Gold City",
+        "support_rarity": 2,
+        "support_command_id": 106,
+        "support_command_label": "wit",
+        "hint_group": 2,
+        "hint_gain_type": 0,
+        "skill_id": 200302,
+        "skill_name": "Long Shot ○",
+        "hint_level": 1
+      },
+      {
+        "id": 1776,
+        "hint_id": 9081040,
+        "support_card_id": 20049,
+        "support_name": "Gold City",
+        "support_rarity": 2,
+        "support_command_id": 106,
+        "support_command_label": "wit",
+        "hint_group": 3,
+        "hint_gain_type": 0,
+        "skill_id": 200692,
+        "skill_name": "Watchful Eye",
+        "hint_level": 1
+      },
+      {
+        "id": 1777,
+        "hint_id": 9081040,
+        "support_card_id": 20049,
+        "support_name": "Gold City",
+        "support_rarity": 2,
+        "support_command_id": 106,
+        "support_command_label": "wit",
+        "hint_group": 4,
+        "hint_gain_type": 0,
+        "skill_id": 201611,
+        "skill_name": "Tail Held High",
+        "hint_level": 1
+      },
+      {
+        "id": 1778,
+        "hint_id": 9081040,
+        "support_card_id": 20049,
+        "support_name": "Gold City",
+        "support_rarity": 2,
+        "support_command_id": 106,
+        "support_command_label": "wit",
+        "hint_group": 5,
+        "hint_gain_type": 0,
+        "skill_id": 201641,
+        "skill_name": "Lone Wolf",
+        "hint_level": 1
+      },
+      {
+        "id": 1779,
+        "hint_id": 9081040,
+        "support_card_id": 20049,
+        "support_name": "Gold City",
+        "support_rarity": 2,
+        "support_command_id": 106,
+        "support_command_label": "wit",
+        "hint_group": 6,
+        "hint_gain_type": 1,
+        "skill_id": 5,
+        "skill_name": "5",
+        "hint_level": 6
+      },
+      {
+        "id": 1780,
+        "hint_id": 9081040,
+        "support_card_id": 20049,
+        "support_name": "Gold City",
+        "support_rarity": 2,
+        "support_command_id": 106,
+        "support_command_label": "wit",
+        "hint_group": 6,
+        "hint_gain_type": 1,
+        "skill_id": 30,
+        "skill_name": "30",
+        "hint_level": 5
+      }
+    ],
     "30001": [
       {
         "id": 1,
@@ -48995,6 +49305,120 @@
         "skill_name": "4",
         "hint_level": 2
       }
+    ],
+    "30106": [
+      {
+        "id": 1781,
+        "hint_id": 9081018,
+        "support_card_id": 30106,
+        "support_name": "Air Groove",
+        "support_rarity": 3,
+        "support_command_id": 102,
+        "support_command_label": "stamina",
+        "hint_group": 1,
+        "hint_gain_type": 0,
+        "skill_id": 200931,
+        "skill_name": "Flustered End Closers",
+        "hint_level": 1
+      },
+      {
+        "id": 1782,
+        "hint_id": 9081018,
+        "support_card_id": 30106,
+        "support_name": "Air Groove",
+        "support_rarity": 3,
+        "support_command_id": 102,
+        "support_command_label": "stamina",
+        "hint_group": 2,
+        "hint_gain_type": 0,
+        "skill_id": 200941,
+        "skill_name": "Hesitant End Closers",
+        "hint_level": 1
+      },
+      {
+        "id": 1783,
+        "hint_id": 9081018,
+        "support_card_id": 30106,
+        "support_name": "Air Groove",
+        "support_rarity": 3,
+        "support_command_id": 102,
+        "support_command_label": "stamina",
+        "hint_group": 3,
+        "hint_gain_type": 0,
+        "skill_id": 201382,
+        "skill_name": "Late Surger Straightaways ○",
+        "hint_level": 1
+      },
+      {
+        "id": 1784,
+        "hint_id": 9081018,
+        "support_card_id": 30106,
+        "support_name": "Air Groove",
+        "support_rarity": 3,
+        "support_command_id": 102,
+        "support_command_label": "stamina",
+        "hint_group": 4,
+        "hint_gain_type": 0,
+        "skill_id": 201442,
+        "skill_name": "Sharp Gaze",
+        "hint_level": 1
+      },
+      {
+        "id": 1785,
+        "hint_id": 9081018,
+        "support_card_id": 30106,
+        "support_name": "Air Groove",
+        "support_rarity": 3,
+        "support_command_id": 102,
+        "support_command_label": "stamina",
+        "hint_group": 5,
+        "hint_gain_type": 0,
+        "skill_id": 201692,
+        "skill_name": "Be Still",
+        "hint_level": 1
+      },
+      {
+        "id": 1786,
+        "hint_id": 9081018,
+        "support_card_id": 30106,
+        "support_name": "Air Groove",
+        "support_rarity": 3,
+        "support_command_id": 102,
+        "support_command_label": "stamina",
+        "hint_group": 6,
+        "hint_gain_type": 0,
+        "skill_id": 202122,
+        "skill_name": "Fearless",
+        "hint_level": 1
+      },
+      {
+        "id": 1787,
+        "hint_id": 9081018,
+        "support_card_id": 30106,
+        "support_name": "Air Groove",
+        "support_rarity": 3,
+        "support_command_id": 102,
+        "support_command_label": "stamina",
+        "hint_group": 7,
+        "hint_gain_type": 1,
+        "skill_id": 3,
+        "skill_name": "3",
+        "hint_level": 6
+      },
+      {
+        "id": 1788,
+        "hint_id": 9081018,
+        "support_card_id": 30106,
+        "support_name": "Air Groove",
+        "support_rarity": 3,
+        "support_command_id": 102,
+        "support_command_label": "stamina",
+        "hint_group": 7,
+        "hint_gain_type": 1,
+        "skill_id": 2,
+        "skill_name": "2",
+        "hint_level": 2
+      }
     ]
   },
   "by_skill": {
@@ -50176,6 +50600,13 @@
         "support_rarity": 3,
         "hint_level": 6,
         "hint_gain_type": 1
+      },
+      {
+        "support_card_id": 30106,
+        "support_name": "Air Groove",
+        "support_rarity": 3,
+        "hint_level": 2,
+        "hint_gain_type": 1
       }
     ],
     "3": [
@@ -51081,6 +51512,13 @@
         "support_rarity": 3,
         "hint_level": 1,
         "hint_gain_type": 1
+      },
+      {
+        "support_card_id": 30106,
+        "support_name": "Air Groove",
+        "support_rarity": 3,
+        "hint_level": 6,
+        "hint_gain_type": 1
       }
     ],
     "4": [
@@ -51904,6 +52342,13 @@
         "support_rarity": 3,
         "hint_level": 6,
         "hint_gain_type": 1
+      },
+      {
+        "support_card_id": 20049,
+        "support_name": "Gold City",
+        "support_rarity": 2,
+        "hint_level": 6,
+        "hint_gain_type": 1
       }
     ],
     "30": [
@@ -52177,6 +52622,13 @@
         "support_card_id": 30103,
         "support_name": "Matikanetannhauser",
         "support_rarity": 3,
+        "hint_level": 5,
+        "hint_gain_type": 1
+      },
+      {
+        "support_card_id": 20049,
+        "support_name": "Gold City",
+        "support_rarity": 2,
         "hint_level": 5,
         "hint_gain_type": 1
       }
@@ -53381,6 +53833,13 @@
         "support_rarity": 3,
         "hint_level": 1,
         "hint_gain_type": 0
+      },
+      {
+        "support_card_id": 20049,
+        "support_name": "Gold City",
+        "support_rarity": 2,
+        "hint_level": 1,
+        "hint_gain_type": 0
       }
     ],
     "200242": [
@@ -53771,6 +54230,13 @@
         "support_card_id": 30084,
         "support_name": "Tosen Jordan",
         "support_rarity": 3,
+        "hint_level": 1,
+        "hint_gain_type": 0
+      },
+      {
+        "support_card_id": 20049,
+        "support_name": "Gold City",
+        "support_rarity": 2,
         "hint_level": 1,
         "hint_gain_type": 0
       }
@@ -56196,6 +56662,13 @@
         "support_rarity": 3,
         "hint_level": 1,
         "hint_gain_type": 0
+      },
+      {
+        "support_card_id": 20049,
+        "support_name": "Gold City",
+        "support_rarity": 2,
+        "hint_level": 1,
+        "hint_gain_type": 0
       }
     ],
     "200702": [
@@ -57427,6 +57900,13 @@
         "support_rarity": 1,
         "hint_level": 1,
         "hint_gain_type": 0
+      },
+      {
+        "support_card_id": 30106,
+        "support_name": "Air Groove",
+        "support_rarity": 3,
+        "hint_level": 1,
+        "hint_gain_type": 0
       }
     ],
     "200941": [
@@ -57441,6 +57921,13 @@
         "support_card_id": 10025,
         "support_name": "Air Groove",
         "support_rarity": 1,
+        "hint_level": 1,
+        "hint_gain_type": 0
+      },
+      {
+        "support_card_id": 30106,
+        "support_name": "Air Groove",
+        "support_rarity": 3,
         "hint_level": 1,
         "hint_gain_type": 0
       }
@@ -59813,6 +60300,13 @@
         "support_rarity": 3,
         "hint_level": 1,
         "hint_gain_type": 0
+      },
+      {
+        "support_card_id": 30106,
+        "support_name": "Air Groove",
+        "support_rarity": 3,
+        "hint_level": 1,
+        "hint_gain_type": 0
       }
     ],
     "201392": [
@@ -60151,6 +60645,13 @@
       {
         "support_card_id": 30099,
         "support_name": "Ikuno Dictus",
+        "support_rarity": 3,
+        "hint_level": 1,
+        "hint_gain_type": 0
+      },
+      {
+        "support_card_id": 30106,
+        "support_name": "Air Groove",
         "support_rarity": 3,
         "hint_level": 1,
         "hint_gain_type": 0
@@ -61091,6 +61592,13 @@
         "support_rarity": 3,
         "hint_level": 1,
         "hint_gain_type": 0
+      },
+      {
+        "support_card_id": 20049,
+        "support_name": "Gold City",
+        "support_rarity": 2,
+        "hint_level": 1,
+        "hint_gain_type": 0
       }
     ],
     "201621": [
@@ -61221,6 +61729,13 @@
         "support_card_id": 30091,
         "support_name": "Sirius Symboli",
         "support_rarity": 3,
+        "hint_level": 1,
+        "hint_gain_type": 0
+      },
+      {
+        "support_card_id": 20049,
+        "support_name": "Gold City",
+        "support_rarity": 2,
         "hint_level": 1,
         "hint_gain_type": 0
       }
@@ -61380,6 +61895,13 @@
         "support_rarity": 3,
         "hint_level": 1,
         "hint_gain_type": 0
+      },
+      {
+        "support_card_id": 30106,
+        "support_name": "Air Groove",
+        "support_rarity": 3,
+        "hint_level": 1,
+        "hint_gain_type": 0
       }
     ],
     "201702": [
@@ -61481,6 +62003,13 @@
         "support_card_id": 20048,
         "support_name": "Oguri Cap",
         "support_rarity": 2,
+        "hint_level": 1,
+        "hint_gain_type": 0
+      },
+      {
+        "support_card_id": 30106,
+        "support_name": "Air Groove",
+        "support_rarity": 3,
         "hint_level": 1,
         "hint_gain_type": 0
       }

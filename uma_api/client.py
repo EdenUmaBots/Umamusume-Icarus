@@ -24,6 +24,10 @@ class StateRecoveryError(Exception):
 BASE_URL = 'https://api.games.umamusume.com/umamusume/'
 DIR = str(Path(__file__).resolve().parent.parent)
 LAST_TICKET_GEN_RESULT = None
+# Minimum spacing (seconds) between consecutive raw HTTP calls. Doubles as light
+# anti-detection pacing. Set by the dashboard Speed dropdown (main.set_speed_level):
+# Safe/Fast=0.14, Faster=0.05, Ludicrous=0.0 (no floor).
+MIN_CALL_SPACING = 0.14
 LAST_SAVED_CONFIG = None
 
 
@@ -326,7 +330,7 @@ def get_ticket(u, p, c=''):
     if c: cmd += ['--code', c]
 
     try:
-        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=60, cwd=DIR)
+        proc = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=60, cwd=DIR)
     except FileNotFoundError as exc:
         raise Exception(
             "Could not launch Node.js to perform Steam login. Confirm Node.js is "
@@ -363,7 +367,14 @@ class UmaClient:
         self.auth_key_hex = cfg.get('auth_key', '')
         self.steam_id = str(cfg.get('steam_id', ''))
         self.steam_ticket = cfg.get('steam_session_ticket', '')
-        
+        # Steam credentials (plain at the client layer) let us mint a fresh
+        # session ticket mid-run when the server reports the old one as expired
+        # (error 394). on_ticket_refreshed is an optional callback(sid, ticket)
+        # the host sets to persist a refreshed ticket to disk.
+        self.steam_username = cfg.get('steam_username', '')
+        self.steam_password_seed = cfg.get('steam_password_seed', '')
+        self.on_ticket_refreshed = None
+
         self.device_id = cfg.get('device_id') or profile['device_id']
         self.device_name = cfg.get('device_name') or profile['device_name']
         self.graphics_device = cfg.get('graphics_device_name') or profile['graphics_device_name']
@@ -587,9 +598,11 @@ class UmaClient:
         if not hasattr(self, '_last_raw_call_ts'):
             self._last_raw_call_ts = 0
 
-        el = time.time() - self._last_raw_call_ts
-        if el < 0.14:
-            dna_sleep(0.14 - el, 0.14 - el)
+        floor = MIN_CALL_SPACING
+        if floor > 0:
+            el = time.time() - self._last_raw_call_ts
+            if el < floor:
+                dna_sleep(floor - el, floor - el)
 
         self._last_raw_call_ts = time.time()
 
@@ -644,7 +657,7 @@ class UmaClient:
         http_retries_left = 5
         retries_205_left = retry_205
         retries_208_left = retry_208
-        retries_394_left = 3
+        retries_394_left = 5
         net_attempt = 0
         http_attempt = 0
         attempt_208 = 0
@@ -801,6 +814,28 @@ class UmaClient:
         self.save_config()
         return res
 
+    def refresh_steam_ticket(self, code=''):
+        """Mint a fresh Steam session ticket mid-run.
+
+        Steam session tickets are single-use / short-lived; the game server
+        reports a stale one as error 394. Re-presenting the same ticket can
+        never succeed, so on 394 we mint a new ticket here and re-establish the
+        session. Returns True on success, False if no credentials are stored.
+        Raises (e.g. STEAM_GUARD_REQUIRED) so the caller can fall back to manual
+        auth when a 2FA code is genuinely required.
+        """
+        if not (self.steam_username and self.steam_password_seed):
+            return False
+        sid, tkt = get_ticket(self.steam_username, self.steam_password_seed, code)
+        self.steam_id = str(sid)
+        self.steam_ticket = tkt
+        if callable(self.on_ticket_refreshed):
+            try:
+                self.on_ticket_refreshed(self.steam_id, self.steam_ticket)
+            except Exception:
+                pass  # persistence is best-effort; never block recovery
+        return True
+
     def login(self, max_retries=3):
         using_existing_auth = self.has_captured_auth()
         if not using_existing_auth:
@@ -812,6 +847,7 @@ class UmaClient:
         self.session = requests.Session()
         self.session.headers.update(old_h)
 
+        ticket_refreshed = False
         for attempt in range(max_retries + 1):
             try:
                 self.regen_sid()
@@ -827,6 +863,17 @@ class UmaClient:
                     dna_sleep(0.83, 0.83)
                     continue
                 if '394' in err and attempt < max_retries:
+                    # 394 = invalid/expired Steam session ticket, NOT a transient
+                    # server-busy. Mint a fresh ticket once and retry instead of
+                    # re-presenting the dead one (which would loop forever).
+                    if not ticket_refreshed and self.steam_username and self.steam_password_seed:
+                        try:
+                            if self.refresh_steam_ticket():
+                                ticket_refreshed = True
+                                continue
+                        except Exception as re_exc:
+                            if 'STEAM_GUARD_REQUIRED' in str(re_exc):
+                                raise  # needs a 2FA code -> fall back to manual
                     dna_sleep(2.5, 2.5)
                     continue
                 if '202' in err and attempt < max_retries:
@@ -1058,6 +1105,17 @@ class UmaClient:
         return self.call('single_mode_free/continue', {
             'current_turn': current_turn,
             'continue_type': continue_type
+        })
+
+    def change_running_style(self, current_turn, running_style, program_id):
+        # Sets the running style for an ENTERED race. Verified against a decoded
+        # capture of the official client: the call carries program_id + running_style
+        # + current_turn, and is only valid AFTER race_entry and BEFORE race_start
+        # (the race-prep/strategy screen). Calling it outside that window -> error 102.
+        return self.call('single_mode_free/change_running_style', {
+            'program_id': program_id,
+            'running_style': running_style,
+            'current_turn': current_turn
         })
 
     def reserve_race(self, current_turn, add_race_array=None, cancel_race_array=None):

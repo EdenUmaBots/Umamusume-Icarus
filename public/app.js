@@ -15,8 +15,14 @@ const state = {
     scenarioType: "Mant",
     burnClocks: false,
     displayedClocksUsed: 0,
-    devEnabled: false,
-    runCount: Number(localStorage.getItem('sweepy_run_count') ?? '1'),
+    caratsEnabled: (localStorage.getItem('uma_retry_carats') === 'true'),
+    maxClocksPerCareer: Number(localStorage.getItem('uma_retry_max_clocks') ?? '0') || 0,
+    skillConfigActiveZone: 'plan',
+    devEnabled: true,
+    // v7.6.2: career loop mode is ON by default (∞ = run until stopped). A
+    // saved preference still wins; only a brand-new user with no stored choice
+    // gets the looping default.
+    runCount: Number(localStorage.getItem('sweepy_run_count') ?? '0'),
     consecutiveRunnerFails: 0,
     v4Timer: 0,
     trackblazerPlan: null,
@@ -50,7 +56,12 @@ const els = {
     turnDelayMin: document.getElementById('turn-delay-min'),
     turnDelayMax: document.getElementById('turn-delay-max'),
     temptFateBtn: document.getElementById('tempt-fate-btn'),
+    temptFatePanel: document.getElementById('tempt-fate-panel'),
     burnClocksBtn: document.getElementById('burn-clocks-btn'),
+    retryOptionsBtn: document.getElementById('retry-options-btn'),
+    retryOptionsPanel: document.getElementById('retry-options-panel'),
+    retryCaratsToggle: document.getElementById('retry-carats-toggle'),
+    retryMaxClocks: document.getElementById('retry-max-clocks'),
     devBtn: document.getElementById('dev-career-btn'),
     runCountInput: document.getElementById('run-count-input'),
     loginView: document.getElementById('login-view'),
@@ -95,6 +106,7 @@ const els = {
     presetSection: document.getElementById('settings-preset-section') || document.getElementById('preset-section'),
     presetAddBtn: document.getElementById('settings-preset-add-btn') || document.getElementById('preset-add-btn'),
     presetSaveBtn: document.getElementById('settings-preset-save-btn') || document.getElementById('preset-save-btn'),
+    presetLoadBtn: document.getElementById('settings-preset-load-btn'),
     presetDelBtn: document.getElementById('settings-preset-del-btn') || document.getElementById('preset-del-btn'),
     presetSkillThreshold: document.getElementById('preset-skill-threshold'),
     presetEditSkillsBtn: document.getElementById('skill-config-open-btn') || document.getElementById('preset-edit-skills-btn'),
@@ -109,13 +121,6 @@ const els = {
     v4Health: document.getElementById('v4-health'),
     v4Analytics: document.getElementById('v4-analytics'),
     v4Diagnostics: document.getElementById('v4-diagnostics'),
-    v513ClubCircle: document.getElementById('v513-club-circle'),
-    v513ClubQuota: document.getElementById('v513-club-quota'),
-    v514ClubApiKey: document.getElementById('v514-club-api-key'),
-    v514ClubKeyToggle: document.getElementById('v514-club-key-toggle'),
-    v513ClubRefreshBtn: document.getElementById('v513-club-refresh-btn'),
-    v513ClubSummary: document.getElementById('v513-club-summary'),
-    v513ClubMembers: document.getElementById('v513-club-members'),
     v515SetupBtn: document.getElementById('v515-setup-btn'),
     v515SetupModal: document.getElementById('v515-setup-modal'),
     v515SetupDoneBtn: document.getElementById('v515-setup-done-btn'),
@@ -228,6 +233,7 @@ const els = {
     v53Fph: document.getElementById('v53-fph'),
     v53Runtime: document.getElementById('v53-runtime'),
     v53Careers: document.getElementById('v53-careers'),
+    v53CareerFans: document.getElementById('v53-career-fans'),
     v525AccountsBtn: document.getElementById('v525-accounts-btn'),
     v525AccountsModal: document.getElementById('v525-accounts-modal'),
     v525AccountsDoneBtn: document.getElementById('v525-accounts-done-btn'),
@@ -242,6 +248,7 @@ const els = {
     eventChoicesRefreshBtn: document.getElementById('event-choices-refresh-btn'),
     eventChoicesStatus: document.getElementById('event-choices-status'),
     eventChoicesList: document.getElementById('event-choices-list'),
+    eventChoicesSearch: document.getElementById('event-choices-search'),
     discordWebhookUrl: document.getElementById('discord-webhook-url'),
     discordWebhookSaveBtn: document.getElementById('discord-webhook-save-btn'),
     discordWebhookTestBtn: document.getElementById('discord-webhook-test-btn'),
@@ -503,6 +510,7 @@ const els = {
             });
             setInitial();
         }
+        makeSectionToggle('deck-bonuses-toggle', 'deck-bonuses-chevron', 'deck-bonuses-body', true);
         makeSectionToggle('decks-toggle',    'decks-chevron',    'decks-body',    true);
         makeSectionToggle('friends-toggle',  'friends-chevron',  'friends-body',  true);
         makeSectionToggle('trainees-toggle', 'trainees-chevron', 'trainees-body', true);
@@ -510,53 +518,83 @@ const els = {
         makeSectionToggle('cards-toggle',    'cards-chevron',    'card-grid-wrapper', false);
         makeSectionToggle('v4-toggle',       'v4-chevron',       'v4-body', true);
         const dashboardThemeStorageKey = 'sweepy_dashboard_theme';
+        const ICARUS_THEMES = ['icarus', 'icarus-alt', 'neon', 'blue', 'clean-dark'];
+        const normalizeTheme = t => {
+            let req = String(t || '').toLowerCase();
+            if (req === 'pink') req = 'neon';
+            return ICARUS_THEMES.includes(req) ? req : 'icarus';
+        };
+        const legacyThemeFor = req => (req === 'blue' ? 'blue' : (req === 'neon' ? 'pink' : req));
         const applyTheme = theme => {
-            const requested = String(theme || '').toLowerCase();
-            const isCleanDark = requested === 'clean-dark';
-            const isBlue = !isCleanDark && requested === 'blue';
-            const legacyTheme = isBlue ? 'blue' : 'pink';
-            const dashboardTheme = isCleanDark ? 'clean-dark' : 'neon';
-            document.documentElement.dataset.theme = legacyTheme;
-            document.documentElement.dataset.sweepyTheme = dashboardTheme;
+            const req = normalizeTheme(theme);
+            const isCleanDark = req === 'clean-dark';
+            const isBlue = req === 'blue';
+            document.documentElement.dataset.theme = legacyThemeFor(req);
+            document.documentElement.dataset.sweepyTheme = req;
             document.documentElement.classList.toggle('theme-blue', isBlue);
             document.body.classList.toggle('theme-blue', isBlue);
             document.documentElement.classList.toggle('theme-clean-dark', isCleanDark);
             document.body.classList.toggle('theme-clean-dark', isCleanDark);
             const selector = document.getElementById('sweepy-theme-select');
-            if (selector) selector.value = dashboardTheme;
-            return isBlue ? 'blue' : dashboardTheme;
+            if (selector) selector.value = req;
+            return req;
+        };
+        const persistTheme = req => {
+            localStorage.setItem(dashboardThemeStorageKey, req);
+            localStorage.setItem('theme', legacyThemeFor(req));
+            // Persist server-side too so the theme survives across browsers /
+            // origins and server restarts (localStorage alone is per-origin).
+            fetch('/api/settings/theme', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ theme: req }),
+            }).catch(() => {});
         };
         function initThemeSelector(activeTheme) {
             const meta = document.querySelector('.navbar-meta');
             if (!meta || document.getElementById('sweepy-theme-select')) return;
             const wrap = document.createElement('label');
             wrap.className = 'theme-select-wrap';
-            wrap.innerHTML = '<span>THEME</span><select id="sweepy-theme-select" aria-label="Dashboard theme"><option value="neon">Neon Cockpit</option><option value="clean-dark">Clean Dark</option></select>';
+            wrap.innerHTML = '<span>THEME</span><select id="sweepy-theme-select" aria-label="Dashboard theme">'
+                + '<option value="icarus">Icarus</option>'
+                + '<option value="icarus-alt">Icarus Alt</option>'
+                + '<option value="neon">Neon Cockpit</option>'
+                + '<option value="blue">Midnight</option>'
+                + '<option value="clean-dark">Clean Dark</option>'
+                + '</select>';
             meta.insertBefore(wrap, els.logoutBtn || null);
             const selector = wrap.querySelector('select');
-            selector.value = activeTheme === 'clean-dark' ? 'clean-dark' : 'neon';
+            selector.value = normalizeTheme(activeTheme);
             selector.addEventListener('change', () => {
-                const value = selector.value === 'clean-dark' ? 'clean-dark' : 'neon';
-                localStorage.setItem(dashboardThemeStorageKey, value);
-                localStorage.setItem('theme', value === 'clean-dark' ? 'clean-dark' : 'pink');
+                const value = normalizeTheme(selector.value);
+                persistTheme(value);
                 applyTheme(value);
             });
         }
         const initialDashboardTheme = localStorage.getItem(dashboardThemeStorageKey) || localStorage.getItem('theme');
         const activeDashboardTheme = applyTheme(initialDashboardTheme);
         initThemeSelector(activeDashboardTheme);
+        // The server-persisted theme is the source of truth; once it loads it
+        // overrides the localStorage fast-path so the choice follows the user.
+        fetch('/api/settings/theme').then(r => (r.ok ? r.json() : null)).then(d => {
+            if (d && d.theme) {
+                const t = applyTheme(d.theme);
+                localStorage.setItem(dashboardThemeStorageKey, t);
+                localStorage.setItem('theme', legacyThemeFor(t));
+            }
+        }).catch(() => {});
         const savedUsername = localStorage.getItem('saved_username');
         const savedPassword = localStorage.getItem('saved_password');
         if (savedUsername) document.getElementById('username').value = savedUsername;
         if (savedPassword) document.getElementById('password').value = savedPassword;
         let themeToggleClicks = 0;
         els.themeToggle.addEventListener('click', () => {
-            const nextTheme = document.body.classList.contains('theme-blue') ? 'pink' : 'blue';
-            applyTheme(nextTheme);
-            localStorage.setItem('theme', nextTheme);
-            localStorage.setItem(dashboardThemeStorageKey, 'neon');
+            // Clicking the logo cycles through the available themes (Icarus default).
+            const current = normalizeTheme(document.documentElement.dataset.sweepyTheme);
+            const next = ICARUS_THEMES[(ICARUS_THEMES.indexOf(current) + 1) % ICARUS_THEMES.length];
+            applyTheme(next);
+            persistTheme(next);
             themeToggleClicks++;
-            // The loop button is now always visible; no logo-click unlock needed.
         });
         window.iwillnotabusethis = function() {
             setDevEnabled(true, { persist: true });
@@ -689,7 +727,7 @@ const els = {
             return { min: left, max: right, restoreMin: left, restoreMax: right, disabled: false };
         }
         function setDelayControls(settings) {
-            if (!els.turnDelayMin || !els.turnDelayMax || !els.temptFateBtn) return;
+            if (!els.turnDelayMin || !els.turnDelayMax) return;
             const disabled = Boolean(settings.disabled);
             const restoreMin = Number.isFinite(Number(settings.restoreMin)) ? Number(settings.restoreMin) : Number(settings.restore_min);
             const restoreMax = Number.isFinite(Number(settings.restoreMax)) ? Number(settings.restoreMax) : Number(settings.restore_max);
@@ -697,10 +735,38 @@ const els = {
             els.turnDelayMax.value = String(settings.max);
             els.turnDelayMin.dataset.restoreValue = String(Number.isFinite(restoreMin) ? restoreMin : settings.min);
             els.turnDelayMax.dataset.restoreValue = String(Number.isFinite(restoreMax) ? restoreMax : settings.max);
+            // Non-safe speed levels disable inter-turn pacing -> grey out the inputs.
             els.turnDelayMin.disabled = disabled;
             els.turnDelayMax.disabled = disabled;
-            els.temptFateBtn.classList.toggle('is-active', disabled);
-            els.temptFateBtn.innerText = disabled ? 'FATE TEMPTED' : 'TEMPT FATE';
+        }
+        // Highlights the active speed option inside the Tempt Fate popover.
+        function markActiveSpeed(level) {
+            document.querySelectorAll('#tempt-fate-panel .speed-option').forEach(btn => {
+                btn.classList.toggle('is-active', btn.dataset.speed === level);
+            });
+        }
+        // Speed options (inside the Tempt Fate popover; replaces the old dropdown).
+        // Posts the level to the backend, which sets both inter-turn pacing and the
+        // client call floor.
+        async function applySpeed(level) {
+            try {
+                const data = await apiJson('/api/settings/speed', {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ level })
+                });
+                markActiveSpeed(data.level || level);
+                const restoreMin = Number(els.turnDelayMin?.dataset.restoreValue || 1.6);
+                const restoreMax = Number(els.turnDelayMax?.dataset.restoreValue || 3.7);
+                setDelayControls(data.disabled
+                    ? normalizeDelayBounds(0, 0, true, restoreMin, restoreMax)
+                    : normalizeDelayBounds(restoreMin, restoreMax, false));
+            } catch (e) {}
+        }
+        async function loadSpeed() {
+            try {
+                const data = await apiJson('/api/settings/speed');
+                markActiveSpeed(data.level || 'safe');
+            } catch (e) {}
         }
         async function saveDelaySettings(settings) {
             setDelayControls(settings);
@@ -714,7 +780,7 @@ const els = {
             writeLocalSetting(delaySettingsStorageKey, normalized);
         }
         async function loadDelaySettings() {
-            if (!els.turnDelayMin || !els.turnDelayMax || !els.temptFateBtn) return;
+            if (!els.turnDelayMin || !els.turnDelayMax) return;
             try {
                 const data = await apiJson('/api/settings/turn-delay');
                 setDelayControls(normalizeDelayBounds(data.min, data.max, data.disabled, data.restore_min, data.restore_max));
@@ -722,60 +788,68 @@ const els = {
                 setDelayControls({ min: 1.6, max: 3.7, restoreMin: 1.6, restoreMax: 3.7, disabled: false });
             }
         }
+        // Retry options (carats + max clocks/career) — the Burn-Clocks button is the
+        // single source of truth for retries; these two sub-controls live under it.
+        function syncRetryOptionControls() {
+            if (els.retryCaratsToggle) els.retryCaratsToggle.checked = !!state.caratsEnabled;
+            if (els.retryMaxClocks) els.retryMaxClocks.value = String(state.maxClocksPerCareer || 0);
+        }
+        function bindRetryOptions() {
+            if (els.retryOptionsBtn && els.retryOptionsPanel) {
+                els.retryOptionsBtn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    const open = els.retryOptionsPanel.style.display !== 'none';
+                    els.retryOptionsPanel.style.display = open ? 'none' : 'flex';
+                });
+                els.retryOptionsPanel.addEventListener('click', (e) => e.stopPropagation());
+                document.addEventListener('click', () => {
+                    if (els.retryOptionsPanel) els.retryOptionsPanel.style.display = 'none';
+                });
+            }
+            if (els.retryCaratsToggle) {
+                els.retryCaratsToggle.addEventListener('change', () => {
+                    state.caratsEnabled = !!els.retryCaratsToggle.checked;
+                    localStorage.setItem('uma_retry_carats', String(state.caratsEnabled));
+                });
+            }
+            if (els.retryMaxClocks) {
+                els.retryMaxClocks.addEventListener('input', () => {
+                    state.maxClocksPerCareer = Math.max(0, Number(els.retryMaxClocks.value) || 0);
+                    localStorage.setItem('uma_retry_max_clocks', String(state.maxClocksPerCareer));
+                });
+            }
+            syncRetryOptionControls();
+        }
         function bindDelayControls() {
-            if (!els.turnDelayMin || !els.turnDelayMax || !els.temptFateBtn) return;
+            if (!els.turnDelayMin || !els.turnDelayMax) return;
             const sync = () => {
                 saveDelaySettings(normalizeDelayBounds(els.turnDelayMin.value, els.turnDelayMax.value, false));
             };
             els.turnDelayMin.addEventListener('input', sync);
             els.turnDelayMax.addEventListener('input', sync);
-            els.temptFateBtn.addEventListener('click', () => {
-                const active = els.temptFateBtn.classList.contains('is-active');
-                const restoreMin = Number(els.turnDelayMin.dataset.restoreValue || 1.6);
-                const restoreMax = Number(els.turnDelayMax.dataset.restoreValue || 3.7);
-                saveDelaySettings(active
-                    ? normalizeDelayBounds(restoreMin, restoreMax, false)
-                    : normalizeDelayBounds(0, 0, true, restoreMin, restoreMax)
-                );
-            });
-            loadDelaySettings();
-            // v6.7.27 — Bot speed dropdown lives in the same control bar.
-            bindBotSpeedControl();
-        }
-
-        // v6.7.27 — Bot speed (per-endpoint anti-detection delay scale).
-        // Independent of Tempt Fate: Tempt Fate zeros the between-turn pause,
-        // bot speed scales the per-endpoint sleeps. Combine for max effect.
-        async function loadBotSpeedSettings() {
-            const sel = document.getElementById('v6727-bot-speed-select');
-            if (!sel) return;
-            try {
-                const data = await apiJson('/api/settings/bot-speed');
-                if (data && data.success) {
-                    // Match the closest preset option, otherwise default to 1.0
-                    const v = String(Number(data.scale || 1.0));
-                    const opts = Array.from(sel.options).map(o => o.value);
-                    sel.value = opts.includes(v) ? v : '1.0';
-                }
-            } catch (_) { /* leave default */ }
-        }
-        async function saveBotSpeedSettings(scale) {
-            try {
-                await apiJson('/api/settings/bot-speed', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ scale: Number(scale) }),
+            // Tempt Fate popover: toggles the speed + custom-delay panel below the button.
+            if (els.temptFateBtn && els.temptFatePanel) {
+                els.temptFateBtn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    const open = els.temptFatePanel.style.display !== 'none';
+                    els.temptFatePanel.style.display = open ? 'none' : 'flex';
+                    if (!open) loadSpeed();
                 });
-            } catch (e) {
-                console.warn('bot-speed save failed:', e);
+                els.temptFatePanel.addEventListener('click', (e) => e.stopPropagation());
+                document.querySelectorAll('#tempt-fate-panel .speed-option').forEach(btn => {
+                    btn.addEventListener('click', () => {
+                        const level = btn.dataset.speed;
+                        markActiveSpeed(level);
+                        applySpeed(level);
+                    });
+                });
+                document.addEventListener('click', () => {
+                    if (els.temptFatePanel) els.temptFatePanel.style.display = 'none';
+                });
+                loadSpeed();
             }
-        }
-        function bindBotSpeedControl() {
-            const sel = document.getElementById('v6727-bot-speed-select');
-            if (!sel || sel.dataset.v6727Bound) return;
-            sel.dataset.v6727Bound = '1';
-            sel.addEventListener('change', () => saveBotSpeedSettings(sel.value));
-            loadBotSpeedSettings();
+            bindRetryOptions();
+            loadDelaySettings();
         }
         window.addEventListener('storage', event => {
             if (event.key !== delaySettingsStorageKey || !event.newValue) return;
@@ -786,15 +860,44 @@ const els = {
             if (event.key !== burnClocksStorageKey || !event.newValue) return;
             setBurnClocks(readLocalSetting(event.newValue, false));
         });
+        let _loginCooldownTimer = null;
+        let _loginCooldownActive = false;
+        // After a failed login/2FA attempt, briefly lock the button so rapid retries
+        // don't deepen Steam's own rate limit (which is what triggers RateLimitExceeded).
+        function applyLoginCooldown(seconds) {
+            seconds = Math.max(0, Math.floor(Number(seconds) || 0));
+            if (!seconds) return;
+            if (_loginCooldownTimer) clearInterval(_loginCooldownTimer);
+            const btn = els.loginBtn;
+            const label = state.needs2fa ? 'VALIDATE' : 'LOGIN';
+            let remaining = seconds;
+            _loginCooldownActive = true;
+            btn.disabled = true;
+            const tick = () => {
+                if (remaining <= 0) {
+                    clearInterval(_loginCooldownTimer);
+                    _loginCooldownTimer = null;
+                    _loginCooldownActive = false;
+                    btn.disabled = false;
+                    btn.innerText = label;
+                    return;
+                }
+                btn.innerText = 'WAIT ' + remaining + 's';
+                remaining--;
+            };
+            tick();
+            _loginCooldownTimer = setInterval(tick, 1000);
+        }
         function resetLoginState() {
             state.isLoading = false;
-            els.loginBtn.innerText = state.needs2fa ? 'VALIDATE' : 'LOGIN';
+            if (!_loginCooldownActive) els.loginBtn.innerText = state.needs2fa ? 'VALIDATE' : 'LOGIN';
         }
-        function showLoginError(message) {
+        function showLoginError(message, cooldownSeconds) {
             setLoadingScreen(false);
             els.errorMsg.innerText = String(message || 'FAIL').toUpperCase();
             els.errorMsg.style.display = 'block';
             resetLoginState();
+            applyLoginCooldown(cooldownSeconds);
         }
         function showTwoFactorPrompt() {
             setLoadingScreen(false);
@@ -860,7 +963,7 @@ const els = {
         const loginForm = document.getElementById('login-form');
         loginForm.addEventListener('submit', async event => {
             event.preventDefault();
-            if (state.isLoading) return;
+            if (state.isLoading || _loginCooldownActive) return;
             state.isLoading = true;
             setLoadingScreen(true);
             els.loginBtn.innerText = 'WORKING...';
@@ -880,10 +983,10 @@ const els = {
                     await renderDashboard(data, { animateIntro: true, waitForIntro: true });
                     state.isLoading = false;
                 } else {
-                    showLoginError(data.detail || 'FAIL');
+                    showLoginError(data.detail || 'FAIL', data.cooldown_seconds);
                 }
             } catch (e) {
-                showLoginError('NETWORK ERROR');
+                showLoginError('NETWORK ERROR', 5);
             }
         });
 
@@ -1195,6 +1298,40 @@ const els = {
             const h = getCareerHistoryEls();
             if (h.modal) h.modal.style.display = 'flex';
             loadCareerHistory();
+            loadCareerReport();
+        }
+
+        async function loadCareerReport() {
+            const el = document.getElementById('v543-career-report');
+            if (!el) return;
+            try {
+                const r = await apiJson('/api/career/report?t=' + Date.now());
+                if (!r || !r.success || (!r.turns && !(r.stat_curve || []).length)) { el.style.display = 'none'; return; }
+                const c = r.action_counts || {};
+                const fs = r.final_stats || {};
+                const fmt = (n) => Number(n || 0).toLocaleString();
+                const stat = (k) => (fs[k] == null ? '–' : fmt(fs[k]));
+                const mins = Math.round((r.runtime_seconds || 0) / 60);
+                const trainBits = Object.entries(r.training_by_facility || {}).sort((a, b) => b[1] - a[1]).map(([k, v]) => `${escapeHtml(k)} ${v}`).join('  ·  ');
+                const lowE = (r.low_energy_turns || []).length;
+                el.style.display = '';
+                el.innerHTML = `
+                    <div class="v543-report-head">LIVE RUN MONITOR ${r.running ? '<span class="v543-report-live">LIVE</span>' : ''}</div>
+                    <div class="v543-report-grid">
+                        <div><span>Turns</span><strong>${fmt(r.turns)}</strong></div>
+                        <div><span>Fans gained</span><strong>${fmt(r.fans_gained)}</strong></div>
+                        <div><span>Fans / hr</span><strong>${fmt(r.fans_per_hour)}</strong></div>
+                        <div><span>Runtime</span><strong>${mins}m</strong></div>
+                        <div><span>Races</span><strong>${fmt(r.race_count)}</strong></div>
+                        <div><span>Trainings</span><strong>${fmt(c.train || 0)}</strong></div>
+                        <div><span>Rest / Rec</span><strong>${fmt((c.rest || 0) + (c.recreation || 0))}</strong></div>
+                        <div><span>Server waits</span><strong>${fmt(r.recoveries || 0)}</strong></div>
+                    </div>
+                    <div class="v543-report-finalstats">SPD ${stat('speed')} &nbsp;·&nbsp; STA ${stat('stamina')} &nbsp;·&nbsp; PWR ${stat('power')} &nbsp;·&nbsp; GUT ${stat('guts')} &nbsp;·&nbsp; WIT ${stat('wit')}</div>
+                    ${trainBits ? `<div class="v543-report-line">Training mix — ${trainBits}</div>` : ''}
+                    ${lowE ? `<div class="v543-report-warn">⚠ ${lowE} turn(s) acted below 30 HP</div>` : ''}
+                `;
+            } catch (e) { el.style.display = 'none'; }
         }
 
         function historyRaceGradeLabel(grade) {
@@ -2016,17 +2153,22 @@ const els = {
                 section.id = 'guest-parents-section';
                 section.className = 'dashboard-section guest-parents-section';
                 section.innerHTML = `
-                    <div class="guest-parent-head">
-                        <h3 class="dashboard-section-title">▾ GUEST PARENTS</h3>
-                        <button id="guest-parent-refresh-btn" class="btn btn-sm" type="button">REFRESH</button>
+                    <h2 class="dashboard-section-title section-title-toggle" id="guest-parents-toggle">
+                        <span class="collapse-chevron expanded" id="guest-parents-chevron">&#9658;</span>
+                        GUEST PARENTS
+                        <button id="guest-parent-refresh-btn" class="btn btn-sm section-title-action" type="button">REFRESH</button>
+                    </h2>
+                    <div id="guest-parents-body" class="collapsible-body expanded">
+                        <div id="guest-parent-grid" class="grid guest-parent-grid"></div>
+                        <div id="guest-parent-status" class="guest-parent-status">Select up to two followed guest parents.</div>
                     </div>
-                    <div id="guest-parent-grid" class="grid guest-parent-grid"></div>
-                    <div id="guest-parent-status" class="guest-parent-status">Select up to two followed guest parents.</div>
                 `;
                 const parentHeader = Array.from(libraryGroup.querySelectorAll('h2,h3,.dashboard-section-title')).find(el => /parent/i.test(el.textContent || ''));
                 const parentSection = parentHeader ? parentHeader.closest('section') || parentHeader.parentElement : null;
                 if (parentSection) parentSection.insertAdjacentElement('afterend', section);
                 else libraryGroup.appendChild(section);
+                // wire the collapse toggle (same engine as the other sections)
+                try { makeSectionToggle('guest-parents-toggle', 'guest-parents-chevron', 'guest-parents-body', true); } catch (e) {}
             }
             const grid = document.getElementById('guest-parent-grid');
             const status = document.getElementById('guest-parent-status');
@@ -2109,6 +2251,15 @@ const els = {
                 card.classList.add('has-sparks');
                 const show = () => {
                     if (tooltip.parentElement !== document.body) document.body.appendChild(tooltip);
+                    // v7.2 — Forward data-guest-index from the card so the
+                    // body-level CSS width cap (styles.css for
+                    // body > .sparks-tooltip[data-guest-index]) keeps the
+                    // tooltip narrow for guest parents. Without this, the
+                    // tooltip springs back to the default ~620px width and
+                    // covers the surrounding parent cards.
+                    if (card.matches && card.matches('#guest-parent-grid .guest-parent-card')) {
+                        tooltip.dataset.guestIndex = card.dataset.guestIndex || '';
+                    }
                     activeSparkCard = card;
                     activeSparkTooltip = tooltip;
                     positionSparkTooltip(card, tooltip);
@@ -2293,7 +2444,9 @@ const els = {
 
         async function loadSkillConfig() {
             try {
-                const res = await apiJson('/api/skill-config?t=' + Date.now());
+                // v7.6 — skill config is per-preset; load the selected preset's.
+                const p = state.selectedPreset ? `&preset=${encodeURIComponent(state.selectedPreset)}` : '';
+                const res = await apiJson('/api/skill-config?t=' + Date.now() + p);
                 state.skillConfig = res.config || {};
             } catch (e) {
                 state.skillConfig = state.skillConfig || {};
@@ -2308,7 +2461,8 @@ const els = {
                 const res = await apiJson('/api/skill-config', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ config: state.skillConfig })
+                    // v7.6 — write to the selected preset.
+                    body: JSON.stringify({ config: state.skillConfig, preset: state.selectedPreset || '' })
                 });
                 if (res.config) state.skillConfig = res.config;
             } catch (e) {
@@ -3393,7 +3547,9 @@ const els = {
         }
         function skillIconPath(skill) {
             const icon = skill && (skill.icon || skill.icon_id || skill.iconId);
-            return icon ? `/api/images/${encodeURIComponent(icon)}.png` : '/sweep.png';
+            // Skill icons use a dedicated namespace; /api/images is for card
+            // portraits and its ids collide with skill icon_ids (e.g. 20013).
+            return icon ? `/api/skill-icons/${encodeURIComponent(icon)}.png` : '/sweep.png';
         }
         function skillCategoryLabel(skill) {
             const tags = Array.isArray(skill?.tags) ? skill.tags : Array.from(skill?.tags || []);
@@ -3416,6 +3572,14 @@ const els = {
             if (!body) return;
             body.innerHTML = `
                 <section class="skill-info-card"><button class="skill-info-toggle" type="button">ⓘ How skill spending works <span>⌃</span></button><div class="skill-info-body"><p>Allows configuration of automated skill point spending.</p><p>This feature buys skills automatically once the Skill Point Threshold is reached. Use it to make rank-farming runs less of a hassle.</p></div></section>
+                <section class="skill-settings-section"><h3>OPTIMIZE SP SPEND</h3><div class="skill-card">
+                    <div class="skill-optimizer-desc">
+                        <p><strong>What it does:</strong> spends your skill points to squeeze out the most total skill value per point — a value-for-money optimizer — instead of buying strictly top-to-bottom in your priority order.</p>
+                        <p><strong>How it works:</strong> at every purchase point it ranks each affordable skill by its value &divide; SP cost and fills your available SP with the best-value picks first. You usually come away with more useful skills overall, rather than a couple of expensive top-priority skills draining the whole budget.</p>
+                        <p><strong>Turning it off:</strong> leave it off (the default) to keep the standard priority-order buying. You can flip it any time, and the change applies to your next run.</p>
+                    </div>
+                    <label class="skill-optimizer-row"><span class="skill-optimizer-row-label"><strong>Optimize SP spend</strong><em>Value-per-point buying (off = priority order)</em></span><input type="checkbox" id="skill-optimizer-toggle"></label>
+                </div></section>
                 <section class="skill-settings-section"><h3>STYLE</h3><div class="skill-card">
                     ${skillReadonlyRow('Running Style', 'Dictates which skills are considered for purchase based on the preferred running style.', 'FROM RACING')}
                     ${skillReadonlyRow('Track Distance', 'Dictates which skills are considered for purchase based on the track distance.', 'FROM TRAINING')}
@@ -3431,10 +3595,28 @@ const els = {
                 <section class="skill-settings-section"><h3>STRATEGY & PLANNED SKILLS</h3><div class="skill-card">
                     ${skillSelectRow('Automated Skill Point Spending Strategy', 'skill_spending_strategy', cfg.skill_spending_strategy || 'best_skills_first', [['best_skills_first','Best Skills First'], ['optimize_rank','Optimize Rank']])}
                     <div class="planned-skills-head"><div><strong>Planned Skills</strong><span>Selected ${(strategy.forced_skills || []).length} / ${(skillDataCache || []).length} skills</span></div><button id="skill-clear-planned-btn" class="btn btn-sm btn-danger-soft" type="button">Clear</button></div>
-                    <div class="skill-plan-blacklist-tabs"><button class="skill-subtab is-active" data-zone="plan">Plan (${(strategy.forced_skills || []).length})</button><button class="skill-subtab" data-zone="blacklist">Blacklist (${(strategy.blacklist || []).length})</button></div>
+                    <div class="skill-plan-blacklist-tabs"><button class="skill-subtab ${(state.skillConfigActiveZone || 'plan') === 'plan' ? 'is-active' : ''}" data-zone="plan">Plan (${(strategy.forced_skills || []).length})</button><button class="skill-subtab ${(state.skillConfigActiveZone || 'plan') === 'blacklist' ? 'is-active' : ''}" data-zone="blacklist">Blacklist (${(strategy.blacklist || []).length})</button></div>
                     ${skillToggleRow('Show Only Selected Skills', 'Filter the list to only currently selected skills', 'show_only_selected_skills', !!cfg.show_only_selected_skills)}
                     <input id="skill-config-search" class="form-input skill-config-search" placeholder="Search skills by name...">
                     <div id="skill-config-list" class="skill-config-list"></div>
+                </div></section>
+                <section class="skill-settings-section v73-manual-tier-section"><h3>MANUAL SKILL TIERS <span class="v73-section-mode-badge" id="v73-manual-tier-mode-badge"></span></h3><div class="skill-card v73-manual-tier-card">
+                    <div class="v73-manual-tier-intro">
+                        Build a tier list of skills the bot should buy when <strong>Enable Skill Point Check Plan (Beta)</strong> is <strong>off</strong>. Higher tiers are purchased before lower ones. Within a tier, the existing scoring (smart score / cost) breaks ties.
+                        <span class="v73-manual-tier-fallback-note">If all tiers are empty, the bot silently falls back to the smart scorer — toggling Plan Check off doesn't brick skill purchases on its own.</span>
+                    </div>
+                    <div id="v73-manual-tier-rows" class="v73-manual-tier-rows"></div>
+                    <div class="v73-manual-tier-search-row">
+                        <input id="v73-manual-tier-search" class="form-input" placeholder="Search skills to add to a tier...">
+                        <select id="v73-manual-tier-target" class="form-input v73-manual-tier-target">
+                            <option value="1">Add to Tier 1 (S)</option>
+                            <option value="2">Add to Tier 2 (A)</option>
+                            <option value="3" selected>Add to Tier 3 (B)</option>
+                            <option value="4">Add to Tier 4 (C)</option>
+                            <option value="5">Add to Tier 5 (D)</option>
+                        </select>
+                    </div>
+                    <div id="v73-manual-tier-results" class="v73-manual-tier-results"></div>
                 </div></section>
                 <section class="skill-settings-section"><h3>CONFIGURATION SUMMARY</h3><div id="skill-config-summary" class="skill-config-summary"></div></section>`;
             body.querySelectorAll('.skill-plan-tab').forEach(btn => btn.addEventListener('click', () => {
@@ -3443,6 +3625,7 @@ const els = {
                 renderSkillPlanBody(btn.dataset.plan || 'skill_point_check');
             }));
             body.querySelectorAll('.skill-subtab').forEach(btn => btn.addEventListener('click', () => {
+                state.skillConfigActiveZone = btn.dataset.zone || 'plan';
                 body.querySelectorAll('.skill-subtab').forEach(b => b.classList.remove('is-active'));
                 btn.classList.add('is-active');
                 renderSkillConfigList();
@@ -3452,6 +3635,10 @@ const els = {
             await loadSkillData();
             renderSkillConfigList();
             renderSkillConfigSummary();
+            // v7.3 — Manual skill tiers section.
+            renderManualTierSection();
+            bindManualTierControls();
+            loadSkillOptimizer();
         }
         function renderSkillPlanBody(plan) {
             const cfg = getSkillConfig();
@@ -3475,13 +3662,23 @@ const els = {
             const strategy = getSkillStrategy(cfg);
             await saveSkillConfig({ ...patch, skill_strategy: strategy, learn_skill_list: (strategy.forced_skills || []).length ? [strategy.forced_skills] : [], learn_skill_blacklist: strategy.blacklist || [] });
         }
+        function updateSkillSubtabCounts() {
+            const cfg = getSkillConfig();
+            const strategy = getSkillStrategy(cfg);
+            const planTab = document.querySelector('.skill-subtab[data-zone="plan"]');
+            const blTab = document.querySelector('.skill-subtab[data-zone="blacklist"]');
+            if (planTab) planTab.textContent = `Plan (${(strategy.forced_skills || []).length})`;
+            if (blTab) blTab.textContent = `Blacklist (${(strategy.blacklist || []).length})`;
+            const head = document.querySelector('.planned-skills-head span');
+            if (head) head.textContent = `Selected ${(strategy.forced_skills || []).length} / ${(skillDataCache || []).length} skills`;
+        }
         function renderSkillConfigList() {
             const list = document.getElementById('skill-config-list');
             if (!list) return;
             const cfg = getSkillConfig();
             const strategy = getSkillStrategy(cfg);
             const query = (document.getElementById('skill-config-search')?.value || '').toLowerCase();
-            const activeZone = document.querySelector('.skill-subtab.is-active')?.dataset.zone || 'plan';
+            const activeZone = state.skillConfigActiveZone || document.querySelector('.skill-subtab.is-active')?.dataset.zone || 'plan';
             const forced = new Set(strategy.forced_skills || []);
             const blacklist = new Set(strategy.blacklist || []);
             const onlySelected = !!cfg.show_only_selected_skills;
@@ -3508,15 +3705,263 @@ const els = {
                     strategy.forced_skills = (strategy.forced_skills || []).includes(name) ? strategy.forced_skills.filter(v => v !== name) : [...(strategy.forced_skills || []), name];
                 }
                 await saveCurrentSkillStrategyPatch();
-                renderSkillConfig();
+                // Targeted refresh: do NOT call renderSkillConfig() here — a full
+                // rebuild blows away the live search input (and its typed text) and
+                // resets the active subtab. Re-read the live list, refresh the summary,
+                // and update the Plan(n)/Blacklist(n) labels in place.
+                renderSkillConfigList();
+                renderSkillConfigSummary();
+                updateSkillSubtabCounts();
             }));
+            // v7.6 — right-click a shown skill to drop it straight into a manual tier.
+            list.querySelectorAll('.skill-config-row').forEach(row => row.addEventListener('contextmenu', (e) => {
+                const name = row.dataset.skill;
+                if (name) _v73ShowTierMenu(e, name);
+            }));
+        }
+        // v7.3 — Manual skill tiers.
+        // Reads/writes skill_config.manual_skill_tiers, a dict of "1".."5" →
+        // array of skill names. Used by the bot only when
+        // enable_skill_point_check_plan is false.
+        const _v73TierLabels = {
+            '1': { label: 'S', desc: 'Buy first when available' },
+            '2': { label: 'A', desc: 'Buy after S' },
+            '3': { label: 'B', desc: 'Buy after A' },
+            '4': { label: 'C', desc: 'Buy after B' },
+            '5': { label: 'D', desc: 'Buy last, only if SP remains' },
+        };
+        function _v73GetTiers() {
+            const cfg = getSkillConfig();
+            const raw = cfg.manual_skill_tiers || {};
+            const out = {};
+            for (const k of ['1','2','3','4','5']) {
+                out[k] = Array.isArray(raw[k]) ? raw[k].slice() : [];
+            }
+            return out;
+        }
+        function _v73TierAssignmentOf(tiers, name) {
+            for (const k of ['1','2','3','4','5']) {
+                if ((tiers[k] || []).includes(name)) return k;
+            }
+            return null;
+        }
+        function _v73TotalAssigned(tiers) {
+            return ['1','2','3','4','5'].reduce((n, k) => n + (tiers[k] || []).length, 0);
+        }
+        async function _v73SaveTiers(tiers) {
+            await saveSkillConfig({ manual_skill_tiers: tiers });
+        }
+        // v7.6 — shared assign helper used by the search box, the right-click
+        // context menu, and tier-to-tier drag. Pass an empty/falsey targetTier
+        // to just remove the skill from all tiers. Skills are unique across
+        // tiers, so we always strip from every tier before (re)assigning.
+        async function _v73AssignToTier(name, targetTier) {
+            if (!name) return;
+            const t = _v73GetTiers();
+            for (const k of ['1','2','3','4','5']) {
+                t[k] = (t[k] || []).filter(n => n !== name);
+            }
+            if (targetTier && _v73TierLabels[targetTier]) {
+                t[targetTier] = [...(t[targetTier] || []), name];
+            }
+            await _v73SaveTiers(t);
+            renderManualTierSection();
+            if (typeof renderSkillConfigList === 'function') renderSkillConfigList();
+            renderManualTierSearchResults();
+        }
+        // v7.6 — lightweight floating context menu (no such pattern existed
+        // before). Right-clicking a shown skill or a tier chip offers
+        // "Move to Tier X" actions.
+        let _v73Menu = null;
+        function _v73MenuKey(e) { if (e.key === 'Escape') _v73CloseMenu(); }
+        function _v73CloseMenu() {
+            if (_v73Menu) { _v73Menu.remove(); _v73Menu = null; }
+            document.removeEventListener('click', _v73CloseMenu);
+            document.removeEventListener('keydown', _v73MenuKey);
+        }
+        function _v73ShowTierMenu(evt, name) {
+            evt.preventDefault();
+            _v73CloseMenu();
+            if (!name) return;
+            const tiers = _v73GetTiers();
+            const current = _v73TierAssignmentOf(tiers, name);
+            const menu = document.createElement('div');
+            menu.className = 'v73-tier-context-menu';
+            const items = ['1','2','3','4','5'].map(k => {
+                const lbl = _v73TierLabels[k];
+                const isCur = current === k;
+                return `<button type="button" class="v73-ctx-item ${isCur ? 'is-current' : ''}" data-tier="${k}">Move to Tier ${lbl.label} <em>(T${k})</em>${isCur ? ' ✓' : ''}</button>`;
+            }).join('');
+            const removeItem = current ? `<button type="button" class="v73-ctx-item v73-ctx-remove" data-tier="">Remove from tiers</button>` : '';
+            menu.innerHTML = `<div class="v73-ctx-head">${escapeHtml(name)}</div>${items}${removeItem}`;
+            document.body.appendChild(menu);
+            const rect = menu.getBoundingClientRect();
+            const px = Math.max(8, Math.min(evt.clientX, window.innerWidth - rect.width - 8));
+            const py = Math.max(8, Math.min(evt.clientY, window.innerHeight - rect.height - 8));
+            menu.style.left = px + 'px';
+            menu.style.top = py + 'px';
+            menu.querySelectorAll('.v73-ctx-item').forEach(it => {
+                it.addEventListener('click', async (e) => {
+                    e.stopPropagation();
+                    const tier = it.dataset.tier;
+                    _v73CloseMenu();
+                    await _v73AssignToTier(name, tier);
+                });
+            });
+            _v73Menu = menu;
+            setTimeout(() => {
+                document.addEventListener('click', _v73CloseMenu);
+                document.addEventListener('keydown', _v73MenuKey);
+            }, 0);
+        }
+        function renderManualTierSection() {
+            const rows = document.getElementById('v73-manual-tier-rows');
+            if (!rows) return;
+            const cfg = getSkillConfig();
+            const tiers = _v73GetTiers();
+            const planCheckOn = cfg.enable_skill_point_check_plan !== false;
+            // Mode badge — make it clear when this section is active.
+            const badge = document.getElementById('v73-manual-tier-mode-badge');
+            if (badge) {
+                if (planCheckOn) {
+                    badge.textContent = 'INACTIVE — Plan Check is ON';
+                    badge.className = 'v73-section-mode-badge is-inactive';
+                } else if (_v73TotalAssigned(tiers) === 0) {
+                    badge.textContent = 'PLAN CHECK OFF — fallback to smart scorer (no tiers set)';
+                    badge.className = 'v73-section-mode-badge is-fallback';
+                } else {
+                    badge.textContent = 'ACTIVE — driving skill purchases';
+                    badge.className = 'v73-section-mode-badge is-active';
+                }
+            }
+            rows.innerHTML = ['1','2','3','4','5'].map(k => {
+                const lbl = _v73TierLabels[k];
+                const chips = (tiers[k] || []).map(name => (
+                    `<button type="button" class="v73-tier-chip" draggable="true" data-tier="${k}" data-skill="${escapeAttr(name)}" title="Drag to another tier · right-click for options · click × to remove">${escapeHtml(name)} <span class="v73-tier-chip-x">×</span></button>`
+                )).join('');
+                const emptyMsg = (tiers[k] || []).length === 0 ? `<span class="v73-tier-empty">No skills in Tier ${lbl.label} yet — drag a chip here or right-click a skill.</span>` : '';
+                return `<div class="v73-tier-row v73-tier-${k}" data-tier="${k}">
+                    <div class="v73-tier-row-head">
+                        <div class="v73-tier-row-title"><span class="v73-tier-badge">T${k}</span> Tier ${lbl.label} <em>${escapeHtml(lbl.desc)}</em></div>
+                        <div class="v73-tier-row-count">${(tiers[k] || []).length} skill(s)</div>
+                    </div>
+                    <div class="v73-tier-chips">${chips}${emptyMsg}</div>
+                </div>`;
+            }).join('');
+            // Wire chip remove + drag + right-click (v7.6)
+            rows.querySelectorAll('.v73-tier-chip').forEach(chip => {
+                chip.addEventListener('click', async () => {
+                    const k = chip.dataset.tier, name = chip.dataset.skill;
+                    if (!k || !name) return;
+                    const t = _v73GetTiers();
+                    t[k] = (t[k] || []).filter(n => n !== name);
+                    await _v73SaveTiers(t);
+                    renderManualTierSection();
+                });
+                chip.addEventListener('dragstart', (e) => {
+                    chip.classList.add('is-dragging');
+                    try {
+                        e.dataTransfer.setData('text/plain', JSON.stringify({ name: chip.dataset.skill, from: chip.dataset.tier }));
+                        e.dataTransfer.effectAllowed = 'move';
+                    } catch (_) {}
+                });
+                chip.addEventListener('dragend', () => chip.classList.remove('is-dragging'));
+                chip.addEventListener('contextmenu', (e) => {
+                    if (chip.dataset.skill) _v73ShowTierMenu(e, chip.dataset.skill);
+                });
+            });
+            // Tier rows are drop targets for chips dragged from other tiers.
+            rows.querySelectorAll('.v73-tier-row').forEach(rowEl => {
+                rowEl.addEventListener('dragover', (e) => {
+                    e.preventDefault();
+                    if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
+                    rowEl.classList.add('is-drop-target');
+                });
+                rowEl.addEventListener('dragleave', () => rowEl.classList.remove('is-drop-target'));
+                rowEl.addEventListener('drop', async (e) => {
+                    e.preventDefault();
+                    rowEl.classList.remove('is-drop-target');
+                    const targetTier = rowEl.dataset.tier;
+                    let payload = {};
+                    try { payload = JSON.parse((e.dataTransfer && e.dataTransfer.getData('text/plain')) || '{}'); } catch (_) {}
+                    if (payload.name && targetTier && String(payload.from) !== String(targetTier)) {
+                        await _v73AssignToTier(payload.name, targetTier);
+                    }
+                });
+            });
+        }
+        function renderManualTierSearchResults() {
+            const out = document.getElementById('v73-manual-tier-results');
+            if (!out) return;
+            const q = ((document.getElementById('v73-manual-tier-search')?.value) || '').toLowerCase().trim();
+            if (!q) {
+                out.innerHTML = '';
+                return;
+            }
+            const tiers = _v73GetTiers();
+            const rows = (skillDataCache || []).filter(s => s && s.name && String(s.name).toLowerCase().includes(q)).slice(0, 80);
+            if (!rows.length) {
+                out.innerHTML = '<div class="weighted-empty">No skills match.</div>';
+                return;
+            }
+            out.innerHTML = rows.map(s => {
+                const assigned = _v73TierAssignmentOf(tiers, s.name);
+                const assignedLabel = assigned ? `<span class="v73-result-assigned">In Tier ${_v73TierLabels[assigned].label}</span>` : '';
+                return `<button type="button" class="v73-tier-search-result ${assigned ? 'is-assigned' : ''}" data-skill="${escapeAttr(s.name)}">
+                    <img src="${escapeAttr(skillIconPath(s))}" onerror="this.src='/sweep.png'" alt="">
+                    <span><strong>${escapeHtml(s.name)}</strong><em>${escapeHtml(s.description || s.desc || '')}</em></span>
+                    ${assignedLabel}
+                </button>`;
+            }).join('');
+            out.querySelectorAll('.v73-tier-search-result').forEach(btn => {
+                btn.addEventListener('click', async () => {
+                    const name = btn.dataset.skill;
+                    if (!name) return;
+                    const targetTier = String(document.getElementById('v73-manual-tier-target')?.value || '3');
+                    const t = _v73GetTiers();
+                    // Remove from any existing tier first to enforce uniqueness across tiers.
+                    for (const k of ['1','2','3','4','5']) {
+                        t[k] = (t[k] || []).filter(n => n !== name);
+                    }
+                    t[targetTier] = [...(t[targetTier] || []), name];
+                    await _v73SaveTiers(t);
+                    renderManualTierSection();
+                    renderManualTierSearchResults();
+                });
+            });
+        }
+        function bindManualTierControls() {
+            const search = document.getElementById('v73-manual-tier-search');
+            if (search && !search.dataset.v73Bound) {
+                search.dataset.v73Bound = '1';
+                let debounce;
+                search.addEventListener('input', () => {
+                    clearTimeout(debounce);
+                    debounce = setTimeout(renderManualTierSearchResults, 120);
+                });
+            }
+            // When plan-check toggle changes, refresh the badge.
+            document.querySelectorAll('.skill-config-toggle[data-key="enable_skill_point_check_plan"]').forEach(el => {
+                if (el.dataset.v73Bound) return;
+                el.dataset.v73Bound = '1';
+                el.addEventListener('change', () => setTimeout(renderManualTierSection, 80));
+            });
         }
         function renderSkillConfigSummary() {
             const box = document.getElementById('skill-config-summary');
             if (!box) return;
             const cfg = getSkillConfig();
             const strategy = getSkillStrategy(cfg);
-            box.innerHTML = `<div class="skill-summary-grid"><span>STRATEGY</span><strong>${escapeHtml(cfg.skill_spending_strategy === 'optimize_rank' ? 'Optimize Rank' : 'Best Skills First')}</strong><span>THRESHOLD</span><strong>${escapeHtml(cfg.learn_skill_threshold ?? 888)}</strong><span>NEGATIVE</span><strong>${cfg.purchase_negative_skills ? 'Yes' : 'No'}</strong><span>EXCLUDED</span><strong>${[cfg.skip_green_skills?'Green':'', cfg.skip_red_skills?'Red':'', cfg.skip_unique_skills?'Unique':''].filter(Boolean).join(', ') || '(none)'}</strong><span>PLANNED</span><strong>${(strategy.forced_skills || []).join(', ') || '(none)'}</strong><span>BLACKLISTED</span><strong>${(strategy.blacklist || []).join(', ') || '(none)'}</strong></div>`;
+            // v7.3 — include manual tier totals so the summary reflects all relevant config in one place.
+            const tiers = cfg.manual_skill_tiers || {};
+            const tierCounts = ['1','2','3','4','5'].map(k => (Array.isArray(tiers[k]) ? tiers[k].length : 0));
+            const totalTiered = tierCounts.reduce((a, b) => a + b, 0);
+            const tierSummary = totalTiered === 0
+                ? '(none)'
+                : `${totalTiered} total · ` + tierCounts.map((n, i) => `T${i+1}:${n}`).filter((_, i) => tierCounts[i] > 0).join(' ');
+            const planCheckOn = cfg.enable_skill_point_check_plan !== false;
+            const tierActive = !planCheckOn && totalTiered > 0;
+            box.innerHTML = `<div class="skill-summary-grid"><span>STRATEGY</span><strong>${escapeHtml(cfg.skill_spending_strategy === 'optimize_rank' ? 'Optimize Rank' : 'Best Skills First')}</strong><span>THRESHOLD</span><strong>${escapeHtml(cfg.learn_skill_threshold ?? 888)}</strong><span>NEGATIVE</span><strong>${cfg.purchase_negative_skills ? 'Yes' : 'No'}</strong><span>EXCLUDED</span><strong>${[cfg.skip_green_skills?'Green':'', cfg.skip_red_skills?'Red':'', cfg.skip_unique_skills?'Unique':''].filter(Boolean).join(', ') || '(none)'}</strong><span>PLANNED</span><strong>${(strategy.forced_skills || []).join(', ') || '(none)'}</strong><span>BLACKLISTED</span><strong>${(strategy.blacklist || []).join(', ') || '(none)'}</strong><span>MANUAL TIERS${tierActive ? ' <em class="v73-summary-active">(active)</em>' : ''}</span><strong>${tierSummary}</strong></div>`;
         }
         function bindSkillConfigControls(root = document) {
             root.querySelectorAll('.skill-config-toggle').forEach(input => input.addEventListener('change', async () => {
@@ -3549,6 +3994,27 @@ const els = {
             await renderSkillConfig();
         }
 
+        async function loadSkillOptimizer() {
+            const t = document.getElementById('skill-optimizer-toggle');
+            if (!t) return;
+            try {
+                const r = await apiJson('/api/skills/optimizer?t=' + Date.now());
+                t.checked = !!(r && r.enabled);
+            } catch (e) { /* leave as-is */ }
+            if (!t.dataset.wired) {
+                t.dataset.wired = '1';
+                t.addEventListener('change', async () => {
+                    try {
+                        await apiJson('/api/skills/optimizer', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ enabled: t.checked })
+                        });
+                    } catch (e) { /* non-fatal */ }
+                });
+            }
+        }
+
         async function savePresetConfig() {
             if (!state.selectedPreset || !state.presets) return;
             const current = getCurrentPreset();
@@ -3575,7 +4041,16 @@ const els = {
             if (!state.selectedPreset || !state.presets) return;
             const current = getCurrentPreset();
             if (!current) return;
-
+            // Re-sync derived UI state and refresh any open settings panels so
+            // they reflect the active preset's freshly-loaded values (previously
+            // an empty stub, so a loaded preset's solver/scenario panels could
+            // keep showing the prior preset until reopened).
+            try { syncSelectedPresetRaces(); } catch (_) {}
+            const open = (id) => document.getElementById(id)?.style.display === 'flex';
+            if (open('training-settings-modal')) renderTrainingSettings();
+            if (open('racing-settings-modal')) renderRacingSettings();
+            if (open('scenario-settings-modal')) renderScenarioSettings();
+            if (open('smart-solver-settings-modal')) renderSmartSolverSettings();
         }
 
 
@@ -3654,6 +4129,14 @@ const els = {
             } catch (e) {
                 console.warn('Failed to save settings preset', e);
             }
+        }
+        function engineMode(value) {
+            // Normalize stored decision_mode (incl. legacy aliases) to the two UI
+            // choices: "android" is a legacy alias for Trackblazer; "classic" maps
+            // to "legacy"; anything else (incl. unset) defaults to Trackblazer.
+            const v = String(value || '').trim().toLowerCase();
+            if (v === 'legacy' || v === 'classic') return 'legacy';
+            return 'trackblazer';
         }
         function getSetting(current, target, key, fallback) {
             const source = target === 'preset' ? current : mantCfg(current);
@@ -3818,6 +4301,8 @@ const els = {
                     ${prioritySetting('Summer Training Prioritization', 'Stat order used during Summer Training.', 'summer_stat_priority', current.summer_stat_priority || current.training_stat_priority || DEFAULT_STAT_PRIORITY, 'preset')}
                 </section>
                 <section class="settings-card"><h3>Behavior</h3>
+                    ${selectSetting('Decision Engine', 'Trackblazer Engine (default) is the modern training/race decision core. Classic is the original legacy engine.', 'decision_mode', engineMode(getSetting(current,'mant','decision_mode','trackblazer')), [['trackblazer','Trackblazer Engine'], ['legacy','Classic']])}
+                    ${selectSetting('Stat Focus', 'Balanced spreads training evenly toward targets (default). Capped concentrates priority stats toward the cap (steeper priority, flatter completion curve, trains past the buffer).', 'stat_focus_mode', String(getSetting(current,'mant','stat_focus_mode','balanced')), [['balanced','Balanced (even spread)'], ['capped','Capped (max priority stats)']])}
                     ${sliderSetting('Set Maximum Failure Chance', 'Trainings above this failure rate are rejected unless Riskier Training allows them.', 'maximum_failure_chance', getSetting(current,'mant','maximum_failure_chance',20), 5, 95, 5)}
                     ${toggleSetting('Disable Training on Maxed Stats', 'Skip stats that have reached their active target/cap buffer.', 'disable_training_on_maxed_stats', getSetting(current,'mant','disable_training_on_maxed_stats',true))}
                     ${toggleSetting('Enable Riskier Training', 'Allow high-gain trainings to pass a separate higher failure limit.', 'enable_risky_training', getSetting(current,'mant','enable_risky_training',false))}
@@ -3836,10 +4321,9 @@ const els = {
                     ${selectSetting('Preferred Distance', 'Used to resolve stat targets when Auto is not desired.', 'preferred_distance', getSetting(current,'mant','preferred_distance','auto'), [['auto','Auto'], ...SETTINGS_DISTANCE_VALUES])}
                     ${toggleSetting('Disable Stat Targets', 'Treat every stat as live instead of tapering at per-distance targets.', 'disable_stat_targets', getSetting(current,'mant','disable_stat_targets',false))}
                     ${statTargetGrid(current)}
-                    ${sliderSetting('End of Junior Year Milestone', 'Percent of final targets to aim for by the end of Junior Year.', 'junior_milestone_pct', getSetting(current,'mant','junior_milestone_pct',33), 0, 100, 1)}
-                    ${sliderSetting('End of Classic Year Milestone', 'Percent of final targets to aim for by the end of Classic Year.', 'classic_milestone_pct', getSetting(current,'mant','classic_milestone_pct',66), 0, 100, 1)}
-                </section>
-                <section class="settings-card"><h3>Omitted Android-only Detection</h3><div class="settings-row"><div><strong>Training Analysis Validation / YOLO Stat Detection</strong><span>SweepyCL reads native game payloads, so Android OCR and YOLO controls are intentionally not shown.</span></div><div></div></div></section>`;
+                    ${sliderSetting('End of Classic Year Milestone', 'Percent of final targets to aim for by the end of Classic Year.', 'classic_year_milestone_pct', getSetting(current,'mant','classic_year_milestone_pct', getSetting(current,'mant','junior_milestone_pct',33)), 0, 100, 1)}
+                    ${sliderSetting('End of Senior Year Milestone', 'Percent of final targets to aim for by the end of Senior Year.', 'senior_year_milestone_pct', getSetting(current,'mant','senior_year_milestone_pct', getSetting(current,'mant','classic_milestone_pct',66)), 0, 100, 1)}
+                </section>`;
             bindSettingsControls(body, current, renderTrainingSettings);
         }
         function renderRacingSettings() {
@@ -3854,10 +4338,13 @@ const els = {
                     ${sliderSetting('Days to Run Extra Races', 'Extra-race interval used by fan farming.', 'days_to_run_extra_races', getSetting(current,'mant','days_to_run_extra_races',5), 1, 15, 1)}
                     ${toggleSetting('Ignore Consecutive Race Warning', 'Disable the Trackblazer race-chain safety break.', 'ignore_consecutive_race_warning', getSetting(current,'mant','ignore_consecutive_race_warning',false))}
                     ${toggleSetting('Ignore Low Energy Racing Block', 'Do not block voluntary racing due to critical HP during a race streak.', 'ignore_low_energy_racing_block', getSetting(current,'mant','ignore_low_energy_racing_block',false))}
-                    ${toggleSetting('Disable Race Retries', 'Prevent clock/retry use even when the global retry mode is enabled.', 'disable_race_retries', getSetting(current,'mant','disable_race_retries',false))}
                     ${toggleSetting('Complete Career on Failure', 'Continue after failed mandatory races once retry policy is exhausted.', 'complete_career_on_failure', getSetting(current,'mant','complete_career_on_failure',true))}
                     ${toggleSetting('Stop on Mandatory Races', 'Stop the runner before entering mandatory races.', 'stop_on_mandatory_races', getSetting(current,'mant','stop_on_mandatory_races',false))}
                     ${toggleSetting('Force Racing', 'Choose an available race whenever possible.', 'force_racing', getSetting(current,'mant','force_racing',false))}
+                </section>
+                <section class="settings-card"><h3>Outcome Risk</h3>
+                    ${toggleSetting('Enable Outcome-Risk Avoidance', 'Penalize races the bot has historically lost (learned from past careers) so the Smart Race Solver avoids them. Turn OFF to pick races purely by value (more reference-like) — this does not affect which races are winnable, only scheduling.', 'enable_outcome_risk', getSetting(current,'mant','enable_outcome_risk',true))}
+                    ${sliderSetting('Outcome-Risk Weight', 'How strongly past-loss history deprioritizes a race in the schedule (0 = ignore, higher = avoid risky races more). Only applies when the toggle above is on.', 'outcome_risk_weight', getSetting(current,'mant','outcome_risk_weight',1), 0, 5, 0.5)}
                 </section>
                 <section class="settings-card"><h3>Strategy</h3>
                     ${toggleSetting('Per-Distance Strategy', 'Use separate running styles by race distance.', 'enable_per_distance_strategy', getSetting(current,'mant','enable_per_distance_strategy',false))}
@@ -3878,8 +4365,6 @@ const els = {
             body.innerHTML = `
                 <section class="settings-card"><h3>Racing</h3>
                     ${sliderSetting('Consecutive Races Limit', 'Maximum race streak before Trackblazer safety logic intervenes.', 'race_chain_target', getSetting(current,'mant','race_chain_target',3), 3, 30, 1)}
-                    ${sliderSetting('Max Retries per Race', 'Maximum clock retries per race when retry mode is enabled.', 'max_retries_per_race', getSetting(current,'mant','max_retries_per_race',5), 0, 5, 1)}
-                    ${chipsSetting('Race Grades to use Race Retries on', 'Only these grades may consume race retries.', 'retry_race_grades', c.retry_race_grades || ['G1','G2','G3'], SETTINGS_GRADE_VALUES, 'checkbox', 'mant')}
                     ${chipsSetting('Preferred Track Distances', 'Matching races are prioritized during Trackblazer race sorting.', 'preferred_distances', c.preferred_distances || current.preferred_distances || [], SETTINGS_DISTANCE_VALUES, 'checkbox', 'mant')}
                     ${chipsSetting('Preferred Track Surfaces', 'Matching race surfaces are prioritized during Trackblazer race sorting.', 'preferred_surfaces', c.preferred_surfaces || current.preferred_surfaces || [], SETTINGS_SURFACE_VALUES, 'checkbox', 'mant')}
                 </section>
@@ -4000,6 +4485,7 @@ const els = {
             if (s.max_races_in_row === undefined) s.max_races_in_row = 2;
             if (s.disable_schedule_replan_on_race_loss === undefined) s.disable_schedule_replan_on_race_loss = false;
             if (s.replan_on_events_only === undefined) s.replan_on_events_only = true;
+            if (s.enable_live_smart_replan === undefined) s.enable_live_smart_replan = true;
             if (!s.min_aptitude_floor) s.min_aptitude_floor = 'C';
             if (!s.optimization_mode) s.optimization_mode = 'fans_epithets';
             if (!s.distance_preference_mode) s.distance_preference_mode = 'balanced';
@@ -4223,10 +4709,16 @@ const els = {
                     <div class="solver-mode-help" id="solver-distance-mode-help"><strong>Distance Preference Modes</strong><ul><li><b>Strict:</b> Only uses preferred distances unless a mandatory race or forced epithet requires otherwise.</li><li><b>Balanced:</b> Strongly prefers selected distances, but allows valuable safe exceptions.</li><li><b>Loose:</b> Treats distance preference as a light scoring bonus only.</li></ul></div>
                 </section>
                 <section class="settings-card"><h3>Re-Planning</h3>
-                    ${toggleSetting('Re-Plan Only on Race Events (Android-style)', 'Solve the schedule once and reuse it, re-planning only when a race is lost or a planned race becomes unavailable — instead of re-solving every turn. Matches the Android bot and prevents the per-turn churn that piled up race streaks and dropped winnable races. Defaults to ON.', 'replan_on_events_only', s.replan_on_events_only, 'solver')}
+                    ${toggleSetting('Live Schedule Re-Planning', 'Master switch (smart mode only): when ON (default), the solver re-solves the remaining schedule live as the run unfolds (gated by the two options below). When OFF, the schedule solved at career start is locked in for the whole run — no live re-planning at all. Manual race mode ignores this.', 'enable_live_smart_replan', s.enable_live_smart_replan, 'solver')}
+                    <div class="solver-mode-help"><span>This is the parent of the two settings below. With it OFF, "Re-Plan Only on Race Events" and "Disable Re-Plan Upon Race Loss" have no effect because no live re-planning happens.</span></div>
+                    ${toggleSetting('Re-Plan Only on Race Events', 'Solve the schedule once and reuse it, re-planning only when a race is lost or a planned race becomes unavailable — instead of re-solving every turn. Prevents the per-turn churn that piled up race streaks and dropped winnable races. Defaults to ON.', 'replan_on_events_only', s.replan_on_events_only, 'solver')}
                     <div class="solver-mode-help"><span>When ON (recommended), the plan is computed once and stays stable through the run — winning a race keeps the plan, and only a loss or an unavailable planned race triggers a re-solve. Turn OFF to restore the old behavior of re-solving the remaining schedule every turn.</span></div>
                     ${toggleSetting('Disable Schedule Re-Plan Upon Race Loss', 'When a race is lost, keep the original schedule instead of re-planning the remaining turns. The loss is still recorded; epithets that depended on the lost race won\'t be re-routed. Defaults to off.', 'disable_schedule_replan_on_race_loss', s.disable_schedule_replan_on_race_loss, 'solver')}
                     <div class="solver-mode-help"><span>By default, losing a race re-plans the remaining turns (the lost race may be re-routed to a later turn and epithet branches re-evaluated). Turn this on to lock in the original schedule after a loss instead.</span></div>
+                </section>
+                <section class="settings-card"><h3>Set-Bonus Chasing</h3>
+                    <label class="settings-row solver-weight-bool-row"><div><strong>Chase Achievable Set-Bonuses (Epithets)</strong><span>When ON, the solver adds a soft reward for completing every achievable race set/title (Triple Crowns, distance/regional/surface sets, etc.), re-prioritizing the route toward the +random-stat set bonuses (Triple Crowns, distance/regional/surface sets, and more). Soft, so it can never make the schedule infeasible. Costs some fans in exchange for stats. Defaults to OFF.</span></div><div class="settings-toggle-wrap"><input type="checkbox" class="solver-settings-control" data-control="solver-weight-bool" data-key="enableOpportunisticEpithets" ${w.enableOpportunisticEpithets ? 'checked' : ''}></div></label>
+                    <div class="solver-mode-help"><span>The Target Epithets below bias the route only when this is ON. Forced Epithets are hard constraints and apply regardless of this toggle.</span></div>
                 </section>
                 ${renderEpithetPicker(current, 'target')}
                 ${renderEpithetPicker(current, 'forced')}
@@ -4283,25 +4775,52 @@ const els = {
                     await saveSolverSetting(current);
                 });
             });
-            root.querySelectorAll('[data-control="solver-aptitude"]').forEach(btn => {
-                btn.addEventListener('click', async () => {
-                    solverManualAptitudes(current)[btn.dataset.key] = btn.dataset.grade;
+            root.querySelectorAll('[data-control="solver-weight-bool"]').forEach(input => {
+                input.addEventListener('change', async () => {
+                    solverWeights(current)[input.dataset.key] = Boolean(input.checked);
                     await saveSolverSetting(current);
                     await renderSmartSolverSettings();
+                });
+            });
+            // Plain <button> elements have no native pressed state, so their
+            // "active" look depends entirely on the class-driven re-render.  Flip
+            // the class SYNCHRONOUSLY on click (optimistic) so the UI updates
+            // instantly even if the async re-render is delayed/fails -- this is
+            // the fix for "buttons don't change until I reopen the page".
+            root.querySelectorAll('[data-control="solver-aptitude"]').forEach(btn => {
+                btn.addEventListener('click', async () => {
+                    const row = btn.closest('.solver-grade-row');
+                    if (row) row.querySelectorAll('.solver-grade-btn').forEach(b => b.classList.remove('is-active', 'is-manual'));
+                    btn.classList.add('is-active', 'is-manual');
+                    solverManualAptitudes(current)[btn.dataset.key] = btn.dataset.grade;
+                    await saveSolverSetting(current);
+                    try { await renderSmartSolverSettings(); } catch (_) {}
                 });
             });
             root.querySelectorAll('[data-control="solver-aptitude-reset"]').forEach(btn => {
                 btn.addEventListener('click', async () => {
-                    delete solverManualAptitudes(current)[btn.dataset.key];
+                    const key = btn.dataset.key;
+                    delete solverManualAptitudes(current)[key];
+                    const row = btn.closest('.solver-grade-row');
+                    if (row) {
+                        const baseGrade = baseSolverAptitudes()[key];
+                        row.querySelectorAll('.solver-grade-btn').forEach(b => {
+                            b.classList.remove('is-manual');
+                            b.classList.toggle('is-active', b.dataset.grade === baseGrade);
+                        });
+                    }
                     await saveSolverSetting(current);
-                    await renderSmartSolverSettings();
+                    try { await renderSmartSolverSettings(); } catch (_) {}
                 });
             });
             root.querySelectorAll('[data-control="solver-threshold"]').forEach(btn => {
                 btn.addEventListener('click', async () => {
+                    const row = btn.closest('.solver-threshold-row');
+                    if (row) row.querySelectorAll('.solver-threshold-btn').forEach(b => b.classList.remove('is-active'));
+                    btn.classList.add('is-active');
                     solverSettings(current).min_aptitude_floor = btn.dataset.grade;
                     await saveSolverSetting(current);
-                    await renderSmartSolverSettings();
+                    try { await renderSmartSolverSettings(); } catch (_) {}
                 });
             });
             root.querySelectorAll('[data-control="solver-mode"]').forEach(btn => {
@@ -4398,10 +4917,34 @@ const els = {
                 const btn = document.getElementById(buttonId);
                 const modal = document.getElementById(modalId);
                 if (!btn || !modal || btn.dataset.bound) return;
-                btn.addEventListener('click', () => { render(); modal.style.display = 'flex'; });
+                btn.addEventListener('click', async () => {
+                    modal.style.display = 'flex';
+                    // Smart Race Solver settings show the trainee's aptitudes, which
+                    // are only accurate after inheritance is applied at career start.
+                    // Force a fresh profile fetch on open so the grid isn't stale.
+                    if (modalId === 'smart-solver-settings-modal') {
+                        await loadSelectedTraineeProfile({ force: true }).catch(() => null);
+                    }
+                    await render();
+                });
                 btn.dataset.bound = '1';
                 modal.addEventListener('click', (event) => { if (event.target === modal) modal.style.display = 'none'; });
             });
+            const goalToggle = document.getElementById('goal-lookahead-toggle');
+            if (goalToggle && !goalToggle.dataset.wired) {
+                goalToggle.dataset.wired = '1';
+                apiJson('/api/training/goal-lookahead?t=' + Date.now())
+                    .then(r => { goalToggle.checked = !!(r && r.enabled); }).catch(() => {});
+                goalToggle.addEventListener('change', async () => {
+                    try {
+                        await apiJson('/api/training/goal-lookahead', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ enabled: goalToggle.checked })
+                        });
+                    } catch (e) { /* non-fatal */ }
+                });
+            }
             document.querySelectorAll('.settings-window-close').forEach(btn => {
                 if (btn.dataset.bound) return;
                 btn.addEventListener('click', () => {
@@ -4426,6 +4969,22 @@ const els = {
                 els.presetSelect.addEventListener('change', async (e) => {
                     state.selectedPreset = e.target.value;
                     localStorage.setItem('uma_selected_preset', state.selectedPreset);
+                    // v7.6 — skill/solver config is per-preset: point the server
+                    // at the new preset and reload its skill config.
+                    try {
+                        await apiJson('/api/settings-presets/active', {
+                            method: 'POST', headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ name: state.selectedPreset })
+                        });
+                    } catch (_) {}
+                    try {
+                        // Reload BOTH skill and smart-solver/manual-schedule config
+                        // for the now-active preset. The solver config was not
+                        // reloaded on switch before, so the race schedule/aptitudes
+                        // stayed on the previous preset's values until a full reload.
+                        await Promise.all([loadSkillConfig(), loadSmartSolverConfig()]);
+                        if (els.skillModal && els.skillModal.style.display === 'flex' && typeof renderSkillConfig === 'function') renderSkillConfig();
+                    } catch (_) {}
                     syncSelectedPresetRaces();
                     populatePresetUI();
                     renderRaces();
@@ -4440,6 +4999,24 @@ const els = {
             const saveHandler = () => savePresetConfig();
             els.presetSkillThreshold?.addEventListener('change', saveHandler);
             els.presetSaveBtn?.addEventListener('click', saveHandler);
+
+            // LOAD: re-read the active preset's saved values from disk, discarding
+            // any unsaved in-memory edits, then refresh the whole UI to match.
+            els.presetLoadBtn?.addEventListener('click', async () => {
+                await loadPresets();
+                try {
+                    await Promise.all([loadSkillConfig(), loadSmartSolverConfig()]);
+                    if (els.skillModal && els.skillModal.style.display === 'flex' && typeof renderSkillConfig === 'function') renderSkillConfig();
+                } catch (_) {}
+                syncSelectedPresetRaces();
+                populatePresetUI();
+                renderRaces();
+                applyPresetSelection(getCurrentPreset(), { sync: true, quiet: false });
+                if (document.getElementById('training-settings-modal')?.style.display === 'flex') renderTrainingSettings();
+                if (document.getElementById('racing-settings-modal')?.style.display === 'flex') renderRacingSettings();
+                if (document.getElementById('scenario-settings-modal')?.style.display === 'flex') renderScenarioSettings();
+                if (document.getElementById('smart-solver-settings-modal')?.style.display === 'flex') renderSmartSolverSettings();
+            });
 
             els.presetEditSkillsBtn?.addEventListener('click', () => initSkillEditor());
             els.skillModalClose?.addEventListener('click', () => { els.skillModal.style.display = 'none'; });
@@ -4870,6 +5447,68 @@ const els = {
                 el.scrollTop = el.scrollHeight;
             });
         }
+        // MANT/Trackblazer shop-item icons (game8 source), keyed by the exact
+        // in-game item name as it appears in decision-reasoning text. Served
+        // locally from /api/item-icons/<id>.<ext>.
+        const ITEM_ICON_MAP = {
+            "Speed Notepad": "/api/item-icons/1001.jpg", "Stamina Notepad": "/api/item-icons/1002.png",
+            "Power Notepad": "/api/item-icons/1003.png", "Guts Notepad": "/api/item-icons/1004.png",
+            "Wit Notepad": "/api/item-icons/1005.png",
+            "Speed Manual": "/api/item-icons/1101.png", "Stamina Manual": "/api/item-icons/1102.png",
+            "Power Manual": "/api/item-icons/1103.png", "Guts Manual": "/api/item-icons/1104.png",
+            "Wit Manual": "/api/item-icons/1105.jpg",
+            "Speed Scroll": "/api/item-icons/1201.png", "Stamina Scroll": "/api/item-icons/1202.png",
+            "Power Scroll": "/api/item-icons/1203.jpg", "Guts Scroll": "/api/item-icons/1204.png",
+            "Wit Scroll": "/api/item-icons/1205.png",
+            "Vita 20": "/api/item-icons/2001.png", "Vita 40": "/api/item-icons/2002.png",
+            "Vita 65": "/api/item-icons/2003.png", "Royal Kale Juice": "/api/item-icons/2101.png",
+            "Energy Drink MAX": "/api/item-icons/2201.png", "Energy Drink MAX EX": "/api/item-icons/2202.png",
+            "Plain Cupcake": "/api/item-icons/2301.jpg", "Berry Sweet Cupcake": "/api/item-icons/2302.png",
+            "Yummy Cat Food": "/api/item-icons/3001.png", "Grilled Carrots": "/api/item-icons/3101.jpg",
+            "Pretty Mirror": "/api/item-icons/4001.jpg", "Reporter's Binoculars": "/api/item-icons/4002.png",
+            "Master Practice Guide": "/api/item-icons/4003.png", "Scholar's Hat": "/api/item-icons/4004.png",
+            "Fluffy Pillow": "/api/item-icons/4101.png", "Pocket Planner": "/api/item-icons/4102.png",
+            "Rich Hand Cream": "/api/item-icons/4103.png", "Smart Scale": "/api/item-icons/4104.png",
+            "Aroma Diffuser": "/api/item-icons/4105.png", "Practice Drills DVD": "/api/item-icons/4106.png",
+            "Miracle Cure": "/api/item-icons/4201.png",
+            "Speed Training Application": "/api/item-icons/5001.png", "Stamina Training Application": "/api/item-icons/5002.png",
+            "Power Training Application": "/api/item-icons/5003.png", "Guts Training Application": "/api/item-icons/5004.png",
+            "Wit Training Application": "/api/item-icons/5005.png",
+            "Reset Whistle": "/api/item-icons/7001.png",
+            "Coaching Megaphone": "/api/item-icons/8001.png", "Motivating Megaphone": "/api/item-icons/8002.png",
+            "Empowering Megaphone": "/api/item-icons/8003.png",
+            "Speed Ankle Weights": "/api/item-icons/9001.png", "Stamina Ankle Weights": "/api/item-icons/9002.png",
+            "Power Ankle Weights": "/api/item-icons/9003.png", "Guts Ankle Weights": "/api/item-icons/9004.png",
+            "Good-Luck Charm": "/api/item-icons/10001.png",
+            "Artisan Cleat Hammer": "/api/item-icons/11001.png", "Master Cleat Hammer": "/api/item-icons/11002.png",
+            "Glow Sticks": "/api/item-icons/11003.png"
+        };
+        let _itemIconRegex = null;
+        const _itemIconByEscaped = {};
+        function _ensureItemIconRegex() {
+            if (_itemIconRegex) return;
+            // Match against HTML-escaped names (reason text is escapeHtml'd first),
+            // longest-first so e.g. "Energy Drink MAX EX" wins over "Energy Drink MAX".
+            const names = Object.keys(ITEM_ICON_MAP).sort((a, b) => b.length - a.length);
+            const alts = names.map(n => {
+                const esc = escapeHtml(n);
+                _itemIconByEscaped[esc] = { name: n, path: ITEM_ICON_MAP[n] };
+                return esc.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+            });
+            _itemIconRegex = new RegExp('(' + alts.join('|') + ')', 'g');
+        }
+        // Given already-escaped reason text, prepend each shop item's icon before
+        // its name. Single pass, so inserted <img> tags are never re-matched.
+        function decorateItemIcons(escapedText) {
+            if (!escapedText) return escapedText;
+            _ensureItemIconRegex();
+            return escapedText.replace(_itemIconRegex, (m) => {
+                const hit = _itemIconByEscaped[m];
+                if (!hit) return m;
+                return `<img class="reason-item-icon" src="${hit.path}" alt="" title="${m}" loading="lazy" onerror="this.style.display='none'">${m}`;
+            });
+        }
+
         function buildDecisionReasoning(normalized) {
             const stats = normalized.stats || {};
             const action = String(normalized.action || '').toLowerCase();
@@ -4940,7 +5579,7 @@ const els = {
                 const score = bestRace.score ?? bestRace.objective_score ?? '';
                 lines.push(`Top race candidate: ${name}${score !== '' ? ` (${score})` : ''}.`);
             }
-            return Array.from(new Set(lines.filter(Boolean))).slice(0, 6).map(item => `<li>${escapeHtml(item)}</li>`).join('');
+            return Array.from(new Set(lines.filter(Boolean))).slice(0, 6).map(item => `<li>${decorateItemIcons(escapeHtml(item))}</li>`).join('');
         }
 
         function actionReasonKey(row) {
@@ -4990,7 +5629,7 @@ const els = {
                 return `<article class="v524-reason-turn ${index === idx ? 'is-active' : ''}" data-reason-index="${index}">
                     <header><span>T${escapeHtml(row.turn ?? '?')}</span><strong>${escapeHtml(row.facility || 'Decision')}</strong><em class="action-pill action-pill-${escapeAttr(action)}">${escapeHtml(String(action || '?').toUpperCase())}</em></header>
                     ${statLine}
-                    <ul>${reasons.map(item => `<li>${escapeHtml(item)}</li>`).join('')}${traceItems}</ul>
+                    <ul>${reasons.map(item => `<li>${decorateItemIcons(escapeHtml(item))}</li>`).join('')}${traceItems}</ul>
                 </article>`;
             }).join('');
             els.v547DecisionReasoning.innerHTML = `<div class="v524-reason-intro">Turn-by-turn reasoning for the active career. Click a row in the Action Log or a card here to focus it.</div><div class="v524-reason-turn-list">${rowsHtml}</div>`;
@@ -5050,6 +5689,13 @@ const els = {
                 ? safeRows.findIndex(row => actionReasonKey(row) === state.selectedReasonKey)
                 : -1;
             const activeIndex = lockedIndex >= 0 ? lockedIndex : latestIndex;
+            // Perf: this runs on every 1.5s status poll. Skip the full <table>
+            // innerHTML rebuild when nothing that affects the render changed
+            // (mirrors the dirty-check pattern in monitor.js).
+            const lastRow = safeRows[safeRows.length - 1];
+            const dirtyKey = `${allRows.length}|${safeRows.length}|${activeIndex}|${lastRow ? lastRow.turn : ''}|${lastRow ? lastRow.action : ''}|${lastRow ? (lastRow.detail || '') : ''}`;
+            if (dirtyKey === state._actionLogKey) return;
+            state._actionLogKey = dirtyKey;
             const body = safeRows.map((row, index) => {
                 const normalized = normalizeHistoryAction(row);
                 const action = String(normalized.action || '').toLowerCase();
@@ -5161,6 +5807,10 @@ const els = {
             setElText(els.v53Fph, formatCompactNumber(lifetime.fans_per_hour_live || runner?.fans_per_hour || 0));
             setElText(els.v53Runtime, formatDurationSeconds(lifetime.total_runtime_seconds_live || lifetime.total_runtime_seconds || 0));
             setElText(els.v53Careers, lifetime.careers_completed || runner?.careers_completed || 0);
+            // v7.6.2: fan gain for the CURRENT career (fans accumulate from 0
+            // each career, so the running total is the gain). Shown alongside
+            // the lifetime totals.
+            setElText(els.v53CareerFans, formatCompactNumber(fans || 0));
             setElText(els.v53TurnCount, `${runner?.turn || latest?.turn || 0} TURNS`);
             if (els.v53ActionLog) {
                 const rows = getMainActionRows(runner);
@@ -5378,10 +6028,14 @@ const els = {
             const bits = [
                 `${formatNumber(payload.known_events || 0)} known events`,
                 `${formatNumber(payload.known_choices || 0)} known choices`,
+                `${formatNumber(payload.native_observed_events || 0)} observed from bot runs`,
                 `${formatNumber(payload.imported_static_events || 0)} imported static events`,
                 `${formatNumber(payload.unknown_event_choices_seen || 0)} unknown seen`
             ];
             if (els.v544EventKbStatus) els.v544EventKbStatus.textContent = bits.join(' · ');
+            // v7.6.2: keep the native-capture checkbox in sync with the server.
+            const nativeToggle = document.getElementById('v762-native-capture-toggle');
+            if (nativeToggle && payload.native_capture_enabled != null) nativeToggle.checked = !!payload.native_capture_enabled;
             if (els.v544EventKbSummary) {
                 const top = (payload.top_events || []).slice(0, 4).map(row => `${escapeHtml(row.event_name || row.event_key || 'event')} (${escapeHtml(row.choices || 0)} choices)`).join(' · ');
                 const unknown = (payload.unknown_events || []).slice(0, 3).map(row => `${escapeHtml(row.event_name || row.story_id || 'unknown')} seen ${escapeHtml(row.count || 0)}x`).join(' · ');
@@ -5423,215 +6077,6 @@ const els = {
                 els.v544EventKbImportBtn.disabled = false;
             }
         }
-
-        // ---------------------------------------------------------------
-        // v6.7.26 — Dumper Watcher: background poller that ingests the
-        // community dumper tool's outcomes.json into a STAGING file. The
-        // staging file is never read by the runner or AI Dataset; only
-        // user-initiated PROMOTE moves staged data into the live KB.
-        // ---------------------------------------------------------------
-        const _dw = {
-            els: {
-                card: null, source: null, interval: null, enabled: null,
-                saveBtn: null, runBtn: null, refreshBtn: null,
-                status: null, diff: null,
-                promoteNewBtn: null, promoteAllBtn: null, clearBtn: null,
-            },
-            _editingControls: new Set(),
-            _bound: false,
-        };
-        function _dwBindEls() {
-            const ids = {
-                card: 'v6726-dumper-watcher-card',
-                source: 'v6726-dw-source',
-                interval: 'v6726-dw-interval',
-                enabled: 'v6726-dw-enabled',
-                saveBtn: 'v6726-dw-save-btn',
-                runBtn: 'v6726-dw-run-btn',
-                refreshBtn: 'v6726-dw-refresh-btn',
-                status: 'v6726-dw-status',
-                diff: 'v6726-dw-diff',
-                promoteNewBtn: 'v6726-dw-promote-new-btn',
-                promoteAllBtn: 'v6726-dw-promote-all-btn',
-                clearBtn: 'v6726-dw-clear-btn',
-            };
-            for (const [k, id] of Object.entries(ids)) {
-                _dw.els[k] = document.getElementById(id);
-            }
-        }
-        function _dwFormatRelative(ts) {
-            if (!ts) return 'never';
-            const diff = Math.max(0, Date.now() / 1000 - Number(ts));
-            if (diff < 60) return `${Math.round(diff)}s ago`;
-            if (diff < 3600) return `${Math.round(diff / 60)}m ago`;
-            if (diff < 86400) return `${Math.round(diff / 3600)}h ago`;
-            return `${Math.round(diff / 86400)}d ago`;
-        }
-        function _dwRenderStatus(payload) {
-            _dwBindEls();
-            if (!payload || !payload.success) {
-                if (_dw.els.status) _dw.els.status.textContent = (payload && payload.detail) || 'Failed to read watcher status.';
-                return;
-            }
-            const cfg = payload.config || {};
-            const state = payload.state || {};
-            const diff = payload.diff || {};
-            // Only populate the form controls when the user is not actively editing them.
-            if (_dw.els.source && !_dw._editingControls.has('source')) _dw.els.source.value = cfg.source_path || '';
-            if (_dw.els.interval && !_dw._editingControls.has('interval')) _dw.els.interval.value = cfg.poll_interval_sec || 30;
-            if (_dw.els.enabled && !_dw._editingControls.has('enabled')) _dw.els.enabled.checked = !!cfg.enabled;
-            // Status text
-            const pieces = [];
-            const dot = cfg.enabled ? '🟢 enabled' : '⚪ disabled';
-            pieces.push(dot);
-            pieces.push(payload.thread_alive ? 'thread alive' : 'thread idle');
-            pieces.push(`last poll ${_dwFormatRelative(state.last_poll_at)}`);
-            if (state.last_imported_at) {
-                const rep = state.last_import_report || {};
-                pieces.push(`last import ${_dwFormatRelative(state.last_imported_at)} (+${rep.imported_events || 0} events)`);
-            } else {
-                pieces.push('no imports yet');
-            }
-            if (state.last_error) {
-                pieces.push(`⚠ ${state.last_error}`);
-            }
-            if (_dw.els.status) _dw.els.status.innerHTML = pieces.map(p => `<span class="v6726-dw-pill">${escapeHtml(p)}</span>`).join('');
-            // Diff block
-            if (_dw.els.diff) {
-                const newSample = (diff.new_sample || []).slice(0, 8).map(s => escapeHtml(s)).join(' · ');
-                const updSample = (diff.updated_sample || []).slice(0, 6).map(s => escapeHtml(s)).join(' · ');
-                _dw.els.diff.innerHTML = `
-                    <div class="v6726-dw-diff-row">
-                        <div class="v6726-dw-stat"><strong>${formatNumber(diff.staging_total || 0)}</strong><span>events in staging</span></div>
-                        <div class="v6726-dw-stat"><strong>${formatNumber(diff.new_count || 0)}</strong><span>new vs live</span></div>
-                        <div class="v6726-dw-stat"><strong>${formatNumber(diff.updated_count || 0)}</strong><span>updated</span></div>
-                        <div class="v6726-dw-stat"><strong>${formatNumber(diff.live_total || 0)}</strong><span>currently in live KB</span></div>
-                    </div>
-                    ${newSample ? `<div class="v6726-dw-sample"><strong>New events</strong> ${newSample}${diff.new_count > 8 ? ` … +${diff.new_count - 8} more` : ''}</div>` : ''}
-                    ${updSample ? `<div class="v6726-dw-sample"><strong>Updated</strong> ${updSample}${diff.updated_count > 6 ? ` … +${diff.updated_count - 6} more` : ''}</div>` : ''}
-                    <div class="v6726-dw-iso">${escapeHtml(payload.isolation_note || '')}</div>
-                `;
-            }
-        }
-        async function refreshDumperWatcher() {
-            try {
-                const data = await apiJson('/api/dumper-watcher/status?t=' + Date.now());
-                _dwRenderStatus(data);
-                return data;
-            } catch (e) {
-                _dwBindEls();
-                if (_dw.els.status) _dw.els.status.textContent = `Failed: ${e.message || e}`;
-                return null;
-            }
-        }
-        async function saveDumperWatcher() {
-            _dwBindEls();
-            if (!_dw.els.saveBtn) return;
-            _dw.els.saveBtn.disabled = true;
-            const body = {
-                enabled: !!(_dw.els.enabled && _dw.els.enabled.checked),
-                source_path: (_dw.els.source && _dw.els.source.value || '').trim(),
-                poll_interval_sec: Math.max(5, Math.min(3600, Number(_dw.els.interval && _dw.els.interval.value) || 30)),
-            };
-            try {
-                const data = await apiJson('/api/dumper-watcher/config', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(body),
-                });
-                if (!data.success) throw new Error(data.detail || 'save failed');
-                _dw._editingControls.clear();
-                if (_dw.els.status) _dw.els.status.textContent = 'Settings saved.';
-                await refreshDumperWatcher();
-            } catch (e) {
-                if (_dw.els.status) _dw.els.status.textContent = `Save failed: ${e.message || e}`;
-            } finally {
-                _dw.els.saveBtn.disabled = false;
-            }
-        }
-        async function runDumperWatcherNow() {
-            _dwBindEls();
-            if (!_dw.els.runBtn) return;
-            _dw.els.runBtn.disabled = true;
-            if (_dw.els.status) _dw.els.status.textContent = 'Polling dumper file...';
-            try {
-                const source = (_dw.els.source && _dw.els.source.value || '').trim();
-                const data = await apiJson('/api/dumper-watcher/run-now', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ source_path: source }),
-                });
-                if (!data.success) {
-                    if (_dw.els.status) _dw.els.status.textContent = `Poll: ${data.detail || 'failed'}`;
-                } else if (data.changed) {
-                    const rep = data.report || {};
-                    if (_dw.els.status) _dw.els.status.textContent = `Imported to staging: +${rep.imported_events || 0} events. Staging now has ${rep.staging_known_events || 0} events / ${rep.staging_known_choices || 0} choices.`;
-                } else {
-                    if (_dw.els.status) _dw.els.status.textContent = 'Dumper file unchanged since last import.';
-                }
-                await refreshDumperWatcher();
-            } catch (e) {
-                if (_dw.els.status) _dw.els.status.textContent = `Run failed: ${e.message || e}`;
-            } finally {
-                _dw.els.runBtn.disabled = false;
-            }
-        }
-        async function promoteDumperWatcher(mode) {
-            _dwBindEls();
-            const verb = mode === 'all' ? 'PROMOTE ALL (overwrites existing live entries that differ)' : 'PROMOTE NEW EVENTS (only events not yet in live)';
-            if (!confirm(`${verb}\n\nThis will write to the live event_outcomes.json that the bot reads during careers. Continue?`)) return;
-            const btn = mode === 'all' ? _dw.els.promoteAllBtn : _dw.els.promoteNewBtn;
-            if (btn) btn.disabled = true;
-            try {
-                const data = await apiJson('/api/dumper-watcher/promote', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ mode }),
-                });
-                if (!data.success) throw new Error(data.detail || 'promote failed');
-                if (_dw.els.status) _dw.els.status.textContent = `Promoted ${data.promoted} event(s) to live (mode: ${data.mode}). Live KB now has ${data.live_total_now} events.`;
-                await refreshDumperWatcher();
-                await refreshEventOutcomeKb();
-            } catch (e) {
-                if (_dw.els.status) _dw.els.status.textContent = `Promote failed: ${e.message || e}`;
-            } finally {
-                if (btn) btn.disabled = false;
-            }
-        }
-        async function clearDumperWatcherStaging() {
-            _dwBindEls();
-            if (!confirm('Wipe the staging file? The live KB will NOT be touched. The next poll will re-import from the dumper file.')) return;
-            if (_dw.els.clearBtn) _dw.els.clearBtn.disabled = true;
-            try {
-                const data = await apiJson('/api/dumper-watcher/clear-staging', { method: 'POST' });
-                if (!data.success) throw new Error(data.detail || 'clear failed');
-                if (_dw.els.status) _dw.els.status.textContent = `Cleared ${data.cleared} staging event(s).`;
-                await refreshDumperWatcher();
-            } catch (e) {
-                if (_dw.els.status) _dw.els.status.textContent = `Clear failed: ${e.message || e}`;
-            } finally {
-                if (_dw.els.clearBtn) _dw.els.clearBtn.disabled = false;
-            }
-        }
-        function bindDumperWatcher() {
-            _dwBindEls();
-            if (!_dw.els.card || _dw._bound) return;
-            _dw._bound = true;
-            _dw.els.saveBtn?.addEventListener('click', saveDumperWatcher);
-            _dw.els.runBtn?.addEventListener('click', runDumperWatcherNow);
-            _dw.els.refreshBtn?.addEventListener('click', refreshDumperWatcher);
-            _dw.els.promoteNewBtn?.addEventListener('click', () => promoteDumperWatcher('new_only'));
-            _dw.els.promoteAllBtn?.addEventListener('click', () => promoteDumperWatcher('all'));
-            _dw.els.clearBtn?.addEventListener('click', clearDumperWatcherStaging);
-            // Mark user-editing-in-progress so background refresh doesn't clobber input.
-            for (const [k, el] of Object.entries(_dw.els)) {
-                if (!el || !['source', 'interval', 'enabled'].includes(k)) continue;
-                el.addEventListener('focus', () => _dw._editingControls.add(k));
-                el.addEventListener('blur', () => _dw._editingControls.delete(k));
-                el.addEventListener('change', () => _dw._editingControls.delete(k));
-            }
-        }
-
         function renderLocalLlmStatus(payload, opts = {}) {
             const cfg = payload?.config || payload || {};
             const localControls = [
@@ -5856,7 +6301,7 @@ const els = {
             if (!els.v537AiImportBtn) return;
             const sourcePath = (els.v537AiImportPath?.value || '').trim();
             if (!sourcePath) {
-                if (els.v537AiImportStatus) els.v537AiImportStatus.textContent = 'Paste a previous SweepyMod folder, uma_runtime folder, bot_logs folder, or .zip path first.';
+                if (els.v537AiImportStatus) els.v537AiImportStatus.textContent = 'Paste a previous Icarus folder, uma_runtime folder, bot_logs folder, or .zip path first.';
                 return;
             }
             els.v537AiImportBtn.disabled = true;
@@ -6052,84 +6497,6 @@ const els = {
             }
         }
 
-        const clubTrackerCircleKey = 'uma_club_tracker_circle';
-        const clubTrackerQuotaKey = 'uma_club_tracker_quota';
-        const clubTrackerApiKeyKey = 'uma_club_tracker_api_key';
-        const clubTrackerRefreshMs = 5 * 60 * 1000;
-        function clubShortFans(value) { return formatCompactNumber(Number(value || 0)); }
-        function rankMovementText(value) {
-            if (value === null || value === undefined || value === '') return '';
-            const n = Number(value || 0);
-            if (!Number.isFinite(n) || n === 0) return '±0';
-            return `${n > 0 ? '+' : ''}${n}`;
-        }
-        function renderClubTracker(data) {
-            if (!els.v513ClubSummary || !els.v513ClubMembers) return;
-            if (!data || !data.success) {
-                els.v513ClubSummary.innerHTML = `<div class="v513-club-error">${escapeHtml(data?.detail || 'Club tracker waiting for settings.')}</div>`;
-                els.v513ClubMembers.innerHTML = '';
-                return;
-            }
-            const ranking = data.ranking || {};
-            const summary = data.summary || {};
-            const quota = Number(data.quota || 0);
-            const rank = ranking.rank ? `#${ranking.rank}` : 'n/a';
-            const move = rankMovementText(ranking.movement);
-            els.v513ClubSummary.innerHTML = `
-                <div class="v513-club-hero">
-                    <div><span>Club</span><strong>${escapeHtml(data.circle_name || 'Unknown')}</strong></div>
-                    <div><span>Rank</span><strong>${rank}${move ? ` <em>${escapeHtml(move)}</em>` : ''}</strong></div>
-                    <div><span>Daily Gain</span><strong>${clubShortFans(summary.total_daily_gain)}</strong></div>
-                    <div><span>Quota</span><strong>${clubShortFans(quota)}</strong></div>
-                    <div><span>On Track</span><strong>${summary.on_track || 0}/${summary.member_count || 0}</strong></div>
-                    <div><span>Behind</span><strong>${summary.behind || 0}</strong></div>
-                </div>`;
-            const members = (data.members || []).slice(0, 30);
-            els.v513ClubMembers.innerHTML = `
-                <div class="v513-club-table-head"><span>Trainer</span><span>Daily</span><span>Total</span><span>Status</span></div>
-                ${members.map(member => {
-                    const gain = Number(member.daily_gain || 0);
-                    const ok = gain >= quota;
-                    const delta = ok ? gain - quota : quota - gain;
-                    return `<div class="v513-club-row ${ok ? 'is-ok' : 'is-behind'}">
-                        <span>${escapeHtml(member.name || 'Unknown')}</span>
-                        <strong>+${clubShortFans(gain)}</strong>
-                        <em>${clubShortFans(member.fans)}</em>
-                        <b>${ok ? `+${clubShortFans(delta)}` : `-${clubShortFans(delta)}`}</b>
-                    </div>`;
-                }).join('') || '<div class="v513-club-empty">No members returned.</div>'}`;
-        }
-        async function refreshClubTracker(options = {}) {
-            if (!els.v513ClubSummary) return;
-            const force = Boolean(options.force);
-            const now = Date.now();
-            if (!force && state.lastClubTrackerRefreshAt && (now - state.lastClubTrackerRefreshAt) < clubTrackerRefreshMs) {
-                return;
-            }
-            const circle = (els.v513ClubCircle?.value || localStorage.getItem(clubTrackerCircleKey) || '').trim();
-            const quota = Number(els.v513ClubQuota?.value || localStorage.getItem(clubTrackerQuotaKey) || 5000000);
-            const apiKey = (els.v514ClubApiKey?.value || localStorage.getItem(clubTrackerApiKeyKey) || '').trim();
-            if (els.v513ClubCircle && circle) els.v513ClubCircle.value = circle;
-            if (els.v513ClubQuota) els.v513ClubQuota.value = String(quota || 5000000);
-            if (els.v514ClubApiKey && apiKey) els.v514ClubApiKey.value = apiKey;
-            if (!circle) {
-                renderClubTracker({ success: false, detail: 'Enter your uma.moe circle ID or URL, then refresh.' });
-                return;
-            }
-            localStorage.setItem(clubTrackerCircleKey, circle);
-            localStorage.setItem(clubTrackerQuotaKey, String(quota || 0));
-            if (apiKey) localStorage.setItem(clubTrackerApiKeyKey, apiKey);
-            else localStorage.removeItem(clubTrackerApiKeyKey);
-            state.lastClubTrackerRefreshAt = now;
-            els.v513ClubSummary.innerHTML = '<div class="v513-club-loading">Fetching club data...</div>';
-            try {
-                const data = await apiJson(`/api/club-tracker?circle=${encodeURIComponent(circle)}&quota=${encodeURIComponent(quota || 0)}&api_key=${encodeURIComponent(apiKey)}&t=${Date.now()}`);
-                renderClubTracker(data);
-            } catch (e) {
-                renderClubTracker({ success: false, detail: e.message || 'Unable to fetch club data.' });
-            }
-        }
-
         async function refreshV4Status() {
             try {
                 const [health, diagnostics, aiStatus] = await Promise.all([
@@ -6142,7 +6509,6 @@ const els = {
                 if (aiStatus && aiStatus.success) state.lastAiStatus = aiStatus;
                 renderAiLearningStatus(state.lastAiStatus);
                 renderV4PanelsFromData({ health: state.lastHealth, diagnostics: state.lastDiagnostics, runner: state.runner });
-                refreshClubTracker({ force: false });
             } catch (e) {}
         }
         async function refreshDecisionTrace() {
@@ -6456,16 +6822,29 @@ const els = {
                 const health = account.health || {};
                 const reachable = Boolean(health.reachable || health.process_running);
                 const running = Boolean(health.runner_running);
+                const waiting = Boolean(health.waiting_for_server);
                 const logged = Boolean(health.logged_in);
-                const state = health.state || (running ? 'running' : (logged ? 'logged-in' : (reachable ? 'booting' : 'offline')));
+                const hstate = health.state || (running ? 'running' : (logged ? 'logged-in' : (reachable ? 'booting' : 'offline')));
                 const port = account.port || 1616 + idx;
                 const healthAge = health.manager_last_health_age;
                 const staleText = Number.isFinite(Number(healthAge)) ? ` · ${healthAge}s ago` : '';
-                const statusClass = reachable ? (running ? 'is-running' : 'is-online') : 'is-offline';
-                const primary = reachable ? (running ? 'RUNNING' : state.toUpperCase()) : 'OFFLINE';
-                const secondary = reachable
-                    ? `${logged ? 'logged in' : 'booted'} · ${running ? 'career running' : state}${staleText}`
-                    : `unreachable · ${escapeHtml(health.detail || health.manager_error || 'waiting for health')}`;
+                const statusClass = !reachable ? 'is-offline' : (waiting ? 'is-waiting' : (running ? 'is-running' : 'is-online'));
+                const primary = !reachable ? 'OFFLINE' : (waiting ? 'WAITING' : (running ? 'RUNNING' : String(hstate).toUpperCase()));
+                const secondary = !reachable
+                    ? `unreachable · ${escapeHtml(health.detail || health.manager_error || 'waiting for health')}`
+                    : (waiting
+                        ? `server unavailable — riding it out${staleText}`
+                        : `${logged ? 'logged in' : 'booted'} · ${running ? 'career running' : hstate}${staleText}`);
+                const careerBits = [];
+                if (reachable && (running || health.career_active)) {
+                    if (health.turn != null) careerBits.push(`T${health.turn}`);
+                    if (health.fans) careerBits.push(`${formatNumber(health.fans)} fans`);
+                    if (health.fans_per_hour) careerBits.push(`${formatNumber(health.fans_per_hour)}/hr`);
+                    if (health.vital != null && health.max_vital != null) careerBits.push(`HP ${health.vital}/${health.max_vital}`);
+                    if (health.motivation != null) careerBits.push(`mood ${health.motivation}`);
+                    if (health.loop_target) careerBits.push(`run ${health.loop_index || 0}/${health.loop_target}`);
+                }
+                const metricsLine = careerBits.length ? `<span class="v525-account-metrics">${escapeHtml(careerBits.join('  ·  '))}</span>` : '';
                 return `<div class="v525-account-row" data-index="${idx}">
                     <div class="v525-account-status ${statusClass}"></div>
                     <label>Name<input data-field="name" value="${escapeAttr(account.name || `account${idx+1}`)}"></label>
@@ -6475,6 +6854,7 @@ const els = {
                     <div class="v525-account-health">
                         <strong>${escapeHtml(primary)}</strong>
                         <span>${secondary}</span>
+                        ${metricsLine}
                         <em>${escapeHtml(health.runner_last_error || health.manager_error || '')}</em>
                     </div>
                     <button class="btn btn-sm v525-open-dashboard" type="button" data-port="${escapeAttr(port)}">OPEN</button>
@@ -6608,12 +6988,24 @@ const els = {
             els.v543LocalLlmShadowBtn?.addEventListener('click', shadowReviewWithLocalLlm);
             els.v544EventKbImportBtn?.addEventListener('click', importBundledEventOutcomes);
             els.v544EventKbRefreshBtn?.addEventListener('click', refreshEventOutcomeKb);
+            // v7.6.2: native event-outcome capture toggle.
+            document.getElementById('v762-native-capture-toggle')?.addEventListener('change', async (e) => {
+                const enabled = !!e.target.checked;
+                try {
+                    await apiJson('/api/events/native-capture', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ enabled })
+                    });
+                    if (els.v544EventKbStatus) els.v544EventKbStatus.textContent = enabled
+                        ? 'Auto-capture ON — the bot will record event outcomes from its runs.'
+                        : 'Auto-capture OFF — event outcomes will not be recorded from bot runs.';
+                } catch (err) {
+                    if (els.v544EventKbStatus) els.v544EventKbStatus.textContent = err.message || 'Failed to update auto-capture setting';
+                }
+            });
             els.v534AiSafeBundleBtn?.addEventListener('click', downloadSafeAiBundle);
             els.v537AiImportBtn?.addEventListener('click', importPreviousAiLogs);
-            els.v513ClubRefreshBtn?.addEventListener('click', () => refreshClubTracker({ force: true }));
-            if (els.v513ClubCircle) els.v513ClubCircle.value = localStorage.getItem(clubTrackerCircleKey) || '';
-            if (els.v513ClubQuota) els.v513ClubQuota.value = localStorage.getItem(clubTrackerQuotaKey) || els.v513ClubQuota.value || '5000000';
-            if (els.v514ClubApiKey) els.v514ClubApiKey.value = localStorage.getItem(clubTrackerApiKeyKey) || '';
             if (els.v515SetupBody && els.v515SetupModal) {
                 const setupGroups = [
                     '.team-slots',
@@ -6642,7 +7034,6 @@ const els = {
             const cockpit = document.querySelector('.v53-cockpit');
             const careerCard = document.querySelector('.v53-career-card');
             const metricsCard = document.querySelector('.v53-metrics-card');
-            const clubCard = document.querySelector('.v513-club-card');
             const actionCard = document.querySelector('.v53-action-card');
             if (cockpit && !document.getElementById('v518-left-stack')) {
                 const leftStack = document.createElement('div');
@@ -6651,12 +7042,12 @@ const els = {
                 const topActions = document.querySelector('.v516-top-actions');
                 if (topActions && topActions.nextSibling) cockpit.insertBefore(leftStack, topActions.nextSibling);
                 else cockpit.insertBefore(leftStack, actionCard || null);
-                [careerCard, metricsCard, clubCard].forEach(card => {
+                [careerCard, metricsCard].forEach(card => {
                     if (card) leftStack.appendChild(card);
                 });
             } else {
                 const leftStack = document.getElementById('v518-left-stack');
-                if (leftStack) [careerCard, metricsCard, clubCard].forEach(card => {
+                if (leftStack) [careerCard, metricsCard].forEach(card => {
                     if (card && !leftStack.contains(card)) leftStack.appendChild(card);
                 });
             }
@@ -6700,9 +7091,6 @@ const els = {
                 els.v535AiLearningBtn?.addEventListener('click', () => {
                     if (els.v535AiLearningModal) els.v535AiLearningModal.style.display = 'flex';
                     refreshAiLearningStatus();
-                    // v6.7.26 — Dumper Watcher lives inside this modal.
-                    bindDumperWatcher();
-                    refreshDumperWatcher();
                 });
                 if (els.v535AiLearningBtn) els.v535AiLearningBtn.dataset.v535Bound = '1';
             }
@@ -6734,13 +7122,6 @@ const els = {
                     if (event.target === els.v535AiLearningModal) els.v535AiLearningModal.style.display = 'none';
                 });
                 if (els.v535AiLearningModal) els.v535AiLearningModal.dataset.v535Bound = '1';
-            }
-            if (els.v514ClubKeyToggle && els.v514ClubApiKey) {
-                els.v514ClubKeyToggle.addEventListener('click', () => {
-                    const visible = els.v514ClubApiKey.type === 'text';
-                    els.v514ClubApiKey.type = visible ? 'password' : 'text';
-                    els.v514ClubKeyToggle.innerText = visible ? 'SHOW KEY' : 'HIDE KEY';
-                });
             }
         }
         function startV4Polling() {
@@ -6775,13 +7156,139 @@ const els = {
         }
         function eventChoiceOptions(ev) {
             const count = Math.max(0, Number(ev.num_choices || 0));
-            let html = `<option value="-1"${ev.override == null ? ' selected' : ''}>Auto (let the bot decide)</option>`;
+            // v7.6.2: guard against override == null. Number(null) === 0, so the
+            // old `Number(ev.override) === i` test also matched Choice 1 (i=0)
+            // when the event was on Auto — marking BOTH the Auto option and
+            // Choice 1 as selected. The later option (Choice 1) won, so every
+            // auto/cleared event showed "Choice 1". Only select a choice when an
+            // override is actually set.
+            const hasOverride = ev.override != null;
+            let html = `<option value="-1"${hasOverride ? '' : ' selected'}>Auto (let the bot decide)</option>`;
             for (let i = 0; i < count; i++) {
                 const eff = eventChoiceEffect(ev, i);
                 const label = eff ? `Choice ${i + 1} — ${eff}` : `Choice ${i + 1}`;
-                html += `<option value="${i}"${Number(ev.override) === i ? ' selected' : ''}>${escapeHtml(label)}</option>`;
+                html += `<option value="${i}"${hasOverride && Number(ev.override) === i ? ' selected' : ''}>${escapeHtml(label)}</option>`;
             }
             return html;
+        }
+        // v7.4 — cache the fetched events so the search box can filter client-side
+        // without re-hitting the network on every keystroke.
+        let _eventChoicesCache = [];
+        function eventChoiceAutoLine(ev) {
+            const n = Math.max(0, Number(ev.num_choices || 0));
+            const hasOutcomes = ev.outcomes && Object.keys(ev.outcomes).length > 0;
+            if (ev.override != null) {
+                return `You forced <b>Choice ${Number(ev.override) + 1}</b> — the bot will always pick it.`;
+            }
+            if (n <= 1) return `Single choice — auto-confirmed.`;
+            let line;
+            if (hasOutcomes) {
+                line = `Bot scores the effects below against your event stat priority.`;
+            } else {
+                line = `No effect data — bot falls back to Choice ${n > 1 ? 2 : 1}.`;
+            }
+            if (ev.auto_pick != null && String(ev.auto_source || '') !== 'override') {
+                line += ` Last run picked Choice ${Number(ev.auto_pick) + 1}.`;
+            }
+            return line;
+        }
+        // v7.6.3 — confidence chip showing how well-backed an event's outcome
+        // data is: observed from the bot's own runs (and how many times),
+        // imported/scraped, or no data yet.
+        function _eventDataBadge(ev) {
+            const obs = Number(ev.observations || 0);
+            const src = String(ev.data_source || '');
+            const hasOutcomes = ev.outcomes && Object.keys(ev.outcomes).length > 0;
+            if (obs > 0) return `<span class="event-choice-conf conf-observed" title="Recorded from your own career runs">OBSERVED ${obs}×</span>`;
+            if (src === 'gametora') return `<span class="event-choice-conf conf-scraped" title="Effects from the community effects database (gametora)">DB EFFECTS</span>`;
+            if (hasOutcomes) return `<span class="event-choice-conf conf-imported" title="From the imported/curated knowledge base">KB</span>`;
+            return `<span class="event-choice-conf conf-none" title="No recorded outcome data yet">NO DATA</span>`;
+        }
+        function eventChoiceRowHtml(ev) {
+            const n = Math.max(0, Number(ev.num_choices || 0));
+            const forced = ev.override != null;
+            const effects = [];
+            for (let i = 0; i < n; i++) {
+                const eff = eventChoiceEffect(ev, i);
+                effects.push(`<span class="event-choice-effect ${eventEffectClass(eff)}"><b>${i + 1}</b> ${escapeHtml(eff || 'effect not in database')}</span>`);
+            }
+            const effectsHtml = effects.length ? `<div class="event-choice-effects">${effects.join('')}</div>` : '';
+            const metaBits = [`Story ${escapeHtml(ev.story_id || '')}`];
+            if (ev.support_card_id) metaBits.push(`Support ${escapeHtml(ev.support_card_id)}`);
+            if (ev.count) metaBits.push(`Seen ${escapeHtml(ev.count)}x`);
+            return `
+                <div class="event-choice-row ${forced ? 'has-override' : ''}" data-story-id="${escapeAttr(ev.story_id || '')}">
+                    <div class="event-choice-head">
+                        <span class="event-choice-badge ${forced ? 'badge-override' : 'badge-auto'}">${forced ? 'FORCED' : 'AUTO'}</span>
+                        ${_eventDataBadge(ev)}
+                        <strong class="event-choice-name">${escapeHtml(ev.event_name || `Story ${ev.story_id}`)}</strong>
+                    </div>
+                    <div class="event-choice-meta">${metaBits.join(' · ')}</div>
+                    <div class="event-choice-auto">${eventChoiceAutoLine(ev)}</div>
+                    ${effectsHtml}
+                    <label class="event-choice-control">
+                        <span class="event-choice-control-label">Force choice</span>
+                        <select class="event-choice-select form-input" data-story-id="${escapeAttr(ev.story_id || '')}">${eventChoiceOptions(ev)}</select>
+                    </label>
+                </div>`;
+        }
+        function bindEventChoiceSelects() {
+            // v6.7.25 — do not re-render the whole list after a save; that was destroying
+            // the <select> the user was still interacting with and dropping clicks.
+            // Update the row's state in place instead, and only refresh on REFRESH/RESET/search.
+            els.eventChoicesList.querySelectorAll('.event-choice-select').forEach(select => {
+                select.addEventListener('change', async () => {
+                    const choice = Number(select.value);
+                    const row = select.closest('.event-choice-row');
+                    const storyId = select.dataset.storyId;
+                    const badge = row && row.querySelector('.event-choice-badge');
+                    const autoEl = row && row.querySelector('.event-choice-auto');
+                    if (row) row.classList.toggle('has-override', choice >= 0);
+                    if (badge) {
+                        badge.classList.toggle('badge-override', choice >= 0);
+                        badge.classList.toggle('badge-auto', choice < 0);
+                        badge.textContent = choice >= 0 ? 'FORCED' : 'AUTO';
+                    }
+                    // keep the in-memory cache in sync so search re-renders stay correct
+                    const cached = _eventChoicesCache.find(e => String(e.story_id || '') === String(storyId));
+                    if (cached) cached.override = choice >= 0 ? choice : null;
+                    if (autoEl && cached) autoEl.innerHTML = eventChoiceAutoLine(cached);
+                    try {
+                        await apiJson('/api/events/override', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ story_id: storyId, choice })
+                        });
+                        if (els.eventChoicesStatus) {
+                            els.eventChoicesStatus.textContent = choice < 0
+                                ? `Reset to Auto: ${storyId}`
+                                : `Saved override: ${storyId} → Choice ${choice + 1}`;
+                        }
+                    } catch (e) {
+                        if (row) row.classList.toggle('has-override', false);
+                        if (els.eventChoicesStatus) els.eventChoicesStatus.textContent = e.message || 'Failed to save event override';
+                    }
+                });
+            });
+        }
+        function renderEventChoiceList(events) {
+            els.eventChoicesList.innerHTML = events.map(eventChoiceRowHtml).join('')
+                || '<div class="event-choice-empty">No events match your search.</div>';
+            bindEventChoiceSelects();
+        }
+        function applyEventChoicesFilter() {
+            const q = (els.eventChoicesSearch?.value || '').trim().toLowerCase();
+            const filtered = !q ? _eventChoicesCache : _eventChoicesCache.filter(ev => {
+                return String(ev.event_name || '').toLowerCase().includes(q)
+                    || String(ev.story_id || '').toLowerCase().includes(q)
+                    || String(ev.support_card_id || '').toLowerCase().includes(q);
+            });
+            renderEventChoiceList(filtered);
+            if (els.eventChoicesStatus) {
+                els.eventChoicesStatus.textContent = q
+                    ? `${filtered.length} of ${_eventChoicesCache.length} events match "${q}"`
+                    : `${_eventChoicesCache.length} events · AUTO = bot decides, FORCED = your locked choice.`;
+            }
         }
         async function loadEventChoices() {
             if (!els.eventChoicesList) return;
@@ -6789,84 +7296,34 @@ const els = {
             if (els.eventChoicesStatus) els.eventChoicesStatus.textContent = 'Loading event choices...';
             try {
                 const data = await apiJson('/api/events' + (ids.length ? `?cards=${encodeURIComponent(ids.join(','))}` : ''));
-                const events = (data && data.events) || [];
-                if (els.eventChoicesStatus) els.eventChoicesStatus.textContent = events.length
-                    ? `${events.length} events · "Auto" lets the bot decide; pick a Choice to force it. Effects shown where the database has them.`
-                    : 'No events discovered yet. Run a career or refresh after selecting a deck.';
-                els.eventChoicesList.innerHTML = events.map(ev => {
-                    const n = Math.max(0, Number(ev.num_choices || 0));
-                    const hasOutcomes = ev.outcomes && Object.keys(ev.outcomes).length > 0;
-                    const effects = [];
-                    for (let i = 0; i < n; i++) {
-                        const eff = eventChoiceEffect(ev, i);
-                        effects.push(`<span class="event-choice-effect ${eventEffectClass(eff)}"><b>${i + 1}</b> ${escapeHtml(eff || 'effect not in database')}</span>`);
-                    }
-                    const effectsHtml = effects.length ? `<div class="event-choice-effects">${effects.join('')}</div>` : '';
-                    let autoLine;
-                    if (ev.auto_pick != null) {
-                        autoLine = `Bot auto-picks <b>Choice ${Number(ev.auto_pick) + 1}</b>${ev.auto_source ? ` (${escapeHtml(ev.auto_source)})` : ''}`;
-                    } else if (hasOutcomes) {
-                        autoLine = `Auto: bot scores the effects below against your event stat priority`;
-                    } else {
-                        autoLine = `Auto: no effect data — bot falls back to Choice ${n > 1 ? 2 : 1}`;
-                    }
-                    return `
-                    <div class="event-choice-row ${ev.override == null ? '' : 'has-override'}" data-story-id="${escapeAttr(ev.story_id || '')}">
-                        <div class="event-choice-main">
-                            <strong>${escapeHtml(ev.event_name || `Story ${ev.story_id}`)}</strong>
-                            <span>Story ${escapeHtml(ev.story_id || '')}${ev.support_card_id ? ` · Support ${escapeHtml(ev.support_card_id)}` : ''}${ev.count ? ` · Seen ${escapeHtml(ev.count)}x` : ''}</span>
-                            <em>${autoLine}</em>
-                            ${effectsHtml}
-                        </div>
-                        <select class="event-choice-select form-input" data-story-id="${escapeAttr(ev.story_id || '')}">${eventChoiceOptions(ev)}</select>
-                    </div>`;
-                }).join('') || '<div class="event-choice-empty">No editable events found yet.</div>';
-                // v6.7.25 — do not re-render the whole list after a save; that was destroying
-                // the <select> the user was still interacting with and dropping clicks.
-                // Update the row's state in place instead, and only refresh on REFRESH/RESET.
-                els.eventChoicesList.querySelectorAll('.event-choice-select').forEach(select => {
-                    select.addEventListener('change', async () => {
-                        const choice = Number(select.value);
-                        const row = select.closest('.event-choice-row');
-                        const storyId = select.dataset.storyId;
-                        // Optimistically reflect the new state without disabling the select.
-                        if (row) row.classList.toggle('has-override', choice >= 0);
-                        try {
-                            await apiJson('/api/events/override', {
-                                method: 'POST',
-                                headers: { 'Content-Type': 'application/json' },
-                                body: JSON.stringify({ story_id: storyId, choice })
-                            });
-                            if (els.eventChoicesStatus) {
-                                els.eventChoicesStatus.textContent = choice < 0
-                                    ? `Reset to Auto: ${storyId}`
-                                    : `Saved override: ${storyId} → Choice ${choice + 1}`;
-                            }
-                        } catch (e) {
-                            // Roll back local state if the save fails.
-                            if (row) row.classList.toggle('has-override', false);
-                            if (els.eventChoicesStatus) els.eventChoicesStatus.textContent = e.message || 'Failed to save event override';
-                        }
-                    });
-                });
+                _eventChoicesCache = (data && data.events) || [];
+                if (!_eventChoicesCache.length) {
+                    els.eventChoicesList.innerHTML = '<div class="event-choice-empty">No editable events found yet.</div>';
+                    if (els.eventChoicesStatus) els.eventChoicesStatus.textContent = 'No events discovered yet. Run a career or refresh after selecting a deck.';
+                    return;
+                }
+                applyEventChoicesFilter();
             } catch (e) {
                 if (els.eventChoicesStatus) els.eventChoicesStatus.textContent = e.message || 'Failed to load event choices';
             }
         }
-        // v6.7.25 — bulk reset: clears every saved override so all events fall back to Auto.
-        async function resetAllEventChoicesToAuto() {
-            if (!els.eventChoicesList) return;
-            const selects = Array.from(els.eventChoicesList.querySelectorAll('.event-choice-select'));
-            const targets = selects
-                .map(sel => sel.dataset.storyId)
-                .filter(sid => sid && els.eventChoicesList.querySelector(`.event-choice-row.has-override[data-story-id="${sid}"]`));
-            if (els.eventChoicesStatus) els.eventChoicesStatus.textContent = `Resetting ${targets.length} override(s) to Auto...`;
+        // v7.6 — bulk action: set every event to Auto by clearing all saved
+        // overrides server-side. Reports the actual count cleared (from the
+        // server), not the filtered DOM, so it works regardless of any active
+        // search filter.
+        async function setAllEventChoicesToAuto() {
+            if (els.eventChoicesStatus) els.eventChoicesStatus.textContent = 'Setting all events to Auto…';
             try {
-                await apiJson('/api/events/overrides/clear', { method: 'POST' });
+                const res = await apiJson('/api/events/overrides/clear', { method: 'POST' });
+                const cleared = res && typeof res.cleared === 'number' ? res.cleared : null;
                 await loadEventChoices();
-                if (els.eventChoicesStatus) els.eventChoicesStatus.textContent = `Reset complete · all events default to Auto.`;
+                if (els.eventChoicesStatus) {
+                    els.eventChoicesStatus.textContent = cleared !== null
+                        ? `All events set to Auto · ${cleared} forced choice(s) cleared.`
+                        : 'All events set to Auto.';
+                }
             } catch (e) {
-                if (els.eventChoicesStatus) els.eventChoicesStatus.textContent = e.message || 'Failed to reset overrides';
+                if (els.eventChoicesStatus) els.eventChoicesStatus.textContent = e.message || 'Failed to set all events to Auto';
             }
         }
         function openEventChoices() {
@@ -6933,6 +7390,8 @@ const els = {
                 preset_name: state.selectedPreset,
                 max_steps: 2500,
                 burn_clocks: state.burnClocks,
+                carats_enabled: !!state.caratsEnabled,
+                max_clocks_per_career: Math.max(0, Number(state.maxClocksPerCareer) || 0),
                 dev_mode: state.runCount !== 1,
                 run_count: normalizeRunCount(state.runCount),
                 race_planner_mode: state.racePlannerMode || 'smart',
@@ -6948,7 +7407,7 @@ const els = {
                 rental_trained_chara_id: parentPayload.rental_trained_chara_id,
                 rental_card_id: parentPayload.rental_card_id,
                 parent_selection_mode: parentPayload.parent_selection_mode,
-                deck_id: Number(selection.deck.id),
+                deck_id: Number(selection.deck.id) || 1,
                 scenario_id: 4,
                 use_tp: 30,
                 difficulty_id: 0,
@@ -6958,6 +7417,8 @@ const els = {
                 preset_name: state.selectedPreset,
                 max_steps: 2500,
                 burn_clocks: state.burnClocks,
+                carats_enabled: !!state.caratsEnabled,
+                max_clocks_per_career: Math.max(0, Number(state.maxClocksPerCareer) || 0),
                 dev_mode: state.runCount !== 1,
                 run_count: normalizeRunCount(state.runCount),
                 race_planner_mode: state.racePlannerMode || 'smart',
@@ -7051,12 +7512,24 @@ const els = {
         }
         async function refreshRunnerStatus() {
             try {
-                const data = await apiJson('/api/career/runner');
+                // Shared coalescer (see monitor.js): dedups the /api/career/runner
+                // fetch across app.js + monitor.js pollers into one round-trip.
+                const data = (window.SweepyRunnerFeed
+                    ? await window.SweepyRunnerFeed.get()
+                    : await apiJson('/api/career/runner'));
                 if (!data.success || !data.runner) return;
                 const runner = data.runner;
                 applyRunnerSnapshot(runner);
-                if (runner.finished && !runner.running && !runner.last_error && els.v543CareerHistoryModal?.style.display === 'flex') {
+                // Refresh the (heavy) career history+report ONCE when a run finishes
+                // while the modal is open — not on every poll. A fresh run resets the
+                // latch so the next finish refreshes again.
+                if (runner.running) {
+                    state.historyReloadedForFinish = false;
+                } else if (runner.finished && !runner.last_error && !state.historyReloadedForFinish
+                           && els.v543CareerHistoryModal?.style.display === 'flex') {
+                    state.historyReloadedForFinish = true;
                     loadCareerHistory();
+                    loadCareerReport();
                 }
 
                 const rows = getMainActionRows(runner);
@@ -7298,6 +7771,59 @@ const els = {
                 } catch (e) { console.warn('auto-pick persist failed', e); return null; }
             }
 
+            async function persistTrainingTargets(profileId, body) {
+                try {
+                    const resp = await fetch('/api/character-profile/training-targets', {
+                        method: 'POST', headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify(Object.assign({profile_id: profileId}, body)),
+                    });
+                    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+                    return await resp.json();
+                } catch (e) { console.warn('training-targets persist failed', e); return null; }
+            }
+
+            // Mirrors career_bot/training_scorer.py TrainingScorerConfig.stat_targets
+            // defaults -- used to seed the editor when a profile has none yet.
+            const CP_DEFAULT_TARGETS = {
+                sprint: {speed: 1200, stamina: 400, power: 1100, guts: 400, wit: 1000},
+                mile:   {speed: 1200, stamina: 600, power: 1000, guts: 400, wit: 1000},
+                medium: {speed: 1100, stamina: 800, power: 1000, guts: 400, wit: 1000},
+                long:   {speed: 1000, stamina: 1100, power: 1000, guts: 400, wit: 1000},
+            };
+            const CP_STATS = ['speed', 'stamina', 'power', 'guts', 'wit'];
+            let cpWorkingPriority = [];
+
+            function priorityEditorRows() {
+                return cpWorkingPriority.map((s, i) => `
+                    <div class="cp-prio-edit-row" data-stat="${escapeHtml(s)}">
+                        <span class="cp-stat-rank">${i + 1}.</span>
+                        <span class="cp-stat-name">${escapeHtml(s)}</span>
+                        <span class="cp-prio-btns">
+                            <button type="button" class="cp-btn cp-btn-tiny cp-prio-up" data-i="${i}" ${i === 0 ? 'disabled' : ''}>&#9650;</button>
+                            <button type="button" class="cp-btn cp-btn-tiny cp-prio-down" data-i="${i}" ${i === cpWorkingPriority.length - 1 ? 'disabled' : ''}>&#9660;</button>
+                        </span>
+                    </div>`).join('');
+            }
+
+            function renderPriorityEditor() {
+                const host = document.getElementById('cp-priority-edit');
+                if (host) host.innerHTML = priorityEditorRows();
+            }
+
+            function targetsEditorTable(targets) {
+                const t = targets || CP_DEFAULT_TARGETS;
+                const head = '<th></th>' + CP_STATS.map(s => `<th>${s[0].toUpperCase() + s.slice(1)}</th>`).join('');
+                const rows = ['sprint', 'mile', 'medium', 'long'].map(dist => {
+                    const row = t[dist] || CP_DEFAULT_TARGETS[dist];
+                    const cells = CP_STATS.map(s =>
+                        `<td><input type="number" class="cp-target-input" min="0" max="1500" step="10"
+                            data-dist="${dist}" data-stat="${s}" value="${parseInt(row[s] || 0, 10)}"></td>`).join('');
+                    return `<tr><td class="cp-dist-label">${dist}</td>${cells}</tr>`;
+                }).join('');
+                return `<table class="cp-targets-table cp-targets-edit">
+                    <thead><tr>${head}</tr></thead><tbody>${rows}</tbody></table>`;
+            }
+
             function render(data) {
                 if (!data || !data.success) {
                     contentEl.innerHTML = `<div class="cp-error">Could not load profile: ${escapeHtml((data && data.detail) || 'no data')}</div>`;
@@ -7305,7 +7831,21 @@ const els = {
                 }
                 const p = data.profile || {};
                 const targets = p.training_scorer_overrides && p.training_scorer_overrides.stat_targets;
-                const priority = (p.training_scorer_overrides && p.training_scorer_overrides.stat_priority) || [];
+                // Mirror the Training Settings stat priority into the profile view
+                // when the profile has no explicit override of its own, so the two
+                // stay consistent (an explicit profile override still wins).
+                const profilePriority = (p.training_scorer_overrides && p.training_scorer_overrides.stat_priority) || [];
+                let trainingPriority = [];
+                try {
+                    const _cur = (typeof currentPresetForSettings === 'function') ? currentPresetForSettings() : null;
+                    trainingPriority = (_cur && Array.isArray(_cur.training_stat_priority)) ? _cur.training_stat_priority : [];
+                } catch (e) { /* ignore */ }
+                const mirroredFromTraining = !profilePriority.length && !!trainingPriority.length;
+                const priority = profilePriority.length ? profilePriority
+                    : (trainingPriority.length ? trainingPriority
+                        : (typeof DEFAULT_STAT_PRIORITY !== 'undefined' ? DEFAULT_STAT_PRIORITY : []));
+                cpWorkingPriority = (priority || []).slice();
+                if (cpWorkingPriority.length !== 5) cpWorkingPriority = CP_STATS.slice();
                 const effectiveTargets = (p.target_epithets && p.target_epithets.length) ? p.target_epithets
                     : (p.auto_pick_epithets ? (p.auto_picked_epithets || []) : []);
                 const effectiveSource = (p.target_epithets && p.target_epithets.length) ? 'profile'
@@ -7353,14 +7893,27 @@ const els = {
                     </div>
 
                     <div class="cp-section">
-                        <div class="cp-section-title">Stat Priority</div>
-                        <div class="cp-priority-row">${statPriorityHtml(priority)}</div>
+                        <div class="cp-section-title">Stat Priority &amp; Targets <span class="cp-mirror-note">editable profile override</span></div>
+                        <div class="cp-edit-help">Reorder the priority and edit per-distance targets, then Save. Writes to this profile's <code>training_scorer_overrides</code>. ${mirroredFromTraining ? 'This profile currently has no priority override (shown: Training Settings default) — saving creates one.' : ''}</div>
+                        <div class="cp-edit-grid">
+                            <div class="cp-edit-col">
+                                <div class="cp-edit-label">Priority (top = trained first)</div>
+                                <div id="cp-priority-edit" class="cp-priority-edit">${priorityEditorRows()}</div>
+                            </div>
+                            <div class="cp-edit-col cp-edit-col-wide">
+                                <div class="cp-edit-label">Per-distance stat targets</div>
+                                ${targetsEditorTable(targets)}
+                            </div>
+                        </div>
+                        <label class="cp-autopick-label cp-adapt-row">
+                            <input type="checkbox" id="cp-adapt-cb" ${p.adapt_targets_to_inheritance ? 'checked' : ''}>
+                            <span>Adapt stamina target to inheritance &mdash; when this trainee starts with weak stamina inheritance, relax its stamina target so the scorer stops chasing an unreachable number and redirects those turns to speed/wit.</span>
+                        </label>
+                        <div class="cp-epithet-actions">
+                            <button type="button" id="cp-targets-save" class="cp-btn">Save priority &amp; targets</button>
+                            <button type="button" id="cp-targets-reset" class="cp-btn cp-btn-secondary">Reset to scorer defaults</button>
+                        </div>
                     </div>
-
-                    ${targets ? `<div class="cp-section">
-                        <div class="cp-section-title">Per-Distance Stat Targets</div>
-                        ${statTargetsHtml(targets)}
-                    </div>` : ''}
 
                     <div class="cp-section">
                         <div class="cp-section-title">Solver Overrides (scenario ${escapeHtml(String(p.scenario_id))})</div>
@@ -7421,6 +7974,43 @@ const els = {
                 });
                 document.getElementById('cp-epithets-clear')?.addEventListener('click', async () => {
                     await persistEpithets(p.profile_id, []);
+                    refresh();
+                });
+                // Priority reorder (event-delegated so it survives sub-list re-render).
+                document.getElementById('cp-priority-edit')?.addEventListener('click', (ev) => {
+                    const up = ev.target.closest('.cp-prio-up');
+                    const down = ev.target.closest('.cp-prio-down');
+                    if (!up && !down) return;
+                    const i = parseInt((up || down).getAttribute('data-i'), 10);
+                    const j = up ? i - 1 : i + 1;
+                    if (j < 0 || j >= cpWorkingPriority.length) return;
+                    const tmp = cpWorkingPriority[i];
+                    cpWorkingPriority[i] = cpWorkingPriority[j];
+                    cpWorkingPriority[j] = tmp;
+                    renderPriorityEditor();
+                });
+                function readTargetInputs() {
+                    const out = {};
+                    document.querySelectorAll('.cp-target-input').forEach(inp => {
+                        const d = inp.getAttribute('data-dist'), s = inp.getAttribute('data-stat');
+                        const v = Math.max(0, Math.min(1500, parseInt(inp.value || '0', 10) || 0));
+                        (out[d] = out[d] || {})[s] = v;
+                    });
+                    return out;
+                }
+                document.getElementById('cp-targets-save')?.addEventListener('click', async () => {
+                    const adaptCb = document.getElementById('cp-adapt-cb');
+                    await persistTrainingTargets(p.profile_id, {
+                        stat_priority: cpWorkingPriority.slice(),
+                        stat_targets: readTargetInputs(),
+                        adapt_targets_to_inheritance: !!(adaptCb && adaptCb.checked),
+                    });
+                    refresh();
+                });
+                document.getElementById('cp-targets-reset')?.addEventListener('click', async () => {
+                    await persistTrainingTargets(p.profile_id, {
+                        stat_targets: JSON.parse(JSON.stringify(CP_DEFAULT_TARGETS)),
+                    });
                     refresh();
                 });
                 document.getElementById('cp-refresh')?.addEventListener('click', refresh);
@@ -7493,7 +8083,18 @@ const els = {
         });
         els.eventChoicesOpenBtn?.addEventListener('click', openEventChoices);
         els.eventChoicesRefreshBtn?.addEventListener('click', loadEventChoices);
-        document.getElementById('event-choices-reset-btn')?.addEventListener('click', resetAllEventChoicesToAuto);
+        els.eventChoicesSearch?.addEventListener('input', applyEventChoicesFilter);
+        document.getElementById('event-choices-set-auto-btn')?.addEventListener('click', setAllEventChoicesToAuto);
+        // v7.6 — custom deck builder controls (stopPropagation so the DECKS
+        // section header toggle doesn't collapse when the button is clicked).
+        document.getElementById('custom-deck-btn')?.addEventListener('click', (e) => { e.stopPropagation(); openCustomDeckBuilder(); });
+        // v7.6.2 — Recommended Supports lives in a modal opened from the Deck
+        // Bonuses panel header (stopPropagation so the header toggle doesn't fire).
+        document.getElementById('rec-supports-btn')?.addEventListener('click', (e) => { e.stopPropagation(); openRecommendedSupports(); });
+        document.getElementById('custom-deck-apply-btn')?.addEventListener('click', applyCustomDeck);
+        document.getElementById('custom-deck-clear-btn')?.addEventListener('click', () => { _customDeckState.cards = []; renderCustomDeckBuilder(); });
+        document.getElementById('custom-deck-search')?.addEventListener('input', renderCustomDeckOwned);
+        document.getElementById('custom-deck-type-filter')?.addEventListener('change', renderCustomDeckOwned);
         els.discordWebhookSaveBtn?.addEventListener('click', saveDiscordWebhook);
         els.discordWebhookTestBtn?.addEventListener('click', testDiscordWebhook);
         loadDiscordWebhook();
@@ -7552,6 +8153,7 @@ const els = {
             renderFriends();
             renderTeamPanel();
             renderGuestParentsSection();
+            renderDeckBonuses();
             syncSelectionToServer();
         }
         function selectTrainee(index, element) {
@@ -7576,11 +8178,20 @@ const els = {
                     .then(() => {
                         updateTrackblazerPlanGate();
                         if (els.skillModal && els.skillModal.style.display === 'flex') refreshWeightedSkillPreview({ force: true });
+                        // Keep the Smart Race Solver aptitude grid in sync when the
+                        // trainee changes while its settings modal is open.
+                        if (document.getElementById('smart-solver-settings-modal')?.style.display === 'flex') renderSmartSolverSettings();
                     })
                     .catch(e => {
                         if (els.v4TrackblazerPlan) els.v4TrackblazerPlan.innerHTML = `<div class="v4-warn">${escapeHtml(e.message || 'Unable to load trainee profile')}</div>`;
                     });
             }
+            // v7.6.2: Recommended Supports moved into a modal opened from the
+            // Deck Bonuses panel. Only refresh it live if that modal is open;
+            // otherwise it loads lazily when the user opens it.
+            const recModal = document.getElementById('rec-supports-modal');
+            if (recModal && recModal.style.display === 'flex') loadRecommendedSupports();
+            renderDeckBonuses();
             syncSelectionToServer();
         }
         function selectParent(index, element) {
@@ -7834,6 +8445,166 @@ const els = {
                 }
             }, true);
         }
+        // v7.6 — always-visible "Deck Bonuses" panel at the top of the Library.
+        // Reuses /api/supports/details (same data as the deck hover tooltip) to
+        // sum each effect across the selected deck at every card's current
+        // limit-break level.
+        function _formatDeckBonusesHtml(payload) {
+            const cards = payload.cards || [];
+            const totals = {}, units = {};
+            cards.forEach(card => {
+                (card.effects_ordered || []).forEach(e => {
+                    if (!e || !e.label) return;
+                    totals[e.label] = (totals[e.label] || 0) + Number(e.value || 0);
+                    if (e.unit) units[e.label] = e.unit;
+                });
+            });
+            const entries = Object.keys(totals).map(label => ({ label, value: totals[label], unit: units[label] || '' }))
+                .filter(x => x.value).sort((a, b) => b.value - a.value);
+            const bonusGrid = entries.length ? entries.map(x => {
+                const sign = x.value > 0 ? '+' : '';
+                return `<div class="deck-bonus-row"><span class="deck-bonus-label">${escapeHtml(x.label)}</span><span class="deck-bonus-value">${sign}${escapeHtml(String(x.value))}${escapeHtml(x.unit)}</span></div>`;
+            }).join('') : '<div class="friend-status">No combined bonuses at the current card levels.</div>';
+            const breakdown = payload.deck_breakdown || {};
+            const typeCounts = breakdown.type_counts || {};
+            const typeChips = Object.keys(typeCounts).sort().map(t => `<span class="${_typeChipClass(t)}">${escapeHtml(t)} ×${escapeHtml(String(typeCounts[t]))}</span>`).join('');
+            const score = Number(payload.deck_score || 0);
+            const verdict = String(payload.deck_verdict || '');
+            const scoreLine = score ? `<div class="deck-bonuses-score ${_scoreBandClass(score)}">Deck score ${score.toFixed(1)}/10${verdict ? ' — ' + escapeHtml(verdict) : ''}</div>` : '';
+            const traineeLine = payload.trainee_name ? `<div class="deck-bonuses-meta">Scored vs ${escapeHtml(payload.trainee_name)}</div>` : '';
+            return `${typeChips ? `<div class="deck-bonuses-head">${typeChips}</div>` : ''}${scoreLine}<div class="deck-bonus-grid">${bonusGrid}</div>${traineeLine}<div class="deck-bonuses-note">Combined effect values across the selected deck at each card's current limit-break level.</div>`;
+        }
+        async function renderDeckBonuses() {
+            const el = document.getElementById('deck-bonuses-content');
+            if (!el) return;
+            const deck = selection.deck;
+            if (!deck || !Array.isArray(deck.cards) || !deck.cards.length) {
+                el.innerHTML = '<div class="friend-status">Select a deck to see its combined bonuses.</div>';
+                return;
+            }
+            el.innerHTML = '<div class="friend-status">Calculating deck bonuses…</div>';
+            const reqDeck = deck;
+            const traineeId = (selection.trainee && (selection.trainee.card_id || selection.trainee.id)) || 0;
+            try {
+                const payload = await _fetchDeckInfo(deck, traineeId);
+                if (selection.deck !== reqDeck) return; // selection changed mid-flight
+                if (!payload || !payload.success) {
+                    el.innerHTML = `<div class="friend-status">${escapeHtml((payload && payload.detail) || 'Master data not loaded — run a master data sync to see bonuses.')}</div>`;
+                    return;
+                }
+                el.innerHTML = _formatDeckBonusesHtml(payload);
+            } catch (e) {
+                if (selection.deck !== reqDeck) return;
+                el.innerHTML = `<div class="friend-status">${escapeHtml(e.message || 'Failed to compute deck bonuses')}</div>`;
+            }
+        }
+        // v7.6 — Custom deck builder. Build a run deck from the support cards
+        // the user owns (the game API has no deck-save endpoint, but a career
+        // starts with an arbitrary support_card_ids list, so this feeds the run).
+        const _customDeckState = { cards: [] };
+        // A career deck is 5 of your OWN support cards + 1 borrowed friend (sent
+        // separately as friend_support_card_info). So the owned-card picker caps
+        // at 5 — sending 6 here plus the friend = 7 cards, which the game rejects
+        // at single_mode_free/start with result_code 2511.
+        const CUSTOM_DECK_MAX = 5;
+        function _ownedSupportCards() {
+            const list = (dashData && dashData.supports) || [];
+            return list.filter(c => c && c.id && !String(c.id).includes('{') && !String(c.name || '').includes('Unknown'));
+        }
+        function _customDeckHas(id) {
+            return _customDeckState.cards.some(c => String(c.id) === String(id));
+        }
+        function _toRunCard(c) {
+            return { id: c.id, name: c.name, type: c.type, rarity: c.rarity, limit_break_count: Number(c.limit_break ?? c.limit_break_count ?? 0), exp: Number(c.exp ?? 0) };
+        }
+        function renderCustomDeckSlots() {
+            const slots = document.getElementById('custom-deck-slots');
+            const count = document.getElementById('custom-deck-count');
+            if (!slots) return;
+            if (count) count.textContent = `(${_customDeckState.cards.length}/${CUSTOM_DECK_MAX})`;
+            let html = _customDeckState.cards.map(c => `
+                <div class="custom-deck-slot filled" data-id="${escapeAttr(c.id)}" title="Click to remove ${escapeAttr(c.name)}">
+                    <img src="/api/images/${escapeAttr(c.id)}.png" onerror="hideBrokenImage(this)">
+                    <span class="custom-deck-slot-lb">LB${Math.max(0, Number(c.limit_break_count ?? c.limit_break ?? 0))}</span>
+                </div>`).join('');
+            for (let i = _customDeckState.cards.length; i < CUSTOM_DECK_MAX; i++) {
+                html += `<div class="custom-deck-slot empty">+</div>`;
+            }
+            slots.innerHTML = html;
+            slots.querySelectorAll('.custom-deck-slot.filled').forEach(el => {
+                el.addEventListener('click', () => {
+                    _customDeckState.cards = _customDeckState.cards.filter(c => String(c.id) !== String(el.dataset.id));
+                    renderCustomDeckBuilder();
+                });
+            });
+        }
+        function renderCustomDeckOwned() {
+            const grid = document.getElementById('custom-deck-owned');
+            if (!grid) return;
+            const q = (document.getElementById('custom-deck-search')?.value || '').toLowerCase().trim();
+            const typeF = (document.getElementById('custom-deck-type-filter')?.value || '').toLowerCase();
+            let rows = _ownedSupportCards();
+            if (q) rows = rows.filter(c => String(c.name || '').toLowerCase().includes(q));
+            if (typeF) rows = rows.filter(c => String(c.type || '').toLowerCase() === typeF);
+            const status = document.getElementById('custom-deck-status');
+            if (status) status.textContent = `${rows.length} owned card(s) shown · ${_customDeckState.cards.length}/${CUSTOM_DECK_MAX} selected`;
+            grid.innerHTML = rows.slice(0, 500).map(c => {
+                const sel = _customDeckHas(c.id) ? ' selected' : '';
+                return `<div class="grid-card custom-owned-card${sel}" data-id="${escapeAttr(c.id)}" title="${escapeAttr(c.name)}">
+                    <img src="/api/images/${escapeAttr(c.id)}.png" onerror="hideBrokenImage(this)">
+                    <div class="grid-card-overlay">
+                        <span class="grid-card-kicker">${escapeHtml(c.type || '?')} | ${escapeHtml(c.rarity || '?')} | LB${Math.max(0, Number(c.limit_break ?? 0))}</span>
+                        <span class="grid-card-name">${escapeHtml(c.name || 'Unknown')}</span>
+                    </div>
+                </div>`;
+            }).join('') || '<div class="friend-status">No owned cards match.</div>';
+            grid.querySelectorAll('.custom-owned-card').forEach(el => {
+                el.addEventListener('click', () => {
+                    const id = el.dataset.id;
+                    if (_customDeckHas(id)) {
+                        _customDeckState.cards = _customDeckState.cards.filter(c => String(c.id) !== String(id));
+                    } else {
+                        if (_customDeckState.cards.length >= CUSTOM_DECK_MAX) {
+                            const st = document.getElementById('custom-deck-status');
+                            if (st) st.textContent = `Deck is full (${CUSTOM_DECK_MAX}). Remove a card first.`;
+                            return;
+                        }
+                        const card = _ownedSupportCards().find(c => String(c.id) === String(id));
+                        if (card) _customDeckState.cards.push(_toRunCard(card));
+                    }
+                    renderCustomDeckBuilder();
+                });
+            });
+        }
+        function renderCustomDeckBuilder() {
+            renderCustomDeckSlots();
+            renderCustomDeckOwned();
+        }
+        function openCustomDeckBuilder() {
+            const modal = document.getElementById('custom-deck-modal');
+            if (!modal) return;
+            if (selection.deck && selection.deck.id === 'custom' && Array.isArray(selection.deck.cards)) {
+                _customDeckState.cards = selection.deck.cards.slice(0, CUSTOM_DECK_MAX).map(c => ({ ...c }));
+            }
+            modal.style.display = 'flex';
+            renderCustomDeckBuilder();
+        }
+        function applyCustomDeck() {
+            if (!_customDeckState.cards.length) {
+                const st = document.getElementById('custom-deck-status');
+                if (st) st.textContent = 'Add at least one card first.';
+                return;
+            }
+            document.querySelectorAll('.deck-container.selected').forEach(el => el.classList.remove('selected'));
+            selection.deck = { id: 'custom', name: 'Custom Deck', cards: _customDeckState.cards.map(c => ({ ...c })) };
+            renderFriends();
+            renderTeamPanel();
+            renderGuestParentsSection();
+            renderDeckBonuses();
+            syncSelectionToServer();
+            const modal = document.getElementById('custom-deck-modal');
+            if (modal) modal.style.display = 'none';
+        }
         function renderFactors(factors) {
             const star = String.fromCharCode(9733);
             return factors.map(factor => `
@@ -7934,6 +8705,109 @@ const els = {
                 </div>`;
             }).join('');
         }
+        // v7.4 — recommend support cards from the player's owned cards for the selected trainee.
+        // v7.6 — Recommended Supports now shows scraped Game8 Trackblazer
+        // setups (multiple builds, budget, alternates) for the selected trainee,
+        // marking which cards the player owns. Falls back to the owned-card
+        // heuristic for the few trainees with no Game8 Trackblazer build.
+        function _recSupportCardHtml(card) {
+            const imgId = card.card_id || '10001';
+            const ownedBadge = card.owned
+                ? `<span class="rec-owned owned">OWNED${(card.owned_limit_break != null) ? ' LB' + Math.max(0, Number(card.owned_limit_break)) : ''}</span>`
+                : `<span class="rec-owned missing">NOT OWNED</span>`;
+            const ep = card.epithet ? ` <em>${escapeHtml(card.epithet)}</em>` : '';
+            return `<div class="grid-card support-card rec-support-card ${card.owned ? 'is-owned' : 'is-missing'}" title="${escapeAttr((card.name || '') + (card.epithet ? ' — ' + card.epithet : ''))}">
+                <img src="/api/images/${imgId}.png" onerror="hideBrokenImage(this)">
+                <div class="grid-card-overlay">
+                    <span class="grid-card-kicker">${escapeHtml((card.rarity || '?') + ' | ' + (card.type || '?'))}</span>
+                    <span class="grid-card-name">${escapeHtml(card.name || 'Unknown')}${ep}</span>
+                    ${ownedBadge}
+                </div>
+            </div>`;
+        }
+        function _recSetupBlockHtml(title, cards, raceBonus) {
+            // v7.6.3 — show the Game8 "NN% Race Bonus (MLB)" caption under the row.
+            const cap = raceBonus ? `<div class="rec-setup-racebonus">${escapeHtml(raceBonus)}</div>` : '';
+            return `<div class="rec-setup-block"><div class="rec-setup-title">${escapeHtml(title)}</div><div class="data-grid rec-setup-grid">${(cards || []).map(_recSupportCardHtml).join('')}</div>${cap}</div>`;
+        }
+        // v7.6.2 — mirror Game8's "Alternate Cards" layout: group the alternates
+        // by stat type into labeled rows (Speed / Stamina / Power / Guts / Wit).
+        function _recAlternatesHtml(cards) {
+            const order = ['Speed', 'Stamina', 'Power', 'Guts', 'Wit', 'Friend', 'Group'];
+            const groups = {};
+            (cards || []).forEach(c => { const t = c.type || 'Other'; (groups[t] = groups[t] || []).push(c); });
+            const types = Object.keys(groups).sort((a, b) => {
+                const ia = order.indexOf(a), ib = order.indexOf(b);
+                return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib);
+            });
+            const rows = types.map(t =>
+                `<div class="rec-alt-row"><div class="rec-alt-type">${escapeHtml(t)}</div><div class="data-grid rec-setup-grid">${groups[t].map(_recSupportCardHtml).join('')}</div></div>`
+            ).join('');
+            return `<div class="rec-setup-block"><div class="rec-setup-title">Alternate Cards</div>${rows}</div>`;
+        }
+        // v7.6.2 — open the Recommended Supports modal (button in Deck Bonuses)
+        // and load the picks for the currently selected trainee.
+        function openRecommendedSupports() {
+            const modal = document.getElementById('rec-supports-modal');
+            if (modal) modal.style.display = 'flex';
+            loadRecommendedSupports();
+        }
+        async function loadRecommendedSupports() {
+            const grid = document.getElementById('rec-supports-grid');
+            const status = document.getElementById('rec-supports-status');
+            const countEl = document.getElementById('rec-supports-count');
+            if (!grid) return;
+            const trainee = selection.trainee;
+            if (!trainee) {
+                grid.innerHTML = '';
+                if (countEl) countEl.textContent = '';
+                if (status) { status.style.display = ''; status.textContent = 'Select a trainee to see recommended support cards.'; }
+                return;
+            }
+            if (status) { status.style.display = ''; status.textContent = `Finding Trackblazer supports for ${trainee.name || 'this trainee'}…`; }
+            try {
+                const data = await apiJson(`/api/trainee/support-setups?card_id=${encodeURIComponent(trainee.id || '')}`);
+                if (!data || !data.found) {
+                    return loadRecommendedSupportsFallback(trainee, 'No Game8 Trackblazer build for this trainee — showing best picks from your collection.');
+                }
+                const setups = data.setups || [];
+                if (countEl) countEl.textContent = setups.length ? `(${setups.length} setup${setups.length > 1 ? 's' : ''})` : '';
+                if (status) status.style.display = 'none';
+                let html = '';
+                setups.forEach((s, i) => { html += _recSetupBlockHtml(s.label || `Setup ${i + 1}`, s.cards, s.race_bonus); });
+                if (data.budget && (data.budget.cards || []).length) html += _recSetupBlockHtml('Budget Build' + (data.budget.label ? ' — ' + data.budget.label : ''), data.budget.cards, data.budget.race_bonus);
+                if ((data.alternates || []).length) html += _recAlternatesHtml(data.alternates);
+                const srcLink = data.source_url ? `<a href="${escapeAttr(data.source_url)}" target="_blank" rel="noopener" class="rec-source">Game8 source ↗</a>` : '';
+                const noteLine = (data.notes && data.notes.length) ? `<div class="rec-note">${escapeHtml(data.notes.join(' · '))}</div>` : '';
+                grid.innerHTML = `<div class="rec-setups-subtitle">Trackblazer Build — recommended supports for ${escapeHtml(trainee.name || 'this trainee')}</div><div class="rec-setups-intro">Cards you own are marked <span class="rec-owned owned">OWNED</span>. ${srcLink}</div>${noteLine}${html}`;
+            } catch (e) {
+                return loadRecommendedSupportsFallback(trainee, e.message || 'Failed to load recommendations');
+            }
+        }
+        async function loadRecommendedSupportsFallback(trainee, note) {
+            const grid = document.getElementById('rec-supports-grid');
+            const status = document.getElementById('rec-supports-status');
+            const countEl = document.getElementById('rec-supports-count');
+            if (!grid) return;
+            try {
+                const data = await apiJson(`/api/trainee/recommended-supports?card_id=${encodeURIComponent(trainee.id || '')}`);
+                const recs = (data && data.recommended) || [];
+                if (countEl) countEl.textContent = recs.length ? `(${recs.length})` : '';
+                if (!recs.length) {
+                    grid.innerHTML = '';
+                    if (status) { status.style.display = ''; status.textContent = (data && data.owned_count === 0) ? 'No owned support cards loaded — log in and load your account first.' : 'No recommendations available for this trainee.'; }
+                    return;
+                }
+                if (status) { status.style.display = ''; status.textContent = note || 'Best picks from your collection'; }
+                grid.innerHTML = `<div class="rec-setup-block"><div class="data-grid rec-setup-grid">` + recs.map(card => {
+                    const imgId = card.id || '10001';
+                    return `<div class="grid-card support-card rec-support-card" title="${escapeAttr(card.reason || '')}"><img src="/api/images/${imgId}.png" onerror="hideBrokenImage(this)"><div class="grid-card-overlay"><span class="grid-card-kicker">${escapeHtml((card.rarity || '?') + ' | ' + (card.type || '?'))}</span><span class="grid-card-name">${escapeHtml(card.name || 'Unknown')}</span></div></div>`;
+                }).join('') + `</div></div>`;
+            } catch (e) {
+                grid.innerHTML = '';
+                if (status) { status.style.display = ''; status.textContent = e.message || 'Failed to load recommendations'; }
+            }
+        }
         function showDashboardView(data) {
             document.body.classList.add('dashboard-mode');
             els.loginView.style.display = 'none';
@@ -7990,7 +8864,12 @@ const els = {
 
         function applyServerSelection(serverSelection) {
             if (!serverSelection) return;
-            if (serverSelection.deck && dashData.validDecks) {
+            if (serverSelection.deck && serverSelection.deck.id === 'custom' && Array.isArray(serverSelection.deck.cards) && serverSelection.deck.cards.length) {
+                // v7.6 — a custom (owned-card) deck isn't an in-game slot, so
+                // restore it directly instead of matching against validDecks.
+                // Cap to 5 in case a deck was saved before the 5-card fix.
+                selection.deck = { ...serverSelection.deck, cards: serverSelection.deck.cards.slice(0, CUSTOM_DECK_MAX) };
+            } else if (serverSelection.deck && dashData.validDecks) {
                 const deckIdx = dashData.validDecks.findIndex(d => Number(d.id) === Number(serverSelection.deck.id));
                 if (deckIdx >= 0) {
                     selection.deck = dashData.validDecks[deckIdx];
@@ -8045,7 +8924,12 @@ const els = {
             clearSelectionClassesForPresetApply();
 
             let applied = false;
-            if (saved.deck && dashData.validDecks) {
+            if (saved.deck && saved.deck.id === 'custom' && Array.isArray(saved.deck.cards) && saved.deck.cards.length) {
+                // v7.6 — restore a saved custom (owned-card) deck directly,
+                // capped to 5 in case it was saved before the 5-card fix.
+                selection.deck = { ...saved.deck, cards: saved.deck.cards.slice(0, CUSTOM_DECK_MAX) };
+                applied = true;
+            } else if (saved.deck && dashData.validDecks) {
                 const deckIdx = dashData.validDecks.findIndex(d => Number(d.id) === Number(saved.deck.id));
                 if (deckIdx >= 0) {
                     selection.deck = dashData.validDecks[deckIdx];
@@ -8117,6 +9001,7 @@ const els = {
             renderGuestParentsSection();
             renderFriends();
             renderTeamPanel();
+            renderDeckBonuses();
             updateTrackblazerPlanGate();
             renderRaces();
             syncStartButton();
@@ -8143,9 +9028,9 @@ const els = {
             if (data.selection) applyServerSelection(data.selection);
             autoLoadCareerSelection();
 
-            await loadSkillConfig();
-            await loadSmartSolverConfig();
-            await loadPresets();
+            // These three config fetches are independent — run them concurrently
+            // instead of three serial round-trips on the load path.
+            await Promise.all([loadSkillConfig(), loadSmartSolverConfig(), loadPresets()]);
             if (!dashData.friends.length) {
                 loadFriends(false);
             } else {
@@ -8211,8 +9096,8 @@ const els = {
     {
       id: "overview", group: "Getting Started", nav: "Overview", eyebrow: "Start here",
       html:
-        '<h2>What SweepyCL does</h2>' +
-        '<p>SweepyCL plays Umamusume career mode for you. Each turn it reads the live career state from the game, decides the best action — train, race, rest, or recreation — handles story events, buys skills and uses items, and repeats until the career finishes. You set the strategy; the bot executes it the same way every time, without fatigue or misclicks.</p>' +
+        '<h2>What Icarus does</h2>' +
+        '<p>Icarus plays Umamusume career mode for you. Each turn it reads the live career state from the game, decides the best action — train, race, rest, or recreation — handles story events, buys skills and uses items, and repeats until the career finishes. You set the strategy; the bot executes it the same way every time, without fatigue or misclicks.</p>' +
         '<h3>How a career run flows</h3>' +
         '<ol>' +
         '<li><strong>Connect</strong> — the bot attaches to the running game and reads your trainee, stats, and turn.</li>' +
@@ -8222,7 +9107,7 @@ const els = {
         '<li><strong>Finish</strong> — the run ends at the career finale and is saved to Career History.</li>' +
         '</ol>' +
         '<h3>The dashboard</h3>' +
-        '<p>The row of buttons at the top is the control center: ' + KW('SETUP') + ', ' + KW('HELP') + ', ' + KW('ACCOUNTS') + ', ' + KW('DIAGNOSTICS') + ', ' + KW('AI LEARNING') + ', and ' + KW('CAREER HISTORY') + '. Each opens a focused panel. The center of the dashboard shows the live career, the action being taken, and the Decision Reasoning for that action.</p>' +
+        '<p>The row of buttons at the top is the control center: ' + KW('SETUP') + ', ' + KW('HELP') + ', ' + KW('ACCOUNTS') + ', ' + KW('DIAGNOSTICS') + ', ' + KW('AI / MISC') + ', ' + KW('USERDATA') + ', and ' + KW('CAREER HISTORY') + '. Each opens a focused panel. The center of the dashboard shows the live career, the action being taken, and the Decision Reasoning for that action.</p>' +
         '<div class="v6719-callout tip"><strong>The short version</strong>You configure the deck, training priorities, and race goals once. The bot turns those into consistent turn-by-turn decisions and tells you why it made each one.</div>'
     },
     {
@@ -8262,7 +9147,7 @@ const els = {
         '<h3>Signing in</h3>' +
         '<p>Authenticate with Steam once. The bot saves an obfuscated auth token so it can reconnect on its own (a <strong>headless bypass</strong>) without making you log in every time.</p>' +
         '<h3>Saved across upgrades</h3>' +
-        '<p>Your authentication and settings live in the <code>SweepyCL_userdata</code> folder (legacy installs may have <code>SweepyClaude_userdata</code> instead — both are still recognized), which sits outside the app folder. That means they survive version upgrades — install a new build and your login and presets carry over.</p>' +
+        '<p>Your authentication and settings live in the <code>Icarus_userdata</code> folder (legacy installs may have <code>SweepyCL_userdata</code> or <code>SweepyClaude_userdata</code> instead — all are still recognized), which sits outside the app folder. That means they survive version upgrades — install a new build and your login and presets carry over.</p>' +
         '<h3>Multiple accounts</h3>' +
         '<p>Add and switch between multiple game accounts from this panel, and refresh their status. Each account keeps its own saved authentication.</p>' +
         '<div class="v6719-callout tip"><strong>Credential safety</strong>Credentials are stored obfuscated, never in plain text. The bot never types your password into web forms or shares it.</div>'
@@ -8309,6 +9194,7 @@ const els = {
         '<p>Set the maximum failure chance the bot will accept on a training, and whether risky training is allowed at all.</p>' +
         '<h3>Energy, rest &amp; mood</h3>' +
         '<p>Training spends energy, and low energy raises failure chance and weakens races. Unless you have disabled the low-energy block, the bot will <strong>rest</strong> or take <strong>recreation</strong> when energy or mood is low rather than train into a likely failure. Keeping this behavior on is what lets it both train and race effectively — see the energy note under Smart Race Solver.</p>' +
+        '<p>The controls for this live outside Training Settings: <strong>Ignore Low Energy Racing Block</strong> is in <strong>Racing Settings</strong>, and <strong>Energy Threshold to use Energy Items</strong> is in <strong>Scenario Settings</strong>.</p>' +
         '<div class="v6719-callout tip"><strong>Where priority lives</strong>In the default (hint) scorer mode, the priority you set <strong>here</strong> is what drives training. A character profile can carry its own separate priority that only takes over in authoritative mode — see Character profiles.</div>'
     },
     {
@@ -8334,12 +9220,12 @@ const els = {
         '<p>The small buttons along the top control bar govern how a run starts, stops, and paces itself. None of them change strategy — they change how the bot executes.</p>' +
         '<h3>Start, stop, pause</h3>' +
         '<p>' + KW('RUN CAREER') + ' begins a run on the active preset. ' + KW('STOP') + ' halts it cleanly, and ' + KW('PAUSE') + ' suspends it so you can resume where it left off — useful if you need to take manual control of the game for a moment.</p>' +
-        '<h3>Turn delay &amp; Tempt Fate</h3>' +
-        '<p>Between turns the bot waits a randomized amount of time (by default about 1.6–3.7 seconds) so its pacing looks human rather than instant and mechanical. You can set your own minimum and maximum delay. ' + KW('TEMPT FATE') + ' removes the delay entirely so the bot runs at full speed — faster, but with none of that human-like pacing. The name is the warning: speed trades against how natural the activity looks.</p>' +
+        '<h3>Turn delay &amp; Speed</h3>' +
+        '<p>Between turns the bot waits a randomized amount of time (by default about 1.6–3.7 seconds) so its pacing looks human rather than instant and mechanical. You can set your own minimum and maximum delay. The ' + KW('SPEED') + ' dropdown picks how aggressive to be: <strong>Safe</strong> keeps the normal delays; <strong>Fast</strong> removes the inter-turn delay; <strong>Faster</strong> also trims the per-request spacing; <strong>Ludicrous</strong> removes all pacing for maximum speed. Higher speed = more careers per hour, but the less human-like the activity looks.</p>' +
         '<h3>Burn Clocks</h3>' +
         '<p>When a race finishes worse than first, the bot can retry it by spending <strong>clocks</strong>. Free continues are always used when available. ' + KW('BURN CLOCKS') + ' controls whether the bot will <strong>also spend paid clocks</strong> to retry for a better placement. It is off by default so it never quietly consumes paid resources; turn it on when you want the bot to push harder for race wins.</p>' +
         '<h3>Loop</h3>' +
-        '<p>' + KW('LOOP') + ' makes the bot automatically start a fresh career after one finishes, for unattended back-to-back runs. Leave it off if you want to review each career before the next begins.</p>' +
+        '<p>' + KW('LOOP') + ' makes the bot automatically start a fresh career after one finishes, for unattended back-to-back runs. It is <strong>on by default</strong> (set to run until you stop it); set ' + KW('RUNS') + ' to <strong>1</strong> if you want a single career and a chance to review it before the next begins, or to any number for that many careers.</p>' +
         '<h3>Rescue a stuck career</h3>' +
         '<p>If a run desyncs from the game and gets stuck, ' + KW('RESCUE STUCK CAREER') + ' (in Diagnostics) attempts to recover it. The runner must be stopped first.</p>' +
         '<h3>Notifications</h3>' +
@@ -8347,22 +9233,24 @@ const els = {
         '<div class="v6719-callout tip"><strong>Other settings panels</strong>' + KW('SCENARIO OVERRIDES') + ' adjusts scenario-specific behavior, and ' + KW('EVENT CHOICES') + ' lets you customize how individual story events are answered beyond the default stat-priority scoring. Most runs never need either.</div>'
     },
     {
-      id: "ai-learning", group: "Intelligence", nav: "AI Learning", eyebrow: "Learns over time",
+      id: "ai-learning", group: "Intelligence", nav: "AI / Misc", eyebrow: "Learns over time",
       html:
-        '<h2>AI Learning</h2>' +
-        '<p>The ' + KW('AI LEARNING') + ' panel governs the data the bot records from your careers and the optional ways it can turn that data into better decisions. There are three layers here, from always-on and safe to fully optional and experimental. You can ignore all of it and the bot still runs well on its solver and training rules — this layer is an addition, not the foundation.</p>' +
+        '<h2>AI / Misc</h2>' +
+        '<p>The ' + KW('AI / MISC') + ' panel governs the data the bot records from your careers and the optional ways it can turn that data into better decisions. There are three layers here, from always-on and safe to fully optional and experimental. You can ignore all of it and the bot still runs well on its solver and training rules — this layer is an addition, not the foundation.</p>' +
         '<h3>1. Outcome risk (on by default)</h3>' +
         '<p>The bot keeps a local record of how each race has gone for you. The solver uses it to <strong>penalize races that historically went badly</strong>, steering away from likely losses. This is simple, safe, and on by default. It is statistical only — no model is involved — and it is independent of the predictive layers below.</p>' +
         '<h3>2. Shadow Mode &amp; Live Policy Assistance (LPA)</h3>' +
         '<p>As you run careers, the bot can train a small local model on the outcomes and let it <strong>predict</strong> good decisions. Before that model is ever allowed to affect a run, it goes through <strong>Shadow Mode</strong>: it makes predictions silently and they are scored against what actually happened. The accuracy of those silent predictions is its <strong>shadow precision</strong>.</p>' +
         '<p><strong>Live Policy Assistance</strong> is the switch that lets those learned hints <em>gently</em> adjust the Smart Race Solver\'s candidate scores. It is gated by shadow precision: until the model is reliable enough (the panel shows a recommendation and a readiness state), LPA stays off and changes nothing. Even when on, it only nudges scores among already-legal options — it never bypasses race availability, safety gates, or forced game states.</p>' +
         '<div class="v6719-callout key"><strong>How to use it</strong>Leave LPA <strong>off</strong> until the panel reports it is safe — realistically after many careers across several trainees. Watch the Shadow Mode readout to see precision climb. Flip LPA on only once the recommendation says it is ready; turn it back off if results get worse.</div>' +
+        '<p><strong>Reading precision.</strong> A <em>warning</em> is a race the model wanted to penalize; it counts as <em>useful</em> if that race then finished below 1st, or a <em>false alarm</em> if it won anyway. <strong>Precision = useful / (useful + false alarms)</strong> — the share of warnings that were justified. Low precision means the model is flagging races you actually win.</p>' +
+        '<p><strong>Tuning precision (advanced).</strong> Two auto-config knobs control how selective the warnings are. <code>warn_win_rate_ceiling</code> (default <code>0.50</code>) only lets a race generate a warning when its historical win rate is at or below the ceiling — lower it (e.g. <code>0.35</code>) to warn only on races that lose most of the time, which raises precision. <code>min_samples_for_model</code> (default <code>4</code>) sets how many recorded runs a race needs before it can warn at all, filtering noisy one-off losses. Both live in the AI auto-config; raising either trades fewer warnings for higher precision.</p>' +
         '<h3>3. Local LLM advisor (optional, advisory-only)</h3>' +
         '<p>You can connect a <strong>local large language model</strong> — running on your own machine — to read your career logs and comment on them. It is strictly an <strong>advisor</strong>: it analyzes logs and shadow-reviews decisions and writes up what it sees. It <strong>cannot click anything or control the runner</strong>; it has no path to drive the bot directly. Think of it as an analyst that reads the same logs you do and writes a second opinion.</p>' +
         '<h4>Setting it up</h4>' +
         '<ol class="v6719-steps">' +
         '<li><strong>Run a local model server.</strong> The easiest options are <strong>LM Studio</strong> or <strong>Ollama</strong>. Install one, download a chat model (a small 7–8B instruct model is plenty), and start its local server. Both expose an OpenAI-compatible API.</li>' +
-        '<li><strong>Open ' + KW('AI LEARNING') + ' → Local LLM</strong> and set <strong>Provider</strong> to LM Studio, Ollama, or Custom.</li>' +
+        '<li><strong>Open ' + KW('AI / MISC') + ' → Local LLM</strong> and set <strong>Provider</strong> to LM Studio, Ollama, or Custom.</li>' +
         '<li><strong>Set the Base URL.</strong> LM Studio defaults to <code>http://localhost:1234/v1</code>; Ollama to <code>http://localhost:11434/v1</code>. For Custom, paste any OpenAI-compatible endpoint. An API key is only needed for endpoints that require one — local servers usually do not.</li>' +
         '<li><strong>Set the Model</strong> name to the model you loaded (as the server reports it).</li>' +
         '<li><strong>Pick a Mode</strong> (below), then <strong>Save</strong>. Use <strong>ANALYZE</strong> for a post-run write-up, or <strong>SHADOW REVIEW</strong> to have it second-guess recent turns.</li>' +
@@ -8378,8 +9266,10 @@ const els = {
         '<h4>How it could eventually influence decisions</h4>' +
         '<p>Today the LLM only produces text for you to read. The path by which AI ever nudges a live run is the <strong>Live Policy Assistance</strong> gate above — the small learned model, vetted by shadow precision — not the LLM. The LLM\'s value is interpretation: spotting patterns across logs, explaining why a run underperformed, and suggesting settings you then choose to apply. If a future version lets vetted advice feed the solver, it would go through that same precision-gated, score-nudging-only path, never direct control.</p>' +
         '<div class="v6719-callout tip"><strong>Recommendation</strong>If you do not run a local model, leave this <strong>Off</strong> — it changes nothing. If you do, <strong>Offline Analysis</strong> is the most useful setting: run a career, then hit ANALYZE for a readable post-mortem. Treat its output as a knowledgeable opinion to sanity-check, not as instructions.</div>' +
-        '<h3>Static outcome import</h3>' +
-        '<p>The panel can import a static outcome map (such as a community <code>dumper outcomes.json</code>). That data improves <strong>event-choice scoring</strong> (so the bot knows what each story choice gives), enriches the AI Dataset, and gives the LLM better context. It does not include any live game interception.</p>' +
+        '<h3>Event outcomes — auto-captured from your runs</h3>' +
+        '<p>Icarus is an API bot: it already receives each event’s stat changes before and after every choice it makes, so it <strong>automatically records event outcomes from your own careers</strong> into the knowledge base (no Frida or external dumper needed). This improves <strong>event-choice scoring</strong> over time, and enriches the AI Dataset and LLM context. The <strong>Auto-capture</strong> checkbox in the Event Outcome Knowledge Base card turns this on/off (on by default).</p>' +
+        '<h3>Static outcome import (optional)</h3>' +
+        '<p>On top of native capture, the panel can still import a static outcome map (such as a community <code>dumper outcomes.json</code>) to seed events you have not run yet — use the <strong>Import Bundled Outcomes</strong> button. Observed data from your own runs takes precedence over imported data.</p>' +
         '<h3>Resetting the data</h3>' +
         '<p>If earlier runs were recorded under settings you have since fixed, the stored outcome history can mislead the solver — for example by penalizing high-value races that are now winnable. Starting fresh <strong>archives</strong> the old data (it is not deleted) and rebuilds from your corrected runs.</p>' +
         '<div class="v6719-callout warn"><strong>Recommended posture</strong>Keep LPA and any LLM influence off until you have many careers across several trainees. The bot performs well on the solver and training rules alone; the learned layers are refinements on top.</div>'
@@ -8402,7 +9292,7 @@ const els = {
         '<h3>How the bot decides (left on "Auto")</h3>' +
         '<p>By default every event is set to <strong>Auto</strong>, and the bot picks in this order: a few game-critical events have hardcoded correct answers; otherwise it <strong>scores the options</strong> using the known effects (from its outcome database) against your <strong>Event Choice Prioritization</strong> stat order and picks the best; if it has no data for that event, it falls back to a safe default (the second option when there are several). So on Auto it is already making a reasonable, stat-aware choice.</p>' +
         '<h3>What the panel shows</h3>' +
-        '<p>Each row lists the event, how often it has been seen, what the bot would auto-pick, and — where the database knows them — <strong>the effects of each choice</strong> (green for gains, red for losses). The dropdown lets you read those effects and choose. Events labelled <em>effect not in database</em> simply have no recorded outcome data yet; importing a static outcome map (see AI Learning) fills more of them in.</p>' +
+        '<p>Each row lists the event, how often it has been seen, what the bot would auto-pick, and — where the database knows them — <strong>the effects of each choice</strong> (green for gains, red for losses). The dropdown lets you read those effects and choose. Events labelled <em>effect not in database</em> simply have no recorded outcome data yet; importing a static outcome map (see AI / Misc) fills more of them in.</p>' +
         '<h3>Overriding a choice</h3>' +
         '<p>Pick a specific <strong>Choice</strong> from the dropdown to force it every time that event appears; pick <strong>Auto</strong> to hand the decision back to the bot. Overrides win over the automatic scoring, so this is how you guarantee, say, always taking the energy option or a particular skill hint. Overrides are saved immediately and persist across runs.</p>' +
         '<div class="v6719-callout tip"><strong>Is it affecting my runs?</strong>Left on Auto, Event Choices changes nothing about how the bot already behaves — it is just exposing and letting you override decisions the bot was making anyway. It will not break a run or get it stuck. Most runs never need an override; reach for it only when you want a specific event answered a specific way.</div>'
@@ -8457,9 +9347,13 @@ const els = {
         '<h3>How do I change what the bot picks in a story event?</h3>' +
         '<p>Open Event Choices, find the event, and pick a Choice from its dropdown (the effects of each option are shown where known). Pick Auto to let the bot decide. See the Event choices topic.</p>' +
         '<h3>Can I connect my own local AI model?</h3>' +
-        '<p>Yes — see AI Learning → Local LLM advisor. Run LM Studio or Ollama, point the panel at its local URL, and use Offline Analysis for a post-run review. It only reads logs and comments; it cannot control the bot.</p>' +
+        '<p>Yes — see AI / Misc → Local LLM advisor. Run LM Studio or Ollama, point the panel at its local URL, and use Offline Analysis for a post-run review. It only reads logs and comments; it cannot control the bot.</p>' +
+        '<h3>Steam login says "rate limit exceeded" or won\'t accept my 2FA code</h3>' +
+        '<p>That message comes from <strong>Steam</strong>, not the bot — Steam temporarily blocks sign-ins after several failed or rapid attempts. Wait about <strong>15-30 minutes</strong>, then try once with the correct password and a <strong>fresh</strong> Steam Guard code (codes refresh every 30 seconds). After a failed attempt the login button has a short cool-down so quick retries don\'t make the lockout worse.</p>' +
+        '<h3>A career failed to start (error 2511, or a 500 / 501)</h3>' +
+        '<p><strong>2511</strong> means the support deck had too many cards; Icarus now trims it automatically to a legal six (five of yours plus one borrowed friend). A <strong>500 / 501</strong> is usually a brief server hiccup or an invalid selection — if it mentions a guest parent, that rental likely expired or was used up for the day, so Refresh Guest Parents and reselect before trying again.</p>' +
         '<div class="v6719-callout tip"><strong>Still stuck?</strong>Open Diagnostics to confirm the bot is connected, then check Decision Reasoning to see what it is deciding and why. Those two panels explain most surprises.</div>'
-    }
+    },
   ];
 
   function buildContent(host) {
@@ -8469,7 +9363,7 @@ const els = {
     var hero = document.createElement("div");
     hero.className = "v6719-help-hero";
     hero.innerHTML =
-      "<h1>SweepyCL documentation</h1>" +
+      "<h1>Icarus documentation</h1>" +
       "<p>A guide to every major part of the bot — what each panel does, how to use it, and how the pieces fit together. Use the menu on the left or the search box to jump to a topic.</p>";
     inner.appendChild(hero);
 
@@ -8652,10 +9546,12 @@ const els = {
 
   function sourceLabel(src) {
     switch (src) {
-      case "env_sweepycl": return "$SWEEPYCL_USERDATA_DIR (env var)";
+      case "env_icarus": return "$ICARUS_USERDATA_DIR (env var)";
+      case "env_legacy_sweepycl": return "$SWEEPYCL_USERDATA_DIR (legacy env var)";
       case "env_legacy_sweepyclaude": return "$SWEEPYCLAUDE_USERDATA_DIR (legacy env var)";
       case "pointer_file": return "Cross-version pointer file";
-      case "sibling_sweepycl": return "../SweepyCL_userdata (sibling folder)";
+      case "sibling_icarus": return "../Icarus_userdata (sibling folder)";
+      case "sibling_legacy_sweepycl": return "../SweepyCL_userdata (legacy sibling folder)";
       case "sibling_legacy_sweepyclaude": return "../SweepyClaude_userdata (legacy sibling folder)";
       case "fallback_build_dir": return "In-build folder (not persistent across upgrades)";
       default: return src || "unknown";
@@ -8685,9 +9581,9 @@ const els = {
     if (warnEl) {
       var pieces = [];
       if (info.detection_warning) pieces.push(info.detection_warning);
-      if (info.restart_required) pieces.push("Path changed in this session. Restart SweepyCL for the new location to take full effect.");
+      if (info.restart_required) pieces.push("Path changed in this session. Restart Icarus for the new location to take full effect.");
       if (info.is_fallback_build_dir) pieces.push("You're using the in-build folder. Settings will be lost on the next version unless you overwrite the same folder.");
-      if (info.is_legacy_path) pieces.push("Currently resolving via a legacy SweepyClaude path. This still works; set a SweepyCL path here to migrate cleanly.");
+      if (info.is_legacy_path) pieces.push("Currently resolving via a legacy SweepyCL/SweepyClaude path. This still works; set an Icarus path here to migrate cleanly.");
       if (pieces.length) {
         warnEl.innerHTML = pieces.map(function (p) { return '<div class="v71-userdata-warning-line">⚠ ' + escapeHtmlSafe(p) + '</div>'; }).join("");
         warnEl.style.display = "";
@@ -8720,6 +9616,9 @@ const els = {
   function closeModal() {
     var modal = $("v71-userdata-modal");
     if (modal) modal.style.display = "none";
+    // v7.4 — let the changelog popup know the userdata flow is resolved so it
+    // can show after this modal (and never on top of it).
+    try { document.dispatchEvent(new CustomEvent("sweepycl:userdata-closed")); } catch (e) {}
   }
 
   async function applyPath() {
@@ -8755,7 +9654,7 @@ const els = {
       if (typeof data.migrated_files === "number" && data.migrated_files > 0) {
         msgParts.push("Copied " + data.migrated_files + " file(s) to the new folder.");
       }
-      msgParts.push("Restart SweepyCL for the new path to take full effect.");
+      msgParts.push("Restart Icarus for the new path to take full effect.");
       if (statusEl) statusEl.textContent = msgParts.join(" ");
     } catch (e) {
       if (statusEl) statusEl.textContent = "Failed: " + (e && e.message ? e.message : e);
@@ -8765,11 +9664,14 @@ const els = {
   }
 
   async function dismissIntro() {
+    var suppress = false;
+    var cb = $("v71-userdata-dontshow-checkbox");
+    if (cb) suppress = !!cb.checked;
     try {
       await fetch("/api/userdata/intro-dismissed", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ dont_show_again: true }),
+        body: JSON.stringify({ dont_show_again: true, suppress_permanently: suppress }),
       });
     } catch (e) { /* non-fatal */ }
     closeModal();
@@ -8826,7 +9728,7 @@ const els = {
       var msgs = [];
       if (info.detection_warning) msgs.push(info.detection_warning);
       if (info.is_fallback_build_dir) msgs.push("Falling back to the in-build folder. Settings won't survive a clean upgrade.");
-      if (info.restart_required) msgs.push("Path changed this session. Restart SweepyCL for it to take full effect.");
+      if (info.restart_required) msgs.push("Path changed this session. Restart Icarus for it to take full effect.");
       if (msgs.length) {
         warnEl.innerHTML = msgs.map(function (m) { return '<div>⚠ ' + escapeHtmlSafe(m) + '</div>'; }).join("");
         warnEl.style.display = "";
@@ -8847,7 +9749,9 @@ const els = {
     if (topBtn) topBtn.addEventListener("click", openModal);
 
     var closeBtn = $("v71-userdata-close-btn");
-    if (closeBtn) closeBtn.addEventListener("click", closeModal);
+    // Route the X through dismissIntro so the "Do not show again" checkbox is
+    // honored when the user closes via the corner button too.
+    if (closeBtn) closeBtn.addEventListener("click", dismissIntro);
 
     var dismissBtn = $("v71-userdata-dismiss-btn");
     if (dismissBtn) dismissBtn.addEventListener("click", dismissIntro);
@@ -8879,10 +9783,17 @@ const els = {
 
   async function maybeAutoOpen() {
     var info = await fetchInfo();
-    if (!info) return;
+    if (!info) {
+      // No userdata info — don't block the changelog popup.
+      try { document.dispatchEvent(new CustomEvent("sweepycl:userdata-closed")); } catch (e) {}
+      return;
+    }
     renderInfo(info);
     if (info.should_show_intro) {
       openModal();
+    } else {
+      // Userdata modal is skipped this load — signal so the changelog can show.
+      try { document.dispatchEvent(new CustomEvent("sweepycl:userdata-closed")); } catch (e) {}
     }
   }
 
@@ -8923,3 +9834,149 @@ const els = {
     boot();
   }
 })();
+
+// v7.4 — "What's New" changelog popup. Shows once per version, AFTER the
+// userdata popup is closed/skipped (listens for sweepycl:userdata-closed).
+(function () {
+  var SEEN_KEY = "sweepy_changelog_seen_version";
+  var shownThisSession = false;
+
+  function $(id) { return document.getElementById(id); }
+
+  function esc(s) {
+    return String(s).replace(/[&<>"]/g, function (c) {
+      return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c];
+    });
+  }
+
+  function inline(s) {
+    return esc(s)
+      .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>")
+      .replace(/`([^`]+)`/g, "<code>$1</code>");
+  }
+
+  // Lightweight markdown → HTML for the changelog body (headings, bold, lists, tables).
+  function renderMarkdown(md) {
+    var lines = String(md || "").split(/\r?\n/);
+    var out = [];
+    var i = 0;
+    while (i < lines.length) {
+      var line = lines[i];
+      var trimmed = line.trim();
+      if (!trimmed) { i++; continue; }
+      // table block
+      if (trimmed.indexOf("|") === 0 || /^\|.*\|/.test(trimmed)) {
+        var rows = [];
+        while (i < lines.length && lines[i].trim().indexOf("|") >= 0 && /\|/.test(lines[i])) {
+          rows.push(lines[i].trim());
+          i++;
+        }
+        out.push(renderTable(rows));
+        continue;
+      }
+      // bullet list
+      if (/^[-*]\s+/.test(trimmed)) {
+        out.push("<ul>");
+        while (i < lines.length && /^[-*]\s+/.test(lines[i].trim())) {
+          out.push("<li>" + inline(lines[i].trim().replace(/^[-*]\s+/, "")) + "</li>");
+          i++;
+        }
+        out.push("</ul>");
+        continue;
+      }
+      // numbered list
+      if (/^\d+\.\s+/.test(trimmed)) {
+        out.push("<ol>");
+        while (i < lines.length && /^\d+\.\s+/.test(lines[i].trim())) {
+          out.push("<li>" + inline(lines[i].trim().replace(/^\d+\.\s+/, "")) + "</li>");
+          i++;
+        }
+        out.push("</ol>");
+        continue;
+      }
+      // headings
+      var h = trimmed.match(/^(#{2,6})\s+(.*)$/);
+      if (h) {
+        var level = Math.min(6, h[1].length + 1);
+        out.push("<h" + level + ">" + inline(h[2]) + "</h" + level + ">");
+        i++;
+        continue;
+      }
+      out.push("<p>" + inline(trimmed) + "</p>");
+      i++;
+    }
+    return out.join("");
+  }
+
+  function renderTable(rows) {
+    var cells = rows
+      .filter(function (r) { return !/^\|?[\s:-]+\|?$/.test(r.replace(/\|/g, "-")); })
+      .map(function (r) {
+        return r.replace(/^\||\|$/g, "").split("|").map(function (c) { return c.trim(); });
+      });
+    if (!cells.length) return "";
+    var html = '<table class="changelog-table">';
+    html += "<thead><tr>" + cells[0].map(function (c) { return "<th>" + inline(c) + "</th>"; }).join("") + "</tr></thead>";
+    if (cells.length > 1) {
+      html += "<tbody>";
+      for (var r = 1; r < cells.length; r++) {
+        html += "<tr>" + cells[r].map(function (c) { return "<td>" + inline(c) + "</td>"; }).join("") + "</tr>";
+      }
+      html += "</tbody>";
+    }
+    html += "</table>";
+    return html;
+  }
+
+  function closeModal() {
+    var modal = $("changelog-modal");
+    if (modal) modal.style.display = "none";
+  }
+
+  function openModal(data) {
+    var modal = $("changelog-modal");
+    if (!modal) return;
+    var versionEl = $("changelog-version");
+    var bodyEl = $("changelog-body");
+    if (versionEl) versionEl.textContent = data.version || "";
+    if (bodyEl) bodyEl.innerHTML = renderMarkdown(data.markdown || "");
+    modal.style.display = "flex";
+    if (bodyEl) bodyEl.scrollTop = 0;
+  }
+
+  function markSeen(version) {
+    try { localStorage.setItem(SEEN_KEY, version || "1"); } catch (e) {}
+  }
+
+  function wire(version) {
+    var doneBtn = $("changelog-done-btn");
+    function done() { markSeen(version); closeModal(); }
+    if (doneBtn && !doneBtn.dataset.bound) {
+      doneBtn.addEventListener("click", done);
+      doneBtn.dataset.bound = "1";
+    }
+    // v7.6.2: the what's-new popup is dismissable ONLY via the close button.
+    // Backdrop-click and Escape-to-close were intentionally removed so the
+    // changelog can't be skipped accidentally.
+  }
+
+  async function maybeShow() {
+    if (shownThisSession) return;
+    shownThisSession = true;
+    var data;
+    try {
+      var res = await fetch("/api/changelog");
+      if (!res.ok) return;
+      data = await res.json();
+    } catch (e) { return; }
+    if (!data || !data.success || !data.version) return;
+    // Always show the what's-new popup on load (per-version gate disabled by
+    // user request). `shownThisSession` still limits it to once per page load.
+    wire(data.version);
+    openModal(data);
+  }
+
+  document.addEventListener("sweepycl:userdata-closed", maybeShow);
+})();
+
+

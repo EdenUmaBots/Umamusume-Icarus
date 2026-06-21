@@ -114,6 +114,12 @@ class CharacterProfile:
     # solver call happens via ``effective_target_epithets()``.
     auto_picked_epithets: List[str] = field(default_factory=list)
 
+    # v6.8: when True, the runtime relaxes this profile's stamina target if the
+    # trainee starts with weak stamina inheritance (low stamina aptitude) so the
+    # scorer doesn't burn turns chasing an unreachable stamina number.  Applied
+    # by adapt_stamina_targets(); default off.
+    adapt_targets_to_inheritance: bool = False
+
     # Raw payload for debug/dashboard rendering
     raw: Dict[str, Any] = field(default_factory=dict)
 
@@ -175,6 +181,7 @@ class CharacterProfile:
             "preferred_distances": list(self.preferred_distances),
             "auto_pick_epithets": bool(self.auto_pick_epithets),
             "auto_picked_epithets": list(self.auto_picked_epithets),
+            "adapt_targets_to_inheritance": bool(self.adapt_targets_to_inheritance),
         }
 
 
@@ -293,6 +300,13 @@ def _merge_scenario(payload: Mapping[str, Any], scenario_id: int) -> Dict[str, A
         # in via "auto_pick_epithets": true in their JSON or via the
         # Character Profile tab's checkbox.
         merged["auto_pick_epithets"] = False
+
+    # v6.8: parent-aware stamina adaptation toggle (bool, default False),
+    # scenario-overridable like auto_pick_epithets.
+    if "adapt_targets_to_inheritance" in scenario_block:
+        merged["adapt_targets_to_inheritance"] = bool(scenario_block.get("adapt_targets_to_inheritance"))
+    else:
+        merged["adapt_targets_to_inheritance"] = bool(payload.get("adapt_targets_to_inheritance", False))
 
     # Dict fields: shallow-merge scenario overrides onto base
     for k in ("training_scorer_overrides", "solver_overrides"):
@@ -419,6 +433,7 @@ def resolve_profile(
         derivation="default" if matched_via == "default" else "hand_curated",
         auto_pick_epithets=auto_pick_enabled,
         auto_picked_epithets=auto_picked,
+        adapt_targets_to_inheritance=bool(merged.get("adapt_targets_to_inheritance", False)),
         raw=dict(payload),
     )
 
@@ -460,7 +475,7 @@ def _aptitudes_from_chara_info(chara_info: Mapping[str, Any]) -> Dict[str, int]:
 
 
 # Stat priorities by best-distance bucket.  Sourced from the community
-# consensus that the Android bot's per-character presets implicitly encode:
+# consensus that the reference per-character presets implicitly encode:
 # Mile runners lean Speed-Power-Wit, Stayers lean Stamina-Speed-Power.
 _PRIORITY_BY_DISTANCE = {
     "sprint": ["speed", "power", "wit", "stamina", "guts"],
@@ -569,7 +584,7 @@ def _derive_from_chara_info(
     # Preferred distances: all distances with aptitude >= B (rank 6).
     preferred = [d for d in bucket_priority_order if aptitudes.get(d, 0) >= 6]
 
-    # Suggested epithet from the Android catalog, if the name matches.
+    # Suggested epithet from the character catalog, if the name matches.
     name = _trainee_name(chara_info) or "Auto-derived"
     suggested = _suggested_epithets_for_name(name, base_dir)
     auto_picked = _auto_pick_epithet_names(name, base_dir)

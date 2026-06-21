@@ -266,6 +266,45 @@ class RacePlanner:
                 available.add(pid)
         return available
 
+    def _program_instance_id(self, pid):
+        """race_instance_id for a program_id — the STABLE race identity. The game
+        offers a race under one program_id 'permission variant' (e.g. Japan Cup
+        pid 79) while the solver's plan may hold another variant (pid 1088); both
+        share a race_instance_id. Matching on that fixes the marquee-G1 misses."""
+        try:
+            pid = int(pid or 0)
+        except Exception:
+            return 0
+        row = self.program.get(pid) or self.official_races.get(pid) or {}
+        try:
+            return int(row.get("race_instance_id") or 0)
+        except Exception:
+            return 0
+
+    def _resolve_wanted_live(self, wanted, available, turn):
+        """Map each wanted (planned) program_id to a RUNNABLE live program_id,
+        matching by race_instance_id so program_id variants still match, and
+        returning the live id the game actually offers (so race_entry works).
+        Preserves wanted order, drops rejected, de-dups."""
+        avail = set(available)
+        avail_by_instance = {}
+        for pid in avail:
+            iid = self._program_instance_id(pid)
+            if iid:
+                avail_by_instance.setdefault(iid, pid)
+        out = []
+        seen = set()
+        for wpid in wanted:
+            live = wpid if wpid in avail else None
+            if live is None:
+                iid = self._program_instance_id(wpid)
+                if iid:
+                    live = avail_by_instance.get(iid)
+            if live and (turn, live) not in self.rejected and live not in seen:
+                seen.add(live)
+                out.append(live)
+        return out
+
     def forced_program(self, state):
         data = state.get("data") or {}
         home = data.get("home_info") or {}
@@ -281,7 +320,7 @@ class RacePlanner:
         race = data.get("race_start_info") or {}
         return int(race.get("program_id") or 0)
 
-    def check_aptitude(self, chara, program_id):
+    def check_aptitude(self, chara, program_id, floor=6):
         info = self.program.get(int(program_id or 0)) or {}
         ground = int(info.get("ground") or 1)
         distance = int(info.get("distance") or 1200)
@@ -300,7 +339,7 @@ class RacePlanner:
         else:
             d_apt = int(chara.get("proper_distance_long") or 1)
             
-        return g_apt >= 6 and d_apt >= 6
+        return g_apt >= floor and d_apt >= floor
 
     def _program_info(self, program_id):
         pid = int(program_id or 0)
@@ -369,6 +408,26 @@ class RacePlanner:
         except Exception:
             ground = 0
         return "dirt" if ground == 2 else "turf"
+
+    # v7.2 — Filter a candidate program-id list down to races whose surface
+    # matches the user's mant_config.preferred_surfaces. Returns the filtered
+    # list, or an empty list if nothing matches. Callers fall back to the
+    # unfiltered pool ONLY when this returns empty (so the bot can still race
+    # something if a preferred surface isn't available this turn — but no
+    # longer auto-picks dirt when the user only wanted turf).
+    def _filter_by_surface_preference(self, program_ids, preset):
+        cfg = ((preset or {}).get("mant_config") or {})
+        preferred = cfg.get("preferred_surfaces") or []
+        # Normalize to a set of lowercase strings.
+        wanted = set()
+        for s in preferred:
+            if not s: continue
+            s_low = str(s).strip().lower()
+            if s_low in ("turf", "dirt"):
+                wanted.add(s_low)
+        if not wanted:
+            return list(program_ids)  # no preference set; return as-is
+        return [pid for pid in program_ids if self._surface_key(pid) in wanted]
 
     def _aptitude_score(self, chara, program_id):
         dist = self._distance_bucket(program_id)
@@ -515,12 +574,24 @@ class RacePlanner:
     def _solver_setting(self, preset, key, default):
         """First non-None of preset.mant_config[key] /
         preset.trackblazer_solver_settings[key] / default.  Empty string
-        counts as unset; numeric zero and boolean False are valid."""
+        counts as unset; numeric zero and boolean False are valid.
+
+        v7.2 — When the user has selected manual race mode
+        (``extra_race_list_source == "manual"``), the ``trackblazer_solver_settings``
+        lookup is SKIPPED. Those settings (max_races_in_row, fan_bonus,
+        optimization_mode, etc.) are scheduler knobs for the Smart Race Solver
+        and should not affect bot behavior when the user has hand-picked
+        their schedule. The mant_config lookup still runs because those are
+        scenario-wide overrides the user explicitly set in Scenario Overrides.
+        """
         try:
             mant = ((preset or {}).get("mant_config") or {})
             mc_val = mant.get(key)
             if mc_val is not None and mc_val != "":
                 return mc_val
+            source_mode = str((preset or {}).get("extra_race_list_source") or "").strip().lower()
+            if source_mode == "manual":
+                return default
             tss = ((preset or {}).get("trackblazer_solver_settings") or {})
             tss_val = tss.get(key)
             if tss_val is not None and tss_val != "":
@@ -554,13 +625,16 @@ class RacePlanner:
         if str((preset or {}).get("extra_race_list_source") or "").strip().lower() != "smart":
             return None
         cfg = dict((preset or {}).get("mant_config") or {})
-        if not force and cfg.get("enable_live_smart_replan", True) is False:
+        # v1.5: resolve via _solver_setting so the "Live Schedule Re-Planning"
+        # UI toggle (stored in trackblazer_solver_settings) is honored, while a
+        # mant_config override still wins for backward compatibility.
+        if not force and self._solver_setting(preset, "enable_live_smart_replan", True) is False:
             return None
-        # v6.7.22: Android-style event-driven re-planning (default on). The
+        # v6.7.22: event-driven re-planning (default on). The
         # routine every-turn "live" re-solve is skipped -- the plan is solved
         # once and reused, and only real events (a loss, or a planned race that
         # vanished, handled via reason="missing"/force) trigger a re-solve. This
-        # matches the Android bot and removes the per-turn churn that piled up
+        # matches the reference behavior and removes the per-turn churn that piled up
         # race streaks and dropped winnable high-fan races. Falls through to
         # solve when no plan exists yet, so the first solve still locks one in.
         if reason == "live" and not force and bool(self._solver_setting(preset, "replan_on_events_only", True)):
@@ -583,6 +657,13 @@ class RacePlanner:
             data = (state or {}).get("data") or {}
             chara = data.get("chara_info") or {}
             weights = dict(cfg.get("trackblazer_weights") or (preset or {}).get("trackblazer_weights") or {})
+            # Outcome-Risk toggle (Racing Settings): let mant_config override the
+            # solver's learned-loss penalty so the user can turn it on/off / tune it.
+            _mc = (preset or {}).get("mant_config") or {}
+            if _mc.get("enable_outcome_risk") is not None:
+                weights["enableOutcomeRisk"] = bool(_mc.get("enable_outcome_risk"))
+            if _mc.get("outcome_risk_weight") is not None:
+                weights["outcomeRiskWeight"] = _mc.get("outcome_risk_weight")
             weights["currentStats"] = {
                 "speed": int(chara.get("speed") or 0),
                 "stamina": int(chara.get("stamina") or 0),
@@ -628,15 +709,21 @@ class RacePlanner:
                 self.base_dir,
                 aptitudes=self._chara_trackblazer_aptitudes(chara),
                 fan_bonus=float(cfg.get("fan_bonus") or 0),
-                max_races_in_row=int(self._solver_setting(preset, "max_races_in_row", 2)),
+                max_races_in_row=int(self._solver_setting(preset, "max_races_in_row", 5)),
                 include_op=bool(self._solver_setting(preset, "include_op", False)),
                 floor=self._solver_aptitude_floor(preset, 6),
                 solver=str(cfg.get("solver") or "auto"),
                 weights=weights,
                 training_blocks=(preset or {}).get("training_blocks") or [],
                 manual_locks=(preset or {}).get("manual_locks") or {},
-                target_epithets=(preset or {}).get("trackblazer_target_epithets") or profile_targets,
-                forced_epithets=(preset or {}).get("trackblazer_forced_epithets") or profile.forced_epithets,
+                target_epithets=trackblazer._merge_epithet_lists(
+                    (preset or {}).get("trackblazer_target_epithets") or profile_targets,
+                    trackblazer.resolve_agenda_epithets(self.base_dir, (preset or {}).get("trackblazer_race_agenda") or "")[0],
+                ),
+                forced_epithets=trackblazer._merge_epithet_lists(
+                    (preset or {}).get("trackblazer_forced_epithets") or profile.forced_epithets,
+                    trackblazer.resolve_agenda_epithets(self.base_dir, (preset or {}).get("trackblazer_race_agenda") or "")[1],
+                ),
                 preferred_distances=cfg.get("preferred_distances") or (preset or {}).get("preferred_distances") or profile.preferred_distances,
                 distance_preference_mode=str(cfg.get("distance_preference_mode") or (preset or {}).get("distance_preference_mode") or "balanced"),
                 current_turn=max(1, int(turn or 0)),
@@ -754,18 +841,64 @@ class RacePlanner:
             return 0
 
         cfg = ((preset or {}).get("mant_config") or {})
-        all_valid = [pid for pid in available if (turn, pid) not in self.rejected and self.check_aptitude(chara, pid)]
+        # Live race-entry aptitude floor — configurable via min_aptitude_floor
+        # (smart race solver settings), matching the solver's aptitudeThreshold.
+        # Requires BOTH distance and surface aptitude >= floor (standard behavior).
+        apt_floor = self._solver_aptitude_floor(preset)
+        all_valid = [pid for pid in available if (turn, pid) not in self.rejected and self.check_aptitude(chara, pid, apt_floor)]
 
         wanted = self.wanted_programs(preset or {}, turn)
-        valid_wanted = [pid for pid in wanted if pid in available and (turn, pid) not in self.rejected]
+        # Match planned races to the live list by race_instance_id (not raw
+        # program_id) so marquee G1s whose program_id 'variant' differs from the
+        # offered one (Japan Cup, Arima, ...) are recognized and run. Returns the
+        # LIVE program_id the game offers.
+        valid_wanted = self._resolve_wanted_live(wanted, available, turn)
         source_mode = str((preset or {}).get("extra_race_list_source") or "").strip().lower()
         if is_mant and source_mode == "smart" and wanted and not valid_wanted and turn <= 72:
-            self._try_replan_missing_smart_race(state, preset or {}, turn)
-            wanted = self.wanted_programs(preset or {}, turn)
-            valid_wanted = [pid for pid in wanted if pid in available and (turn, pid) not in self.rejected]
+            # v1.5: the solver planned a race for this turn but the exact program
+            # is not in the live race list (calendar drift).  Rather than re-solve
+            # the whole remaining schedule -- the "missing"-race re-solve erodes
+            # the plan ~1 race per event and was the main reason executed races
+            # stalled ~10 below the plan (24 missing events in one run) -- run the
+            # best AVAILABLE aptitude-passing race for this turn from the live
+            # list.  This is what the reference solver does (it reads the on-screen
+            # race list), and it keeps the race slot the solver intended.
+            if cfg.get("enable_missing_race_substitute", True) and all_valid:
+                filtered = self._filter_by_surface_preference(all_valid, preset or {})
+                pool = filtered if filtered else all_valid
+                return self._sort_races_for_trackblazer(pool, state, preset or {})[0]
+            # No available race to substitute with -> TRAIN this turn. The reference solver
+            # does NOT re-solve the schedule when its planned race isn't on the
+            # live list; it falls back to the on-screen list (handled above) or
+            # trains. Falls through to the smart-mode "nothing wanted -> train".
         is_manual_race_list = source_mode == "manual"
         if valid_wanted and is_manual_race_list:
             return valid_wanted[0]
+
+        # v7.2 — Manual mode is STRICT. If the user picked a manual race list:
+        #   - on turns where one of their races is valid → run it (above)
+        #   - on turns where their list has nothing for this turn → DO NOT race
+        #
+        # Previously the code fell through to force_racing / fan_farming /
+        # trackblazer-sort, which would pick from `all_valid` (every aptitude-
+        # passing race including dirt), ignoring preferred_surfaces. That's
+        # how dirt races slipped in on turns not covered by the user's list.
+        # Now manual mode short-circuits all smart fallbacks. Surface and
+        # distance preferences are honored implicitly because the user picked
+        # the exact races they want.
+        if is_manual_race_list:
+            # Opt-in (off by default): if the user picked a race for THIS turn but
+            # the game is not offering it (calendar drift), run the best available
+            # aptitude-passing race from the live list instead of silently
+            # training -- mirrors the smart-mode missing-race substitute.  Manual
+            # stays strictly exact otherwise: a turn the user's list does not
+            # cover (wanted empty) still trains.
+            if (cfg.get("manual_missing_race_substitute", False)
+                    and wanted and not valid_wanted and turn <= 72 and all_valid):
+                filtered = self._filter_by_surface_preference(all_valid, preset or {})
+                pool = filtered if filtered else all_valid
+                return self._sort_races_for_trackblazer(pool, state, preset or {})[0]
+            return 0
 
         # Smart Race Solver owns extra-race decisions.  If the dynamically
         # rebuilt live plan says Train/Rest on this turn, suppress legacy
@@ -775,7 +908,7 @@ class RacePlanner:
             return 0
 
         if is_mant and cfg.get("force_racing", False) and all_valid:
-            return self._sort_races_for_trackblazer(all_valid, state, preset or {})[0]
+            return self._sort_races_for_trackblazer(self._filter_by_surface_preference(all_valid, preset or {}), state, preset or {})[0] if self._filter_by_surface_preference(all_valid, preset or {}) else self._sort_races_for_trackblazer(all_valid, state, preset or {})[0]
 
         if not valid_wanted:
             fans = int(chara.get("fans") or 0)
@@ -785,6 +918,13 @@ class RacePlanner:
                     if (turn, pid) not in self.rejected and self.check_aptitude(chara, pid):
                         scored.append(pid)
                 if scored:
+                    # v7.2 — Also honor preferred_surfaces in the low-fans
+                    # fallback. Falls back to unfiltered list only if the
+                    # filter empties (i.e. no preferred-surface races at all
+                    # this turn).
+                    filtered = self._filter_by_surface_preference(scored, preset or {})
+                    if filtered:
+                        scored = filtered
                     if is_mant:
                         return self._sort_races_for_trackblazer(scored, state, preset or {})[0]
                     scored = [(self._fallback_race_score(chara, pid), pid) for pid in scored]
@@ -793,7 +933,9 @@ class RacePlanner:
             if is_mant and cfg.get("enable_farming_fans", False):
                 interval = max(1, int(cfg.get("days_to_run_extra_races") or 5))
                 if turn > 11 and turn % interval == 0 and all_valid:
-                    return self._sort_races_for_trackblazer(all_valid, state, preset or {})[0]
+                    filtered = self._filter_by_surface_preference(all_valid, preset or {})
+                    pool = filtered if filtered else all_valid
+                    return self._sort_races_for_trackblazer(pool, state, preset or {})[0]
             return 0
 
         if not is_mant:

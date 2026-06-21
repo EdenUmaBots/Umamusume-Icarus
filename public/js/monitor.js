@@ -1,6 +1,28 @@
 /* SweepyCL Career Monitor — bottom drawer for live runner log, crash trace,
    and current-run stat chart.  Uses separate live_history endpoint so the
    existing Career History archive stays unchanged. */
+// Shared coalescer for /api/career/runner — app.js + monitor.js poll this on
+// separate timers; without coalescing that's 3 fetches of the same payload per
+// ~2s. get() returns the in-flight promise or a sub-TTL cached result so
+// near-simultaneous callers share one round-trip. (defined defensively so
+// whichever file loads first creates it.)
+window.SweepyRunnerFeed = window.SweepyRunnerFeed || (function () {
+    let cache = null, ts = 0, inflight = null;
+    const TTL = 900;
+    return {
+        get(force) {
+            const now = Date.now();
+            if (!force && cache && (now - ts) < TTL) return Promise.resolve(cache);
+            if (inflight) return inflight;
+            inflight = fetch('/api/career/runner', { headers: { 'Accept': 'application/json' } })
+                .then(r => r.json().catch(() => ({})).then(d => { if (!r.ok) throw new Error(d.detail || `HTTP ${r.status}`); return d; }))
+                .then(d => { cache = d; ts = Date.now(); return d; })
+                .finally(() => { inflight = null; });
+            return inflight;
+        },
+        peek() { return cache; },
+    };
+})();
 (() => {
     'use strict';
     if (window.SWEEPY_DISABLE_MONITOR) return;
@@ -11,10 +33,15 @@
         { key: 'stamina', label: 'STA', color: '#ffb74d' },
         { key: 'power', label: 'PWR', color: '#e57373' },
         { key: 'guts', label: 'GUT', color: '#ba68c8' },
-        { key: 'wiz', label: 'WIT', color: '#81c784' },
-        { key: 'wit', label: 'WIT', color: '#81c784' },
+        { key: 'wit', alt: 'wiz', label: 'WIT', color: '#81c784' },
         { key: 'skill_point', label: 'SP', color: '#fff176' },
     ];
+    // WIT arrives as either `wit` or legacy `wiz`; resolve from whichever the
+    // row carries so the chart never renders a duplicate empty "WIT 0" series.
+    const seriesVal = (row, s) => {
+        const v = row[s.key];
+        return Number((v === undefined || v === null || v === '') ? row[s.alt] : v) || 0;
+    };
     const state = { open: false, filter: 'all', paused: false, crash: false, logTimer: 0, chartTimer: 0, lastKey: '', history: null, userClosed: false, wasRunning: false };
     function esc(value) { return String(value ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }
     function el(tag, cls, html) { const n = document.createElement(tag); if (cls) n.className = cls; if (html !== undefined) n.innerHTML = html; return n; }
@@ -46,11 +73,11 @@
     function setOpen(open) { state.open = open; root.classList.toggle('collapsed', !open); root.querySelector('#monitor-toggle').setAttribute('aria-expanded', String(open)); if (open) startPolling(); else stopPolling(); }
     function stopPolling() { if (state.logTimer) clearInterval(state.logTimer); if (state.chartTimer) clearInterval(state.chartTimer); state.logTimer = state.chartTimer = 0; }
     function startPolling() { stopPolling(); refreshStatus(); refreshLog(); refreshChart(); state.logTimer = setInterval(() => { refreshStatus(); refreshLog(); }, POLL_LOG_MS); state.chartTimer = setInterval(refreshChart, POLL_CHART_MS); }
-    async function refreshStatus() { try { const d = await getJson('/api/career/runner'); const r = d.runner || {}; const running = Boolean(r.running); root.querySelector('#monitor-dot').classList.toggle('live', running); root.querySelector('#monitor-dot').classList.toggle('error', Boolean(r.last_error)); root.querySelector('#monitor-status').textContent = running ? `turn ${r.turn ?? '?'} · ${r.last_action || 'running'}` : (r.last_error ? `stopped · ${String(r.last_error).slice(0, 60)}` : (r.finished ? 'finished' : 'idle')); if (running && !state.wasRunning && !state.open && !state.userClosed) setOpen(true); state.wasRunning = running; } catch (e) {} }
-    async function refreshLog() { if (state.paused || !state.open) return; let r; try { r = (await getJson('/api/career/runner')).runner || {}; } catch (e) { return; } const rows = (r.log || []).map(x => ({ ...x, kind: kind(x.action) })).filter(x => state.filter === 'all' || x.kind === state.filter); const key = rows.length ? `${rows.length}:${rows[rows.length-1].id}:${state.filter}` : `0:${state.filter}`; if (key === state.lastKey) return; state.lastKey = key; const box = root.querySelector('#monitor-log'); const stick = box.scrollHeight - box.scrollTop - box.clientHeight < 40; box.innerHTML = rows.length ? rows.map(x => `<div class="monitor-log-row kind-${x.kind}"><span>${esc(x.time || '')}</span><span>T${esc(x.turn ?? 0)}</span><strong>${esc(x.action || '')}</strong><span>${esc(x.detail || '')}</span></div>`).join('') : '<div class="monitor-empty">No log rows for this filter.</div>'; if (stick) box.scrollTop = box.scrollHeight; }
+    async function refreshStatus() { try { const d = await window.SweepyRunnerFeed.get(); const r = d.runner || {}; const running = Boolean(r.running); root.querySelector('#monitor-dot').classList.toggle('live', running); root.querySelector('#monitor-dot').classList.toggle('error', Boolean(r.last_error)); root.querySelector('#monitor-status').textContent = running ? `turn ${r.turn ?? '?'} · ${r.last_action || 'running'}` : (r.last_error ? `stopped · ${String(r.last_error).slice(0, 60)}` : (r.finished ? 'finished' : 'idle')); if (running && !state.wasRunning && !state.open && !state.userClosed) setOpen(true); state.wasRunning = running; } catch (e) {} }
+    async function refreshLog() { if (state.paused || !state.open) return; let r; try { r = (await window.SweepyRunnerFeed.get()).runner || {}; } catch (e) { return; } const rows = (r.log || []).map(x => ({ ...x, kind: kind(x.action) })).filter(x => state.filter === 'all' || x.kind === state.filter); const key = rows.length ? `${rows.length}:${rows[rows.length-1].id}:${state.filter}` : `0:${state.filter}`; if (key === state.lastKey) return; state.lastKey = key; const box = root.querySelector('#monitor-log'); const stick = box.scrollHeight - box.scrollTop - box.clientHeight < 40; box.innerHTML = rows.length ? rows.map(x => `<div class="monitor-log-row kind-${x.kind}"><span>${esc(x.time || '')}</span><span>T${esc(x.turn ?? 0)}</span><strong>${esc(x.action || '')}</strong><span>${esc(x.detail || '')}</span></div>`).join('') : '<div class="monitor-empty">No log rows for this filter.</div>'; if (stick) box.scrollTop = box.scrollHeight; }
     async function refreshCrash() { const pane = root.querySelector('#monitor-crash'); try { const d = await getJson('/api/career/crash_trace'); pane.textContent = (d.trace || '').trim() || 'No crash trace recorded.'; } catch (e) { pane.textContent = `Could not load crash trace: ${e.message}`; } }
     async function refreshChart() { if (!state.open || state.crash) return; try { state.history = await getJson('/api/career/live_history'); drawChart(); } catch (e) {} }
-    function drawChart() { const canvas = root.querySelector('#monitor-chart'); const empty = root.querySelector('#monitor-empty'); const legend = root.querySelector('#monitor-legend'); const stats = (state.history && state.history.stats || []).filter(x => x && x.turn != null); if (!canvas || state.crash) return; if (!stats.length) { canvas.style.display = 'none'; empty.style.display = 'block'; legend.innerHTML = ''; return; } canvas.style.display = 'block'; empty.style.display = 'none'; const dpr = window.devicePixelRatio || 1; const host = canvas.parentElement; const w = Math.max(240, host.clientWidth - 20); const h = Math.max(160, host.clientHeight - 44); canvas.width = w * dpr; canvas.height = h * dpr; canvas.style.width = w + 'px'; canvas.style.height = h + 'px'; const ctx = canvas.getContext('2d'); ctx.setTransform(dpr, 0, 0, dpr, 0, 0); ctx.clearRect(0,0,w,h); const pad = {l:42,r:10,t:12,b:22}; const pw = w-pad.l-pad.r, ph = h-pad.t-pad.b; const turns = stats.map(x => Number(x.turn)||0); const minT = Math.min(...turns), maxT = Math.max(...turns, minT+1); let maxV = 100; stats.forEach(row => SERIES.forEach(s => { const v = Number(row[s.key]) || 0; if (v > maxV) maxV = v; })); maxV = Math.ceil(maxV/100)*100; const x = t => pad.l + ((t-minT)/(maxT-minT))*pw; const y = v => pad.t + ph - (v/maxV)*ph; ctx.strokeStyle = 'rgba(255,255,255,0.13)'; ctx.fillStyle = 'rgba(255,255,255,0.65)'; ctx.font = '10px system-ui'; for (let i=0;i<=4;i++){ const v=(maxV/4)*i, gy=y(v); ctx.beginPath(); ctx.moveTo(pad.l,gy); ctx.lineTo(w-pad.r,gy); ctx.stroke(); ctx.fillText(String(Math.round(v)),4,gy+3); } for (const s of SERIES.filter((v,i,a) => a.findIndex(x => x.key === v.key) === i)) { ctx.strokeStyle = s.color; ctx.lineWidth = 1.5; ctx.beginPath(); let started=false; stats.forEach(row => { const px=x(Number(row.turn)||0), py=y(Number(row[s.key])||0); if (!started) { ctx.moveTo(px,py); started=true; } else ctx.lineTo(px,py); }); ctx.stroke(); } const last = stats[stats.length-1] || {}; legend.innerHTML = SERIES.filter((v,i,a) => a.findIndex(x => x.key === v.key) === i).map(s => `<span><i style="background:${s.color}"></i>${s.label} ${Number(last[s.key]) || 0}</span>`).join(''); }
+    function drawChart() { const canvas = root.querySelector('#monitor-chart'); const empty = root.querySelector('#monitor-empty'); const legend = root.querySelector('#monitor-legend'); const stats = (state.history && state.history.stats || []).filter(x => x && x.turn != null); if (!canvas || state.crash) return; if (!stats.length) { canvas.style.display = 'none'; empty.style.display = 'block'; legend.innerHTML = ''; return; } canvas.style.display = 'block'; empty.style.display = 'none'; const dpr = window.devicePixelRatio || 1; const host = canvas.parentElement; const w = Math.max(240, host.clientWidth - 20); const h = Math.max(160, host.clientHeight - 44); canvas.width = w * dpr; canvas.height = h * dpr; canvas.style.width = w + 'px'; canvas.style.height = h + 'px'; const ctx = canvas.getContext('2d'); ctx.setTransform(dpr, 0, 0, dpr, 0, 0); ctx.clearRect(0,0,w,h); const pad = {l:42,r:10,t:12,b:22}; const pw = w-pad.l-pad.r, ph = h-pad.t-pad.b; const turns = stats.map(x => Number(x.turn)||0); const minT = Math.min(...turns), maxT = Math.max(...turns, minT+1); let maxV = 100; stats.forEach(row => SERIES.forEach(s => { const v = seriesVal(row, s); if (v > maxV) maxV = v; })); maxV = Math.ceil(maxV/100)*100; const x = t => pad.l + ((t-minT)/(maxT-minT))*pw; const y = v => pad.t + ph - (v/maxV)*ph; ctx.strokeStyle = 'rgba(255,255,255,0.13)'; ctx.fillStyle = 'rgba(255,255,255,0.65)'; ctx.font = '10px system-ui'; for (let i=0;i<=4;i++){ const v=(maxV/4)*i, gy=y(v); ctx.beginPath(); ctx.moveTo(pad.l,gy); ctx.lineTo(w-pad.r,gy); ctx.stroke(); ctx.fillText(String(Math.round(v)),4,gy+3); } for (const s of SERIES.filter((v,i,a) => a.findIndex(x => x.key === v.key) === i)) { ctx.strokeStyle = s.color; ctx.lineWidth = 1.5; ctx.beginPath(); let started=false; stats.forEach(row => { const px=x(Number(row.turn)||0), py=y(seriesVal(row, s)); if (!started) { ctx.moveTo(px,py); started=true; } else ctx.lineTo(px,py); }); ctx.stroke(); } const last = stats[stats.length-1] || {}; legend.innerHTML = SERIES.filter((v,i,a) => a.findIndex(x => x.key === v.key) === i).map(s => `<span><i style="background:${s.color}"></i>${s.label} ${seriesVal(last, s)}</span>`).join(''); }
     function setCrash(visible) { state.crash = visible; root.querySelector('#monitor-chart-pane').hidden = visible; root.querySelector('#monitor-crash').hidden = !visible; root.querySelector('#monitor-crash-toggle').textContent = visible ? 'SHOW STATS' : 'CRASH TRACE'; root.querySelector('#monitor-chart-title').textContent = visible ? 'CRASH TRACE' : 'STATS'; if (visible) refreshCrash(); else drawChart(); }
     root.querySelector('#monitor-toggle').addEventListener('click', () => { if (state.open) state.userClosed = true; setOpen(!state.open); });
     root.querySelector('#monitor-crash-toggle').addEventListener('click', () => setCrash(!state.crash));

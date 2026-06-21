@@ -193,6 +193,54 @@
     "avoid_skill_fragments": [],
     "green_skill_cap": 1
   },
+  "Air Shakur": {
+    "name": "Air Shakur",
+    "card_id": 103601,
+    "profile_source": "master_mdb",
+    "track_aptitude": {
+      "turf": "A",
+      "dirt": "G"
+    },
+    "distance_aptitude": {
+      "sprint": "G",
+      "mile": "E",
+      "medium": "A",
+      "long": "A"
+    },
+    "style_aptitude": {
+      "front": "G",
+      "pace": "C",
+      "late": "A",
+      "end": "A"
+    },
+    "recommended_style": "end",
+    "primary_distances": [
+      "medium",
+      "long"
+    ],
+    "secondary_distances": [],
+    "avoid_distances": [
+      "sprint",
+      "mile"
+    ],
+    "growth": {
+      "speed": 0,
+      "stamina": 0,
+      "power": 0,
+      "guts": 0,
+      "wit": 30
+    },
+    "target_stats": {
+      "speed": 1200,
+      "stamina": 1200,
+      "power": 1200,
+      "guts": 1200,
+      "wit": 1200
+    },
+    "preferred_skill_fragments": [],
+    "avoid_skill_fragments": [],
+    "green_skill_cap": 1
+  },
   "Biwa Hayahide": {
     "name": "Biwa Hayahide",
     "card_id": 102302,

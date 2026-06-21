@@ -1,7 +1,7 @@
 """Pure Trackblazer policy constants shared by item/race logic.
 
-These rules intentionally contain no Android/OCR concepts.  They are the
-algorithmic part of the Android Trackblazer policy translated for SweepyCL's
+These rules intentionally contain no OCR concepts.  They are the
+algorithmic part of the Trackblazer policy translated for SweepyCL's
 native game-state payloads.
 """
 
@@ -97,10 +97,18 @@ DEFAULT_CHARM_FAILURE_THRESHOLD = 20
 DEFAULT_CHARM_MIN_MAIN_GAIN = 20
 DEFAULT_LOW_MOOD_ITEM_GAIN_FLOOR = 15
 
-RACE_ITEM_CONSERVATION_START_TURN = 65
+# P0: conservation must engage much earlier (was 65).  At 65 the bot burned
+# hammers freely on every regular G1 right up to the finale window, arriving at
+# the T74/76/78 climax with nothing to swing.  25 keeps mid-career G1 spending
+# in check while still allowing early debut/G1 usage.
+RACE_ITEM_CONSERVATION_START_TURN = 25
 TRACKBLAZER_FINALE_RACE_TURNS = (74, 76, 78)
 TRACKBLAZER_FINAL_RACE_TURN = 78
-DEFAULT_MASTER_HAMMER_FINALE_RESERVE = 2
+# P0: hold back ~3 Master hammers for the climax/finale (was 2) so regular G1s
+# stop draining the stock.  An analogous Artisan pre-finale reserve protects the
+# Artisan stock the same way.
+DEFAULT_MASTER_HAMMER_FINALE_RESERVE = 3
+DEFAULT_ARTISAN_HAMMER_FINALE_RESERVE = 2
 DEFAULT_ARTISAN_HAMMER_MIN_STOCK_FOR_G3 = 3
 DEFAULT_ARTISAN_HAMMER_MIN_STOCK_FOR_G2 = 2
 DEFAULT_GLOW_STICK_FINAL_RESERVE = 1
@@ -114,6 +122,12 @@ def normalize_grade(value):
     text = str(value or "").strip().upper()
     if text in GRADE_RANK:
         return text
+    # P0: CLIMAX / finale race rows carry a race_instance_id beginning with "9"
+    # (e.g. "920018") and NO official grade text.  Map them to an explicit
+    # "CLIMAX" token so downstream item logic can branch cleanly instead of
+    # falling through the legacy-digit decode below and being treated as junk.
+    if text.startswith("9"):
+        return "CLIMAX"
     # Old race_instance_id encoding used a leading digit for grade. Keep this as
     # a fallback for legacy race_map rows that do not carry official grade text.
     if text.startswith("1"):
@@ -125,7 +139,7 @@ def normalize_grade(value):
     return text
 
 # P1 decision-policy defaults.  These stay pure and scenario-local so the
-# strategy/item layers can share thresholds without Android-specific logic.
+# strategy/item layers can share thresholds without engine-specific logic.
 IRREGULAR_TRAINING_MIN_TURN = 25
 DEFAULT_IRREGULAR_TRAINING_SCORE_THRESHOLD = 0.62
 DEFAULT_IRREGULAR_TRAINING_FAILURE_LIMIT = 24
@@ -136,7 +150,13 @@ DEFAULT_IRREGULAR_TRAINING_CHARM_MIN_MAIN_GAIN = 30
 DEFAULT_RACE_CHAIN_TARGET = 3
 DEFAULT_CHAIN_CRITICAL_VITAL = 10
 DEFAULT_CHAIN_LOW_VITAL = 35
-DEFAULT_CHAIN_TRAINING_THRESHOLD = 0.22
+# v1.4: raised 0.22 -> 0.45.  After 2 consecutive races the chain-break guard
+# would convert the NEXT planned race into a training turn whenever a merely
+# decent training existed (0.22 bar, no energy check), dropping ~10+ planned
+# races/career and starving fans.  0.45 keeps planned races unless the training
+# is clearly strong; the HP-gated rest branch still protects against racing into
+# an energy wall.  Tunable per preset via mant_config.chain_break_training_threshold.
+DEFAULT_CHAIN_TRAINING_THRESHOLD = 0.45
 DEFAULT_CHAIN_FAILURE_LIMIT = 30
 UNSAFE_CHAIN_MIN_GRADE_RANK = 3  # G3+ only when a voluntary streak is already unsafe.
 
@@ -148,11 +168,15 @@ DEFAULT_WHISTLE_FORCE_SAFE_SCORE = 25
 
 # P2 native decision refinements.
 NEAR_RAINBOW_BOND_THRESHOLD = 60
-NEAR_RAINBOW_BONUS_PER_PARTNER = 0.035
-NEAR_RAINBOW_BONUS_CAP = 0.14
+# v1.5: near-rainbow (a partner one bond-tier from rainbow) is worth pushing
+# toward, so the incentive was raised from a token 1.14x cap to 1.6x.
+NEAR_RAINBOW_BONUS_PER_PARTNER = 0.15
+NEAR_RAINBOW_BONUS_CAP = 0.6
 SUMMER_PRIORITY_BONUS_BY_RANK = (0.18, 0.10, 0.05)
+# v1.5: rank-0 (top-priority stat) leveled-facility reward raised to peak 1.75x
+# (was 1.38x) so the bot favors the high-level facilities that the solver grinds.
 TRAINING_LEVEL_MULTIPLIER_BY_RANK = {
-    0: {2: 1.08, 3: 1.16, 4: 1.26, 5: 1.38},
+    0: {2: 1.15, 3: 1.32, 4: 1.52, 5: 1.75},
     1: {2: 1.04, 3: 1.08, 4: 1.14, 5: 1.22},
     2: {2: 1.02, 3: 1.05, 4: 1.08, 5: 1.12},
 }
@@ -168,7 +192,7 @@ RACE_SELECTION_APTITUDE_WEIGHT = 100
 SMART_SOLVER_TRAIN_LOCK_DEFAULT = True
 
 
-# P3 event-choice scoring parity.  These numbers mirror the Android
+# P3 event-choice scoring parity.  These numbers mirror the reference
 # Trackblazer event fallback policy, but remain generic native scoring inputs.
 EVENT_CHAIN_UNLOCK_BONUS = 1000
 EVENT_CHAIN_END_PENALTY = -300

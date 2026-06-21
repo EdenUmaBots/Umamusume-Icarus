@@ -5125,6 +5125,147 @@
     "is_general_skill": 0
   },
   {
+    "skill_id": 100361,
+    "name": "trigger:BEAT",
+    "rarity": 5,
+    "group_id": 10036,
+    "group_rate": 1,
+    "grade_value": 340,
+    "cost": 0,
+    "skill_category": 5,
+    "skill_category_label": "unique_active",
+    "tags": [
+      401,
+      403
+    ],
+    "icon_id": 20013,
+    "activate_lot": 0,
+    "preconditions": [
+      "is_finalcorner==1&order_rate>=40&order_rate<=75&lane_type==0"
+    ],
+    "conditions": [
+      "is_finalcorner==1&corner==0"
+    ],
+    "ability_types": [
+      27,
+      28
+    ],
+    "effect_blocks": [
+      {
+        "condition_slot": 1,
+        "ability_slot": 1,
+        "precondition": "is_finalcorner==1&order_rate>=40&order_rate<=75&lane_type==0",
+        "condition": "is_finalcorner==1&corner==0",
+        "ability_type": 27,
+        "ability_value_usage": 1,
+        "ability_value_level_usage": 1,
+        "float_ability_value": 3500,
+        "target_type": 1,
+        "target_value": 0
+      },
+      {
+        "condition_slot": 1,
+        "ability_slot": 2,
+        "precondition": "is_finalcorner==1&order_rate>=40&order_rate<=75&lane_type==0",
+        "condition": "is_finalcorner==1&corner==0",
+        "ability_type": 28,
+        "ability_value_usage": 1,
+        "ability_value_level_usage": 1,
+        "float_ability_value": 350,
+        "target_type": 1,
+        "target_value": 0
+      }
+    ],
+    "level_values": {
+      "27": [
+        {
+          "level": 1,
+          "float_ability_value_coef": 10000
+        },
+        {
+          "level": 2,
+          "float_ability_value_coef": 10100
+        },
+        {
+          "level": 3,
+          "float_ability_value_coef": 10400
+        },
+        {
+          "level": 4,
+          "float_ability_value_coef": 10700
+        },
+        {
+          "level": 5,
+          "float_ability_value_coef": 11000
+        },
+        {
+          "level": 6,
+          "float_ability_value_coef": 11300
+        },
+        {
+          "level": 7,
+          "float_ability_value_coef": 11600
+        },
+        {
+          "level": 8,
+          "float_ability_value_coef": 11900
+        },
+        {
+          "level": 9,
+          "float_ability_value_coef": 12200
+        },
+        {
+          "level": 10,
+          "float_ability_value_coef": 12500
+        }
+      ],
+      "28": [
+        {
+          "level": 1,
+          "float_ability_value_coef": 10000
+        },
+        {
+          "level": 2,
+          "float_ability_value_coef": 10200
+        },
+        {
+          "level": 3,
+          "float_ability_value_coef": 10400
+        },
+        {
+          "level": 4,
+          "float_ability_value_coef": 10600
+        },
+        {
+          "level": 5,
+          "float_ability_value_coef": 10800
+        },
+        {
+          "level": 6,
+          "float_ability_value_coef": 11000
+        },
+        {
+          "level": 7,
+          "float_ability_value_coef": 11200
+        },
+        {
+          "level": 8,
+          "float_ability_value_coef": 11400
+        },
+        {
+          "level": 9,
+          "float_ability_value_coef": 11600
+        },
+        {
+          "level": 10,
+          "float_ability_value_coef": 11800
+        }
+      ]
+    },
+    "disable_singlemode": 1,
+    "is_general_skill": 0
+  },
+  {
     "skill_id": 100371,
     "name": "Schwarzes Schwert",
     "rarity": 5,
@@ -37101,6 +37242,90 @@
     "is_general_skill": 1
   },
   {
+    "skill_id": 201453,
+    "name": "Moonlit Flash",
+    "rarity": 2,
+    "group_id": 20145,
+    "group_rate": 3,
+    "grade_value": 508,
+    "cost": 150,
+    "skill_category": 4,
+    "skill_category_label": "position_corner",
+    "tags": [
+      104,
+      401
+    ],
+    "icon_id": 20012,
+    "activate_lot": 1,
+    "preconditions": [],
+    "conditions": [
+      "running_style==4&straight_random==1"
+    ],
+    "ability_types": [
+      27
+    ],
+    "effect_blocks": [
+      {
+        "condition_slot": 1,
+        "ability_slot": 1,
+        "precondition": "",
+        "condition": "running_style==4&straight_random==1",
+        "ability_type": 27,
+        "ability_value_usage": 1,
+        "ability_value_level_usage": 1,
+        "float_ability_value": 3500,
+        "target_type": 1,
+        "target_value": 0
+      }
+    ],
+    "level_values": {
+      "27": [
+        {
+          "level": 1,
+          "float_ability_value_coef": 10000
+        },
+        {
+          "level": 2,
+          "float_ability_value_coef": 10100
+        },
+        {
+          "level": 3,
+          "float_ability_value_coef": 10400
+        },
+        {
+          "level": 4,
+          "float_ability_value_coef": 10700
+        },
+        {
+          "level": 5,
+          "float_ability_value_coef": 11000
+        },
+        {
+          "level": 6,
+          "float_ability_value_coef": 11300
+        },
+        {
+          "level": 7,
+          "float_ability_value_coef": 11600
+        },
+        {
+          "level": 8,
+          "float_ability_value_coef": 11900
+        },
+        {
+          "level": 9,
+          "float_ability_value_coef": 12200
+        },
+        {
+          "level": 10,
+          "float_ability_value_coef": 12500
+        }
+      ]
+    },
+    "disable_singlemode": 1,
+    "is_general_skill": 1
+  },
+  {
     "skill_id": 201461,
     "name": "End Closer Corners ◎",
     "rarity": 1,
@@ -45192,6 +45417,145 @@
     "is_general_skill": 1
   },
   {
+    "skill_id": 202181,
+    "name": "99 Problems",
+    "rarity": 1,
+    "group_id": 20218,
+    "group_rate": -1,
+    "grade_value": -174,
+    "cost": 0,
+    "skill_category": 0,
+    "skill_category_label": "green",
+    "tags": [
+      404,
+      405
+    ],
+    "icon_id": 10044,
+    "activate_lot": 0,
+    "preconditions": [],
+    "conditions": [
+      "always==1"
+    ],
+    "ability_types": [
+      4,
+      5
+    ],
+    "effect_blocks": [
+      {
+        "condition_slot": 1,
+        "ability_slot": 1,
+        "precondition": "",
+        "condition": "always==1",
+        "ability_type": 4,
+        "ability_value_usage": 1,
+        "ability_value_level_usage": 1,
+        "float_ability_value": -400000,
+        "target_type": 1,
+        "target_value": 0
+      },
+      {
+        "condition_slot": 1,
+        "ability_slot": 2,
+        "precondition": "",
+        "condition": "always==1",
+        "ability_type": 5,
+        "ability_value_usage": 1,
+        "ability_value_level_usage": 1,
+        "float_ability_value": -400000,
+        "target_type": 1,
+        "target_value": 0
+      }
+    ],
+    "level_values": {
+      "4": [
+        {
+          "level": 1,
+          "float_ability_value_coef": 10000
+        },
+        {
+          "level": 2,
+          "float_ability_value_coef": 10100
+        },
+        {
+          "level": 3,
+          "float_ability_value_coef": 10200
+        },
+        {
+          "level": 4,
+          "float_ability_value_coef": 10300
+        },
+        {
+          "level": 5,
+          "float_ability_value_coef": 10400
+        },
+        {
+          "level": 6,
+          "float_ability_value_coef": 10500
+        },
+        {
+          "level": 7,
+          "float_ability_value_coef": 10600
+        },
+        {
+          "level": 8,
+          "float_ability_value_coef": 10700
+        },
+        {
+          "level": 9,
+          "float_ability_value_coef": 10800
+        },
+        {
+          "level": 10,
+          "float_ability_value_coef": 11000
+        }
+      ],
+      "5": [
+        {
+          "level": 1,
+          "float_ability_value_coef": 10000
+        },
+        {
+          "level": 2,
+          "float_ability_value_coef": 10100
+        },
+        {
+          "level": 3,
+          "float_ability_value_coef": 10200
+        },
+        {
+          "level": 4,
+          "float_ability_value_coef": 10300
+        },
+        {
+          "level": 5,
+          "float_ability_value_coef": 10400
+        },
+        {
+          "level": 6,
+          "float_ability_value_coef": 10500
+        },
+        {
+          "level": 7,
+          "float_ability_value_coef": 10600
+        },
+        {
+          "level": 8,
+          "float_ability_value_coef": 10700
+        },
+        {
+          "level": 9,
+          "float_ability_value_coef": 10800
+        },
+        {
+          "level": 10,
+          "float_ability_value_coef": 11000
+        }
+      ]
+    },
+    "disable_singlemode": 1,
+    "is_general_skill": 1
+  },
+  {
     "skill_id": 210012,
     "name": "Ignited Spirit SPD",
     "rarity": 1,
@@ -51023,6 +51387,147 @@
         {
           "level": 10,
           "float_ability_value_coef": 12500
+        }
+      ]
+    },
+    "disable_singlemode": 1,
+    "is_general_skill": 1
+  },
+  {
+    "skill_id": 900361,
+    "name": "trigger:BEAT",
+    "rarity": 1,
+    "group_id": 90036,
+    "group_rate": 2,
+    "grade_value": 180,
+    "cost": 200,
+    "skill_category": 5,
+    "skill_category_label": "unique_active",
+    "tags": [
+      401,
+      403
+    ],
+    "icon_id": 20011,
+    "activate_lot": 1,
+    "preconditions": [
+      "is_finalcorner==1&order_rate>=40&order_rate<=75&lane_type==0"
+    ],
+    "conditions": [
+      "is_finalcorner==1&corner==0"
+    ],
+    "ability_types": [
+      27,
+      28
+    ],
+    "effect_blocks": [
+      {
+        "condition_slot": 1,
+        "ability_slot": 1,
+        "precondition": "is_finalcorner==1&order_rate>=40&order_rate<=75&lane_type==0",
+        "condition": "is_finalcorner==1&corner==0",
+        "ability_type": 27,
+        "ability_value_usage": 1,
+        "ability_value_level_usage": 1,
+        "float_ability_value": 1500,
+        "target_type": 1,
+        "target_value": 0
+      },
+      {
+        "condition_slot": 1,
+        "ability_slot": 2,
+        "precondition": "is_finalcorner==1&order_rate>=40&order_rate<=75&lane_type==0",
+        "condition": "is_finalcorner==1&corner==0",
+        "ability_type": 28,
+        "ability_value_usage": 1,
+        "ability_value_level_usage": 1,
+        "float_ability_value": 150,
+        "target_type": 1,
+        "target_value": 0
+      }
+    ],
+    "level_values": {
+      "27": [
+        {
+          "level": 1,
+          "float_ability_value_coef": 10000
+        },
+        {
+          "level": 2,
+          "float_ability_value_coef": 10100
+        },
+        {
+          "level": 3,
+          "float_ability_value_coef": 10400
+        },
+        {
+          "level": 4,
+          "float_ability_value_coef": 10700
+        },
+        {
+          "level": 5,
+          "float_ability_value_coef": 11000
+        },
+        {
+          "level": 6,
+          "float_ability_value_coef": 11300
+        },
+        {
+          "level": 7,
+          "float_ability_value_coef": 11600
+        },
+        {
+          "level": 8,
+          "float_ability_value_coef": 11900
+        },
+        {
+          "level": 9,
+          "float_ability_value_coef": 12200
+        },
+        {
+          "level": 10,
+          "float_ability_value_coef": 12500
+        }
+      ],
+      "28": [
+        {
+          "level": 1,
+          "float_ability_value_coef": 10000
+        },
+        {
+          "level": 2,
+          "float_ability_value_coef": 10200
+        },
+        {
+          "level": 3,
+          "float_ability_value_coef": 10400
+        },
+        {
+          "level": 4,
+          "float_ability_value_coef": 10600
+        },
+        {
+          "level": 5,
+          "float_ability_value_coef": 10800
+        },
+        {
+          "level": 6,
+          "float_ability_value_coef": 11000
+        },
+        {
+          "level": 7,
+          "float_ability_value_coef": 11200
+        },
+        {
+          "level": 8,
+          "float_ability_value_coef": 11400
+        },
+        {
+          "level": 9,
+          "float_ability_value_coef": 11600
+        },
+        {
+          "level": 10,
+          "float_ability_value_coef": 11800
         }
       ]
     },

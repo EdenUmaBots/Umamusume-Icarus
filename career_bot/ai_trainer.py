@@ -20,7 +20,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Callable, Dict, Iterable, List, Mapping, Optional, Tuple
 
-from career_bot.ai_dataset import DATASET_FILES, dataset_status, rebuild_advisor_stats, runtime_output_root, safe_float, safe_int
+from career_bot.ai_dataset import DATASET_FILES, dataset_status, rebuild_advisor_stats, runtime_output_root, safe_float, safe_int, JSONL_ARCHIVE_MARKER
 from career_bot import style_adaptation, local_llm, event_outcomes
 
 AI_TRAINER_VERSION = 2
@@ -53,10 +53,11 @@ DEFAULT_AUTO_CONFIG = {
     "train_after_completed_careers": 1,
     "interval_minutes": 60,
     "min_turn_records": 10,
-    "min_samples_for_model": 2,
+    "min_samples_for_model": 4,
     "enable_live_policy_assistance": False,
     "confidence_threshold": MIN_CONFIDENCE_DEFAULT,
     "max_abs_live_adjustment": 25.0,
+    "warn_win_rate_ceiling": 0.50,
     "train_while_runner_active": False,
     "generate_synthetic_prompts": True,
     "generate_post_run_report": True,
@@ -134,21 +135,39 @@ def _read_json(path: Path, default: Any) -> Any:
 
 
 def _read_jsonl(path: Path, limit: int = 200000) -> List[Dict[str, Any]]:
-    if not path.exists():
-        return []
-    rows: List[Dict[str, Any]] = []
+    # P5: include rotated archives so training history survives rotation. Files
+    # are ordered [oldest archive, ..., newest archive, live]; we read them
+    # newest-first and stop once we have `limit` rows, then restore chronological
+    # order — same "last N rows" semantics as before, just spanning archives.
+    files: List[Path] = []
     try:
-        with path.open("r", encoding="utf-8") as fh:
-            lines = fh.readlines()[-max(1, int(limit)):]
-        for line in lines:
+        files.extend(sorted(path.parent.glob(f"{path.stem}{JSONL_ARCHIVE_MARKER}*{path.suffix}")))
+    except Exception:
+        pass
+    if path.exists():
+        files.append(path)
+    if not files:
+        return []
+    cap = max(1, int(limit))
+    rows: List[Dict[str, Any]] = []
+    for fp in reversed(files):
+        try:
+            with fp.open("r", encoding="utf-8") as fh:
+                file_lines = fh.readlines()
+        except Exception:
+            continue
+        for line in reversed(file_lines):
             try:
                 row = json.loads(line)
                 if isinstance(row, dict):
                     rows.append(row)
+                    if len(rows) >= cap:
+                        break
             except Exception:
                 continue
-    except Exception:
-        return []
+        if len(rows) >= cap:
+            break
+    rows.reverse()
     return rows
 
 
@@ -165,9 +184,10 @@ def load_auto_config(base_dir: Any) -> Dict[str, Any]:
     cfg["train_after_completed_careers"] = max(1, safe_int(cfg.get("train_after_completed_careers"), 1))
     cfg["interval_minutes"] = max(5, safe_int(cfg.get("interval_minutes"), 60))
     cfg["min_turn_records"] = max(0, safe_int(cfg.get("min_turn_records"), 10))
-    cfg["min_samples_for_model"] = max(1, safe_int(cfg.get("min_samples_for_model"), 2))
+    cfg["min_samples_for_model"] = max(1, safe_int(cfg.get("min_samples_for_model"), 4))
     cfg["confidence_threshold"] = max(0.0, min(0.99, safe_float(cfg.get("confidence_threshold"), MIN_CONFIDENCE_DEFAULT)))
     cfg["max_abs_live_adjustment"] = max(0.0, min(100.0, safe_float(cfg.get("max_abs_live_adjustment"), 25.0)))
+    cfg["warn_win_rate_ceiling"] = max(0.0, min(1.0, safe_float(cfg.get("warn_win_rate_ceiling"), 0.50)))
     mode = str(cfg.get("style_adaptation_mode") or "shadow").lower().strip()
     cfg["style_adaptation_mode"] = mode if mode in {"disabled", "shadow", "recommend", "auto"} else "shadow"
     cfg["style_adaptation_min_confidence"] = max(0.0, min(0.99, safe_float(cfg.get("style_adaptation_min_confidence"), 0.70)))
@@ -722,13 +742,23 @@ def build_event_value_model(event_table: Mapping[str, Any], min_samples: int = 2
 def build_policy_adjustments(race_model: Mapping[str, Any], item_model: Mapping[str, Any], event_model: Mapping[str, Any], cfg: Mapping[str, Any]) -> Dict[str, Any]:
     threshold = safe_float(cfg.get("confidence_threshold"), MIN_CONFIDENCE_DEFAULT)
     max_abs = safe_float(cfg.get("max_abs_live_adjustment"), 25.0)
+    warn_win_rate_ceiling = max(0.0, min(1.0, safe_float(cfg.get("warn_win_rate_ceiling"), 0.50)))
     races = {}
     for pid, row in (race_model.get("model") or {}).items():
         conf = safe_float(row.get("confidence"), 0.0)
         if conf < threshold:
             continue
+        win_rate = safe_float(row.get("win_rate"), 0.0)
         base_penalty = max(0.0, safe_float(row.get("penalty"), 0.0))
         clock_penalty = max(0.0, safe_float(row.get("clock_dependency_penalty"), 0.0))
+        # v6.7.9: only emit a race-risk warning (negative adjustment) when the
+        # program genuinely loses often.  A race the bot wins most of the time
+        # still accrues a small penalty from the avg-rank term, so warnings used
+        # to fire on races that then won anyway -- shadow precision sat ~16%.
+        # Suppress the race-risk penalty above the win-rate ceiling; clock
+        # dependency is still recorded (adjustment 0, not a warning).
+        if win_rate > warn_win_rate_ceiling:
+            base_penalty = 0.0
         adjustment = -min(max_abs, base_penalty)
         if adjustment or clock_penalty:
             races[str(pid)] = {
@@ -760,6 +790,7 @@ def build_policy_adjustments(race_model: Mapping[str, Any], item_model: Mapping[
         "enabled": bool(cfg.get("enable_live_policy_assistance", True)),
         "confidence_threshold": threshold,
         "max_abs_live_adjustment": max_abs,
+        "warn_win_rate_ceiling": warn_win_rate_ceiling,
         "races": races,
         "items": items,
         "events": events,
@@ -1544,11 +1575,15 @@ def load_policy_adjustments(base_dir: Any) -> Dict[str, Any]:
     return payload if isinstance(payload, dict) else {}
 
 
-def race_policy_adjustment(base_dir: Any, program_id: Any, threshold: Optional[float] = None) -> Dict[str, Any]:
-    cfg = load_auto_config(base_dir)
+def race_policy_adjustment(base_dir: Any, program_id: Any, threshold: Optional[float] = None,
+                           _cfg: Optional[Mapping[str, Any]] = None,
+                           _policy: Optional[Mapping[str, Any]] = None) -> Dict[str, Any]:
+    # _cfg/_policy let hot callers (Smart Race Solver) load these files once and
+    # reuse them across every candidate row instead of re-reading per program_id.
+    cfg = _cfg if _cfg is not None else load_auto_config(base_dir)
     if not cfg.get("enable_live_policy_assistance", True):
         return {"adjustment": 0.0, "confidence": 0.0, "enabled": False, "reason": "live policy assistance disabled"}
-    policy = load_policy_adjustments(base_dir)
+    policy = _policy if _policy is not None else load_policy_adjustments(base_dir)
     if not policy.get("enabled", True):
         return {"adjustment": 0.0, "confidence": 0.0, "enabled": False, "reason": "policy model disabled"}
     row = (policy.get("races") or {}).get(str(safe_int(program_id))) or {}

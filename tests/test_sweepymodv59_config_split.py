@@ -12,7 +12,10 @@ APP = (ROOT / "public" / "app.js").read_text(encoding="utf-8")
 
 
 class SweepyModV59ConfigSplitTests(unittest.TestCase):
-    def test_legacy_presets_are_split_and_folder_removed(self):
+    def test_legacy_per_file_preset_is_adopted_and_self_contained(self):
+        # v7.6: data/presets/ is now the CANONICAL per-file store. A pre-existing
+        # per-file preset is adopted in place (not split into global files and
+        # deleted), and its settings/skill/solver layers stay readable.
         with tempfile.TemporaryDirectory() as tmp:
             base = Path(tmp)
             legacy = base / "data" / "presets"
@@ -27,15 +30,15 @@ class SweepyModV59ConfigSplitTests(unittest.TestCase):
                 "extra_race_list": [1001, 1002],
             }), encoding="utf-8")
             store = ConfigStore(base)
-            self.assertFalse((base / "data" / "presets").exists())
-            self.assertTrue((base / "data" / "settings_presets.json").exists())
-            self.assertTrue((base / "data" / "skill_config.json").exists())
-            self.assertTrue((base / "data" / "smart_solver_config.json").exists())
+            # The per-file store persists; the legacy split files are NOT created.
+            self.assertTrue((base / "data" / "presets").exists())
+            self.assertTrue((base / "data" / "presets" / "Example.json").exists())
+            self.assertFalse((base / "data" / "settings_presets.json").exists())
             settings = store.read_settings_presets()["presets"][0]
             self.assertIn("mant_config", settings)
             self.assertNotIn("learn_skill_threshold", settings)
-            self.assertEqual(store.read_skill_config()["learn_skill_threshold"], 430)
-            self.assertEqual(store.read_solver_config()["extra_race_list"], [1001, 1002])
+            self.assertEqual(store.read_skill_config("Example")["learn_skill_threshold"], 430)
+            self.assertEqual(store.read_solver_config("Example")["extra_race_list"], [1001, 1002])
             runtime = store.compose_runtime_preset("Example")
             self.assertEqual(runtime["mant_config"]["maximum_failure_chance"], 15)
             self.assertEqual(runtime["learn_skill_threshold"], 430)
