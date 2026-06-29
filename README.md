@@ -1,51 +1,201 @@
-## Icarus v2.0 — The Big One
+# Icarus 3.0
 
-__The biggest leap since launch. The Trackblazer Engine grows up: it chases set-bonuses, races smarter without over-racing, spends the shop like a pro, picks event answers from a 3,600+ event database — and the dashboard finally shows you what it's doing, item icons and all. Here's everything new__
+> The most advanced automation and career optimization engine for Umamusume: Pretty Derby.
 
-## ⚙️ The Trackblazer Engine is now the default
-A **solver-driven decision core** built for the Trackblazer/MANT scenario. Instead of scoring one turn at a time, it treats your **whole career as a single optimization problem**:
-- 🗓️ **Whole-career race scheduling** — an exact route optimizer (with a fast heuristic fallback) weighs the entire calendar at once and locks in the schedule that maximizes stats, fans, set-bonus completion and aptitude fit — while respecting your max-races-in-a-row limit and the summer/finale windows.
-- ♻️ **Plans, then adapts** — solved at career start, then re-planned live when a race is lost or drops off the calendar, so it stays valid as the run actually plays out.
-- 🏁 **Built around the racing economy** — train-vs-race-vs-rest decisions account for the currency → items → stats loop, energy, mood, consecutive-race risk, and the marquee G1s & finale climax races.
-- 🛡️ **Smarter, safer racing** — energy/streak guards, a marquee-race prediction gate, and summer/finale handling push for value without over-racing or throwing winnable races.
-- 🔁 **Classic is still here** — the previous turn-by-turn engine is one click away under *Decision Engine* __Classic is still here__ — the previous turn-by-turn engine is one click away under Decision Engine.
+![Version](https://img.shields.io/badge/version-v3.0.0-blue)
+![Python](https://img.shields.io/badge/Python-3.12+-green)
+![License](https://img.shields.io/badge/license-MIT-orange)
 
-## 🏆 Race & Set-Bonus Engine
-- 🥇 **Chases set-bonuses (Epithets)** — new *Chase Achievable Set-Bonuses* option: the Smart Race Solver now schedules races to **complete sets** — Triple Crowns, distance/regional/surface sets and more — for their large random-stat rewards that were previously left on the table. This is the headline stat lever.
-- ♻️ **Live Schedule Re-Planning toggle** — a proper switch in Smart Race Solver settings: ON (default) re-routes the remaining schedule after a loss; OFF locks in the plan solved at career start.
-- 🚫 **No more over-racing** — a runtime cap now honors your *max races in a row* setting. Careers that ran 46–48 races with 8–10 in a row now run ~42 with streaks capped — recovering total stats and win rate.
-- 🎯 **More marquee G1s run** — fixed race matching for marquee races (Japan Cup, Arima Kinen, Takarazuka Kinen, Tenno Sho…) that the game offers under several internal IDs. They were being skipped; now they run.
-- ⚖️ **Outcome Risk has its own section** in Racing settings, with a toggle — you decide whether the solver weighs race-loss risk.
+---
 
-## Stat Focus
+# About
 
-__New Stat Focus control: Balanced spreads stats evenly, while Capped concentrates your priority stats to push their ceilings. Set it per preset.__
+Icarus is a next-generation automation platform for **Umamusume: Pretty Derby**, designed to maximize career performance through intelligent decision making rather than simple scripted automation.
 
-## Speed
+Unlike traditional bots, Icarus evaluates an entire career as one optimization problem, dynamically balancing:
 
-__The old Tempt-Fate on/off toggle is replaced by a Speed dropdown — Safe / Fast / Faster / Ludicrous. The levels now genuinely differ: each scales the bot's pacing (Safe keeps human-like timing; Ludicrous removes it). Previously Fast, Faster and Ludicrous all ran at the same real speed — fixed.__
+- Training
+- Racing
+- Energy
+- Shop economy
+- Event outcomes
+- Skill acquisition
+- Set bonuses (Epithets)
+- Long-term career planning
 
-## Shop & Items
-- Smarter shop spending — race hammers are conserved and saved for the three finale climax races (where they pay off most); training megaphones & anklets are bought for your priority stats; energy, cures and snacks are bought by need; and a finale coin reserve keeps funds on hand for the climax.,
-- Item icons in Decision Reasoning — every shop item the bot buys or uses now shows its in-game icon beside its name.
+The result is significantly higher consistency, improved stat growth, smarter race scheduling, and reduced manual configuration.
 
-## Event Choices
-The event auto-selector got a major upgrade:
+---
 
-- Massively expanded coverage — when there's no observed data for an event, it now falls back to a 3,600+ event effect database and scores the real choice effects, instead of a blind "pick the second option" guess.,
-- Stat-cap aware — no longer over-values points dumped into an already-maxed stat.,
-- Turn-aware energy — values energy more during summer camp and the finale stretch, where it matters most.,
-- More accurate matching — tightened event lookup so it won't mis-score an unrelated event that merely shared a few trailing ID digits.
+# Highlights
 
-## Decision Reasoning
+## Trackblazer Engine
 
-__Clearer, more accurate per-turn explanations — including correct item labels (training megaphones shown as training boosts, race hammers as race buffs) so the panel matches what actually happened. The live on-screen race list is now captured for diagnostics too.__
+The flagship decision engine.
 
-## Fixes & Quality of Life
+Instead of evaluating one turn at a time, Trackblazer plans the entire career from start to finish.
 
-- Career History sparks are correct per career — each finished career now shows the sparks it actually earned, instead of repeating the same inherited parent sparks every time.
-- Running style is set correctly (e.g. Oguri Cap runs Pace, not Late) — fixed the in-race running-style change to send the right data at the right step.
-- Skill-config UI fixes and a fixed dashboard console/network error.
+Features include:
+
+- Whole-career race optimization
+- Dynamic route replanning
+- Smart training decisions
+- Intelligent energy management
+- Risk-aware racing
+- Scenario-aware optimization
+
+---
+
+## Smart Race Solver
+
+The race planner now:
+
+- Pursues achievable Set Bonuses (Epithets)
+- Optimizes fan gain
+- Maximizes stat rewards
+- Avoids unnecessary races
+- Automatically replans after losses
+- Supports exact optimization with heuristic fallback
+
+---
+
+## Intelligent Shop AI
+
+Purchases are no longer static.
+
+Icarus automatically evaluates:
+
+- Current economy
+- Priority stats
+- Upcoming races
+- Finale preparation
+- Energy requirements
+
+Items are purchased only when they provide meaningful value.
+
+---
+
+## Event Intelligence
+
+Icarus includes one of the largest event databases available.
+
+Features:
+
+- 3,600+ event outcomes
+- Intelligent fallback scoring
+- Stat-cap awareness
+- Context-aware energy valuation
+- Improved event matching
+
+---
+
+## Dashboard
+
+Live dashboard includes:
+
+- Career statistics
+- Decision reasoning
+- Race schedule
+- Item usage
+- Shop purchases
+- Skill planning
+- Real-time diagnostics
+
+---
+
+# Features
+
+- Intelligent career optimization
+- Trackblazer Solver
+- Smart Race Solver
+- Dynamic route replanning
+- Adaptive training logic
+- Intelligent shop purchasing
+- Event database integration
+- Skill optimization
+- Character profiles
+- Recommended stat builds
+- Race intelligence
+- Career analytics
+- Detailed decision explanations
+- Modern web dashboard
+
+---
+
+# Installation
+
+Clone the repository:
+
+```bash
+git clone https://github.com/EdenUmaBots/Umamusume-Icarus.git
+```
+
+Install dependencies:
+
+```bash
+pip install -r requirements.txt
+```
+
+Run:
+
+```bash
+python main.py
+```
+
+---
+
+# Requirements
+
+- Python 3.12+
+- Android Emulator / Physical Android Device
+- ADB
+- Windows 10 / 11
+
+---
+
+# Releases
+
+Current Release:
+
+**Icarus 3.0**
+
+See the Releases page for previous versions and release notes.
+
+---
+
+# Roadmap
+
+Planned improvements include:
+
+- Better AI planning
+- Additional scenario support
+- Improved race prediction
+- Expanded event database
+- Enhanced dashboard
+- Improved character modeling
+- More optimization tools
+
+---
+
+# Disclaimer
+
+This project is intended for educational and research purposes.
+
+Use at your own discretion.
+
+---
+
+# Credits
+
+Created by **EdenUmaBots**
+
+Special thanks to everyone who contributed feedback, testing, and data collection.
+
+---
+
+# License
+
+MIT License
 
 -------------
 
