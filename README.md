@@ -187,8 +187,6 @@ Use at your own discretion.
 
 # Credits
 
-Created by **EdenUmaBots**
-
 Special thanks to everyone who contributed feedback, testing, and data collection.
 
 ---
