@@ -1,10 +1,10 @@
-# Code Analysis Follow-Up for SweepyModv5.4
+# Code Analysis Follow-Up for Pre Icarus v5.4
 
 ## Scope
 
 This follow-up implements the remaining actionable findings recorded in `docs/code-analysis-v5.3.md`. The goal was to close robustness gaps without changing user-facing behavior beyond safer recovery and clearer diagnostics.
 
-## Findings Fixed in SweepyModv5.4
+## Findings Fixed in Pre Icarus v5.4
 
 ### 1. `_drain_events()` could return while events were still unresolved
 
@@ -42,7 +42,7 @@ This follow-up implements the remaining actionable findings recorded in `docs/co
 ### Club tracker unreachable code
 
 - **File:** `public/app.js`, `renderClubTracker()`
-- **Result:** No unreachable guest-parent refresh statement was present in the packaged `SweepyModv5.3` source. No code change was needed.
+- **Result:** No unreachable guest-parent refresh statement was present in the packaged `Pre Icarus v5.3` source. No code change was needed.
 
 ## Tests Added
 

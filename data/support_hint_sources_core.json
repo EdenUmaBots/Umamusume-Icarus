@@ -8639,6 +8639,118 @@
       "hint_level": 5
     },
     {
+      "id": 1798,
+      "hint_id": 9081073,
+      "support_card_id": 10081,
+      "support_name": "Tsurumaru Tsuyoshi",
+      "support_rarity": 1,
+      "support_command_id": 103,
+      "support_command_label": "power",
+      "hint_group": 1,
+      "hint_gain_type": 0,
+      "skill_id": 200302,
+      "skill_name": "Long Shot ○",
+      "hint_level": 1
+    },
+    {
+      "id": 1799,
+      "hint_id": 9081073,
+      "support_card_id": 10081,
+      "support_name": "Tsurumaru Tsuyoshi",
+      "support_rarity": 1,
+      "support_command_id": 103,
+      "support_command_label": "power",
+      "hint_group": 2,
+      "hint_gain_type": 0,
+      "skill_id": 200722,
+      "skill_name": "Up-Tempo",
+      "hint_level": 1
+    },
+    {
+      "id": 1800,
+      "hint_id": 9081073,
+      "support_card_id": 10081,
+      "support_name": "Tsurumaru Tsuyoshi",
+      "support_rarity": 1,
+      "support_command_id": 103,
+      "support_command_label": "power",
+      "hint_group": 3,
+      "hint_gain_type": 0,
+      "skill_id": 202032,
+      "skill_name": "Risky Business",
+      "hint_level": 1
+    },
+    {
+      "id": 1801,
+      "hint_id": 9081073,
+      "support_card_id": 10081,
+      "support_name": "Tsurumaru Tsuyoshi",
+      "support_rarity": 1,
+      "support_command_id": 103,
+      "support_command_label": "power",
+      "hint_group": 4,
+      "hint_gain_type": 0,
+      "skill_id": 202092,
+      "skill_name": "Fighting Spirit",
+      "hint_level": 1
+    },
+    {
+      "id": 1802,
+      "hint_id": 9081073,
+      "support_card_id": 10081,
+      "support_name": "Tsurumaru Tsuyoshi",
+      "support_rarity": 1,
+      "support_command_id": 103,
+      "support_command_label": "power",
+      "hint_group": 5,
+      "hint_gain_type": 0,
+      "skill_id": 202152,
+      "skill_name": "Full Throttle",
+      "hint_level": 1
+    },
+    {
+      "id": 1803,
+      "hint_id": 9081073,
+      "support_card_id": 10081,
+      "support_name": "Tsurumaru Tsuyoshi",
+      "support_rarity": 1,
+      "support_command_id": 103,
+      "support_command_label": "power",
+      "hint_group": 6,
+      "hint_gain_type": 1,
+      "skill_id": 1,
+      "skill_name": "1",
+      "hint_level": 1
+    },
+    {
+      "id": 1804,
+      "hint_id": 9081073,
+      "support_card_id": 10081,
+      "support_name": "Tsurumaru Tsuyoshi",
+      "support_rarity": 1,
+      "support_command_id": 103,
+      "support_command_label": "power",
+      "hint_group": 6,
+      "hint_gain_type": 1,
+      "skill_id": 3,
+      "skill_name": "3",
+      "hint_level": 1
+    },
+    {
+      "id": 1805,
+      "hint_id": 9081073,
+      "support_card_id": 10081,
+      "support_name": "Tsurumaru Tsuyoshi",
+      "support_rarity": 1,
+      "support_command_id": 103,
+      "support_command_label": "power",
+      "hint_group": 6,
+      "hint_gain_type": 1,
+      "skill_id": 4,
+      "skill_name": "4",
+      "hint_level": 6
+    },
+    {
       "id": 68,
       "hint_id": 9081005,
       "support_card_id": 20001,
@@ -12123,6 +12235,104 @@
       "skill_id": 3,
       "skill_name": "3",
       "hint_level": 6
+    },
+    {
+      "id": 1806,
+      "hint_id": 9081014,
+      "support_card_id": 20033,
+      "support_name": "El Condor Pasa",
+      "support_rarity": 2,
+      "support_command_id": 101,
+      "support_command_label": "speed",
+      "hint_group": 1,
+      "hint_gain_type": 0,
+      "skill_id": 200132,
+      "skill_name": "Standard Distance ○",
+      "hint_level": 1
+    },
+    {
+      "id": 1807,
+      "hint_id": 9081014,
+      "support_card_id": 20033,
+      "support_name": "El Condor Pasa",
+      "support_rarity": 2,
+      "support_command_id": 101,
+      "support_command_label": "speed",
+      "hint_group": 2,
+      "hint_gain_type": 0,
+      "skill_id": 200582,
+      "skill_name": "Prepared to Pass",
+      "hint_level": 1
+    },
+    {
+      "id": 1808,
+      "hint_id": 9081014,
+      "support_card_id": 20033,
+      "support_name": "El Condor Pasa",
+      "support_rarity": 2,
+      "support_command_id": 101,
+      "support_command_label": "speed",
+      "hint_group": 3,
+      "hint_gain_type": 0,
+      "skill_id": 200722,
+      "skill_name": "Up-Tempo",
+      "hint_level": 1
+    },
+    {
+      "id": 1809,
+      "hint_id": 9081014,
+      "support_card_id": 20033,
+      "support_name": "El Condor Pasa",
+      "support_rarity": 2,
+      "support_command_id": 101,
+      "support_command_label": "speed",
+      "hint_group": 4,
+      "hint_gain_type": 0,
+      "skill_id": 201312,
+      "skill_name": "Pace Chaser Straightaways ○",
+      "hint_level": 1
+    },
+    {
+      "id": 1810,
+      "hint_id": 9081014,
+      "support_card_id": 20033,
+      "support_name": "El Condor Pasa",
+      "support_rarity": 2,
+      "support_command_id": 101,
+      "support_command_label": "speed",
+      "hint_group": 5,
+      "hint_gain_type": 0,
+      "skill_id": 201902,
+      "skill_name": "Head-On",
+      "hint_level": 1
+    },
+    {
+      "id": 1811,
+      "hint_id": 9081014,
+      "support_card_id": 20033,
+      "support_name": "El Condor Pasa",
+      "support_rarity": 2,
+      "support_command_id": 101,
+      "support_command_label": "speed",
+      "hint_group": 6,
+      "hint_gain_type": 1,
+      "skill_id": 1,
+      "skill_name": "1",
+      "hint_level": 6
+    },
+    {
+      "id": 1812,
+      "hint_id": 9081014,
+      "support_card_id": 20033,
+      "support_name": "El Condor Pasa",
+      "support_rarity": 2,
+      "support_command_id": 101,
+      "support_command_label": "speed",
+      "hint_group": 6,
+      "hint_gain_type": 1,
+      "skill_id": 3,
+      "skill_name": "3",
+      "hint_level": 2
     },
     {
       "id": 1120,
@@ -24389,6 +24599,132 @@
       "hint_level": 2
     },
     {
+      "id": 1789,
+      "hint_id": 9081001,
+      "support_card_id": 30105,
+      "support_name": "Special Week",
+      "support_rarity": 3,
+      "support_command_id": 103,
+      "support_command_label": "power",
+      "hint_group": 1,
+      "hint_gain_type": 0,
+      "skill_id": 200012,
+      "skill_name": "Right-Handed ○",
+      "hint_level": 1
+    },
+    {
+      "id": 1790,
+      "hint_id": 9081001,
+      "support_card_id": 30105,
+      "support_name": "Special Week",
+      "support_rarity": 3,
+      "support_command_id": 103,
+      "support_command_label": "power",
+      "hint_group": 2,
+      "hint_gain_type": 0,
+      "skill_id": 200042,
+      "skill_name": "Nakayama Racecourse ○",
+      "hint_level": 1
+    },
+    {
+      "id": 1791,
+      "hint_id": 9081001,
+      "support_card_id": 30105,
+      "support_name": "Special Week",
+      "support_rarity": 3,
+      "support_command_id": 103,
+      "support_command_label": "power",
+      "hint_group": 3,
+      "hint_gain_type": 0,
+      "skill_id": 200142,
+      "skill_name": "Non-Standard Distance ○",
+      "hint_level": 1
+    },
+    {
+      "id": 1792,
+      "hint_id": 9081001,
+      "support_card_id": 30105,
+      "support_name": "Special Week",
+      "support_rarity": 3,
+      "support_command_id": 103,
+      "support_command_label": "power",
+      "hint_group": 4,
+      "hint_gain_type": 0,
+      "skill_id": 200202,
+      "skill_name": "Winter Runner ○",
+      "hint_level": 1
+    },
+    {
+      "id": 1793,
+      "hint_id": 9081001,
+      "support_card_id": 30105,
+      "support_name": "Special Week",
+      "support_rarity": 3,
+      "support_command_id": 103,
+      "support_command_label": "power",
+      "hint_group": 5,
+      "hint_gain_type": 0,
+      "skill_id": 201172,
+      "skill_name": "Long Straightaways ○",
+      "hint_level": 1
+    },
+    {
+      "id": 1794,
+      "hint_id": 9081001,
+      "support_card_id": 30105,
+      "support_name": "Special Week",
+      "support_rarity": 3,
+      "support_command_id": 103,
+      "support_command_label": "power",
+      "hint_group": 6,
+      "hint_gain_type": 0,
+      "skill_id": 201212,
+      "skill_name": "Pressure",
+      "hint_level": 1
+    },
+    {
+      "id": 1795,
+      "hint_id": 9081001,
+      "support_card_id": 30105,
+      "support_name": "Special Week",
+      "support_rarity": 3,
+      "support_command_id": 103,
+      "support_command_label": "power",
+      "hint_group": 7,
+      "hint_gain_type": 1,
+      "skill_id": 1,
+      "skill_name": "1",
+      "hint_level": 1
+    },
+    {
+      "id": 1796,
+      "hint_id": 9081001,
+      "support_card_id": 30105,
+      "support_name": "Special Week",
+      "support_rarity": 3,
+      "support_command_id": 103,
+      "support_command_label": "power",
+      "hint_group": 7,
+      "hint_gain_type": 1,
+      "skill_id": 3,
+      "skill_name": "3",
+      "hint_level": 1
+    },
+    {
+      "id": 1797,
+      "hint_id": 9081001,
+      "support_card_id": 30105,
+      "support_name": "Special Week",
+      "support_rarity": 3,
+      "support_command_id": 103,
+      "support_command_label": "power",
+      "hint_group": 7,
+      "hint_gain_type": 1,
+      "skill_id": 4,
+      "skill_name": "4",
+      "hint_level": 6
+    },
+    {
       "id": 1781,
       "hint_id": 9081018,
       "support_card_id": 30106,
@@ -33288,6 +33624,120 @@
         "hint_level": 5
       }
     ],
+    "10081": [
+      {
+        "id": 1798,
+        "hint_id": 9081073,
+        "support_card_id": 10081,
+        "support_name": "Tsurumaru Tsuyoshi",
+        "support_rarity": 1,
+        "support_command_id": 103,
+        "support_command_label": "power",
+        "hint_group": 1,
+        "hint_gain_type": 0,
+        "skill_id": 200302,
+        "skill_name": "Long Shot ○",
+        "hint_level": 1
+      },
+      {
+        "id": 1799,
+        "hint_id": 9081073,
+        "support_card_id": 10081,
+        "support_name": "Tsurumaru Tsuyoshi",
+        "support_rarity": 1,
+        "support_command_id": 103,
+        "support_command_label": "power",
+        "hint_group": 2,
+        "hint_gain_type": 0,
+        "skill_id": 200722,
+        "skill_name": "Up-Tempo",
+        "hint_level": 1
+      },
+      {
+        "id": 1800,
+        "hint_id": 9081073,
+        "support_card_id": 10081,
+        "support_name": "Tsurumaru Tsuyoshi",
+        "support_rarity": 1,
+        "support_command_id": 103,
+        "support_command_label": "power",
+        "hint_group": 3,
+        "hint_gain_type": 0,
+        "skill_id": 202032,
+        "skill_name": "Risky Business",
+        "hint_level": 1
+      },
+      {
+        "id": 1801,
+        "hint_id": 9081073,
+        "support_card_id": 10081,
+        "support_name": "Tsurumaru Tsuyoshi",
+        "support_rarity": 1,
+        "support_command_id": 103,
+        "support_command_label": "power",
+        "hint_group": 4,
+        "hint_gain_type": 0,
+        "skill_id": 202092,
+        "skill_name": "Fighting Spirit",
+        "hint_level": 1
+      },
+      {
+        "id": 1802,
+        "hint_id": 9081073,
+        "support_card_id": 10081,
+        "support_name": "Tsurumaru Tsuyoshi",
+        "support_rarity": 1,
+        "support_command_id": 103,
+        "support_command_label": "power",
+        "hint_group": 5,
+        "hint_gain_type": 0,
+        "skill_id": 202152,
+        "skill_name": "Full Throttle",
+        "hint_level": 1
+      },
+      {
+        "id": 1803,
+        "hint_id": 9081073,
+        "support_card_id": 10081,
+        "support_name": "Tsurumaru Tsuyoshi",
+        "support_rarity": 1,
+        "support_command_id": 103,
+        "support_command_label": "power",
+        "hint_group": 6,
+        "hint_gain_type": 1,
+        "skill_id": 1,
+        "skill_name": "1",
+        "hint_level": 1
+      },
+      {
+        "id": 1804,
+        "hint_id": 9081073,
+        "support_card_id": 10081,
+        "support_name": "Tsurumaru Tsuyoshi",
+        "support_rarity": 1,
+        "support_command_id": 103,
+        "support_command_label": "power",
+        "hint_group": 6,
+        "hint_gain_type": 1,
+        "skill_id": 3,
+        "skill_name": "3",
+        "hint_level": 1
+      },
+      {
+        "id": 1805,
+        "hint_id": 9081073,
+        "support_card_id": 10081,
+        "support_name": "Tsurumaru Tsuyoshi",
+        "support_rarity": 1,
+        "support_command_id": 103,
+        "support_command_label": "power",
+        "hint_group": 6,
+        "hint_gain_type": 1,
+        "skill_id": 4,
+        "skill_name": "4",
+        "hint_level": 6
+      }
+    ],
     "20001": [
       {
         "id": 68,
@@ -36834,6 +37284,106 @@
         "skill_id": 3,
         "skill_name": "3",
         "hint_level": 6
+      }
+    ],
+    "20033": [
+      {
+        "id": 1806,
+        "hint_id": 9081014,
+        "support_card_id": 20033,
+        "support_name": "El Condor Pasa",
+        "support_rarity": 2,
+        "support_command_id": 101,
+        "support_command_label": "speed",
+        "hint_group": 1,
+        "hint_gain_type": 0,
+        "skill_id": 200132,
+        "skill_name": "Standard Distance ○",
+        "hint_level": 1
+      },
+      {
+        "id": 1807,
+        "hint_id": 9081014,
+        "support_card_id": 20033,
+        "support_name": "El Condor Pasa",
+        "support_rarity": 2,
+        "support_command_id": 101,
+        "support_command_label": "speed",
+        "hint_group": 2,
+        "hint_gain_type": 0,
+        "skill_id": 200582,
+        "skill_name": "Prepared to Pass",
+        "hint_level": 1
+      },
+      {
+        "id": 1808,
+        "hint_id": 9081014,
+        "support_card_id": 20033,
+        "support_name": "El Condor Pasa",
+        "support_rarity": 2,
+        "support_command_id": 101,
+        "support_command_label": "speed",
+        "hint_group": 3,
+        "hint_gain_type": 0,
+        "skill_id": 200722,
+        "skill_name": "Up-Tempo",
+        "hint_level": 1
+      },
+      {
+        "id": 1809,
+        "hint_id": 9081014,
+        "support_card_id": 20033,
+        "support_name": "El Condor Pasa",
+        "support_rarity": 2,
+        "support_command_id": 101,
+        "support_command_label": "speed",
+        "hint_group": 4,
+        "hint_gain_type": 0,
+        "skill_id": 201312,
+        "skill_name": "Pace Chaser Straightaways ○",
+        "hint_level": 1
+      },
+      {
+        "id": 1810,
+        "hint_id": 9081014,
+        "support_card_id": 20033,
+        "support_name": "El Condor Pasa",
+        "support_rarity": 2,
+        "support_command_id": 101,
+        "support_command_label": "speed",
+        "hint_group": 5,
+        "hint_gain_type": 0,
+        "skill_id": 201902,
+        "skill_name": "Head-On",
+        "hint_level": 1
+      },
+      {
+        "id": 1811,
+        "hint_id": 9081014,
+        "support_card_id": 20033,
+        "support_name": "El Condor Pasa",
+        "support_rarity": 2,
+        "support_command_id": 101,
+        "support_command_label": "speed",
+        "hint_group": 6,
+        "hint_gain_type": 1,
+        "skill_id": 1,
+        "skill_name": "1",
+        "hint_level": 6
+      },
+      {
+        "id": 1812,
+        "hint_id": 9081014,
+        "support_card_id": 20033,
+        "support_name": "El Condor Pasa",
+        "support_rarity": 2,
+        "support_command_id": 101,
+        "support_command_label": "speed",
+        "hint_group": 6,
+        "hint_gain_type": 1,
+        "skill_id": 3,
+        "skill_name": "3",
+        "hint_level": 2
       }
     ],
     "20034": [
@@ -49306,6 +49856,134 @@
         "hint_level": 2
       }
     ],
+    "30105": [
+      {
+        "id": 1789,
+        "hint_id": 9081001,
+        "support_card_id": 30105,
+        "support_name": "Special Week",
+        "support_rarity": 3,
+        "support_command_id": 103,
+        "support_command_label": "power",
+        "hint_group": 1,
+        "hint_gain_type": 0,
+        "skill_id": 200012,
+        "skill_name": "Right-Handed ○",
+        "hint_level": 1
+      },
+      {
+        "id": 1790,
+        "hint_id": 9081001,
+        "support_card_id": 30105,
+        "support_name": "Special Week",
+        "support_rarity": 3,
+        "support_command_id": 103,
+        "support_command_label": "power",
+        "hint_group": 2,
+        "hint_gain_type": 0,
+        "skill_id": 200042,
+        "skill_name": "Nakayama Racecourse ○",
+        "hint_level": 1
+      },
+      {
+        "id": 1791,
+        "hint_id": 9081001,
+        "support_card_id": 30105,
+        "support_name": "Special Week",
+        "support_rarity": 3,
+        "support_command_id": 103,
+        "support_command_label": "power",
+        "hint_group": 3,
+        "hint_gain_type": 0,
+        "skill_id": 200142,
+        "skill_name": "Non-Standard Distance ○",
+        "hint_level": 1
+      },
+      {
+        "id": 1792,
+        "hint_id": 9081001,
+        "support_card_id": 30105,
+        "support_name": "Special Week",
+        "support_rarity": 3,
+        "support_command_id": 103,
+        "support_command_label": "power",
+        "hint_group": 4,
+        "hint_gain_type": 0,
+        "skill_id": 200202,
+        "skill_name": "Winter Runner ○",
+        "hint_level": 1
+      },
+      {
+        "id": 1793,
+        "hint_id": 9081001,
+        "support_card_id": 30105,
+        "support_name": "Special Week",
+        "support_rarity": 3,
+        "support_command_id": 103,
+        "support_command_label": "power",
+        "hint_group": 5,
+        "hint_gain_type": 0,
+        "skill_id": 201172,
+        "skill_name": "Long Straightaways ○",
+        "hint_level": 1
+      },
+      {
+        "id": 1794,
+        "hint_id": 9081001,
+        "support_card_id": 30105,
+        "support_name": "Special Week",
+        "support_rarity": 3,
+        "support_command_id": 103,
+        "support_command_label": "power",
+        "hint_group": 6,
+        "hint_gain_type": 0,
+        "skill_id": 201212,
+        "skill_name": "Pressure",
+        "hint_level": 1
+      },
+      {
+        "id": 1795,
+        "hint_id": 9081001,
+        "support_card_id": 30105,
+        "support_name": "Special Week",
+        "support_rarity": 3,
+        "support_command_id": 103,
+        "support_command_label": "power",
+        "hint_group": 7,
+        "hint_gain_type": 1,
+        "skill_id": 1,
+        "skill_name": "1",
+        "hint_level": 1
+      },
+      {
+        "id": 1796,
+        "hint_id": 9081001,
+        "support_card_id": 30105,
+        "support_name": "Special Week",
+        "support_rarity": 3,
+        "support_command_id": 103,
+        "support_command_label": "power",
+        "hint_group": 7,
+        "hint_gain_type": 1,
+        "skill_id": 3,
+        "skill_name": "3",
+        "hint_level": 1
+      },
+      {
+        "id": 1797,
+        "hint_id": 9081001,
+        "support_card_id": 30105,
+        "support_name": "Special Week",
+        "support_rarity": 3,
+        "support_command_id": 103,
+        "support_command_label": "power",
+        "hint_group": 7,
+        "hint_gain_type": 1,
+        "skill_id": 4,
+        "skill_name": "4",
+        "hint_level": 6
+      }
+    ],
     "30106": [
       {
         "id": 1781,
@@ -50023,6 +50701,27 @@
         "support_name": "El Condor Pasa",
         "support_rarity": 3,
         "hint_level": 1,
+        "hint_gain_type": 1
+      },
+      {
+        "support_card_id": 30105,
+        "support_name": "Special Week",
+        "support_rarity": 3,
+        "hint_level": 1,
+        "hint_gain_type": 1
+      },
+      {
+        "support_card_id": 10081,
+        "support_name": "Tsurumaru Tsuyoshi",
+        "support_rarity": 1,
+        "hint_level": 1,
+        "hint_gain_type": 1
+      },
+      {
+        "support_card_id": 20033,
+        "support_name": "El Condor Pasa",
+        "support_rarity": 2,
+        "hint_level": 6,
         "hint_gain_type": 1
       }
     ],
@@ -51519,6 +52218,27 @@
         "support_rarity": 3,
         "hint_level": 6,
         "hint_gain_type": 1
+      },
+      {
+        "support_card_id": 30105,
+        "support_name": "Special Week",
+        "support_rarity": 3,
+        "hint_level": 1,
+        "hint_gain_type": 1
+      },
+      {
+        "support_card_id": 10081,
+        "support_name": "Tsurumaru Tsuyoshi",
+        "support_rarity": 1,
+        "hint_level": 1,
+        "hint_gain_type": 1
+      },
+      {
+        "support_card_id": 20033,
+        "support_name": "El Condor Pasa",
+        "support_rarity": 2,
+        "hint_level": 2,
+        "hint_gain_type": 1
       }
     ],
     "4": [
@@ -52066,6 +52786,20 @@
         "support_name": "Zenno Rob Roy",
         "support_rarity": 3,
         "hint_level": 2,
+        "hint_gain_type": 1
+      },
+      {
+        "support_card_id": 30105,
+        "support_name": "Special Week",
+        "support_rarity": 3,
+        "hint_level": 6,
+        "hint_gain_type": 1
+      },
+      {
+        "support_card_id": 10081,
+        "support_name": "Tsurumaru Tsuyoshi",
+        "support_rarity": 1,
+        "hint_level": 6,
         "hint_gain_type": 1
       }
     ],
@@ -52689,6 +53423,13 @@
         "support_rarity": 1,
         "hint_level": 1,
         "hint_gain_type": 0
+      },
+      {
+        "support_card_id": 30105,
+        "support_name": "Special Week",
+        "support_rarity": 3,
+        "hint_level": 1,
+        "hint_gain_type": 0
       }
     ],
     "200022": [
@@ -52797,6 +53538,13 @@
       {
         "support_card_id": 30070,
         "support_name": "Yukino Bijin",
+        "support_rarity": 3,
+        "hint_level": 1,
+        "hint_gain_type": 0
+      },
+      {
+        "support_card_id": 30105,
+        "support_name": "Special Week",
         "support_rarity": 3,
         "hint_level": 1,
         "hint_gain_type": 0
@@ -53071,6 +53819,13 @@
         "support_rarity": 3,
         "hint_level": 1,
         "hint_gain_type": 0
+      },
+      {
+        "support_card_id": 20033,
+        "support_name": "El Condor Pasa",
+        "support_rarity": 2,
+        "hint_level": 1,
+        "hint_gain_type": 0
       }
     ],
     "200142": [
@@ -53127,6 +53882,13 @@
         "support_card_id": 10077,
         "support_name": "Narita Top Road",
         "support_rarity": 1,
+        "hint_level": 1,
+        "hint_gain_type": 0
+      },
+      {
+        "support_card_id": 30105,
+        "support_name": "Special Week",
+        "support_rarity": 3,
         "hint_level": 1,
         "hint_gain_type": 0
       }
@@ -53566,6 +54328,13 @@
         "support_card_id": 10068,
         "support_name": "Inari One",
         "support_rarity": 1,
+        "hint_level": 1,
+        "hint_gain_type": 0
+      },
+      {
+        "support_card_id": 30105,
+        "support_name": "Special Week",
+        "support_rarity": 3,
         "hint_level": 1,
         "hint_gain_type": 0
       }
@@ -54237,6 +55006,13 @@
         "support_card_id": 20049,
         "support_name": "Gold City",
         "support_rarity": 2,
+        "hint_level": 1,
+        "hint_gain_type": 0
+      },
+      {
+        "support_card_id": 10081,
+        "support_name": "Tsurumaru Tsuyoshi",
+        "support_rarity": 1,
         "hint_level": 1,
         "hint_gain_type": 0
       }
@@ -56003,6 +56779,13 @@
         "support_rarity": 3,
         "hint_level": 1,
         "hint_gain_type": 0
+      },
+      {
+        "support_card_id": 20033,
+        "support_name": "El Condor Pasa",
+        "support_rarity": 2,
+        "hint_level": 1,
+        "hint_gain_type": 0
       }
     ],
     "200592": [
@@ -57002,6 +57785,20 @@
         "support_card_id": 30104,
         "support_name": "Zenno Rob Roy",
         "support_rarity": 3,
+        "hint_level": 1,
+        "hint_gain_type": 0
+      },
+      {
+        "support_card_id": 10081,
+        "support_name": "Tsurumaru Tsuyoshi",
+        "support_rarity": 1,
+        "hint_level": 1,
+        "hint_gain_type": 0
+      },
+      {
+        "support_card_id": 20033,
+        "support_name": "El Condor Pasa",
+        "support_rarity": 2,
         "hint_level": 1,
         "hint_gain_type": 0
       }
@@ -59355,6 +60152,13 @@
         "support_rarity": 1,
         "hint_level": 1,
         "hint_gain_type": 0
+      },
+      {
+        "support_card_id": 30105,
+        "support_name": "Special Week",
+        "support_rarity": 3,
+        "hint_level": 1,
+        "hint_gain_type": 0
       }
     ],
     "201182": [
@@ -59486,6 +60290,13 @@
       {
         "support_card_id": 30088,
         "support_name": "Satono Diamond",
+        "support_rarity": 3,
+        "hint_level": 1,
+        "hint_gain_type": 0
+      },
+      {
+        "support_card_id": 30105,
+        "support_name": "Special Week",
         "support_rarity": 3,
         "hint_level": 1,
         "hint_gain_type": 0
@@ -59871,6 +60682,13 @@
         "support_card_id": 30102,
         "support_name": "El Condor Pasa",
         "support_rarity": 3,
+        "hint_level": 1,
+        "hint_gain_type": 0
+      },
+      {
+        "support_card_id": 20033,
+        "support_name": "El Condor Pasa",
+        "support_rarity": 2,
         "hint_level": 1,
         "hint_gain_type": 0
       }
@@ -61962,6 +62780,13 @@
         "support_rarity": 3,
         "hint_level": 1,
         "hint_gain_type": 0
+      },
+      {
+        "support_card_id": 20033,
+        "support_name": "El Condor Pasa",
+        "support_rarity": 2,
+        "hint_level": 1,
+        "hint_gain_type": 0
       }
     ],
     "202002": [
@@ -61989,6 +62814,24 @@
         "hint_gain_type": 0
       }
     ],
+    "202032": [
+      {
+        "support_card_id": 10081,
+        "support_name": "Tsurumaru Tsuyoshi",
+        "support_rarity": 1,
+        "hint_level": 1,
+        "hint_gain_type": 0
+      }
+    ],
+    "202092": [
+      {
+        "support_card_id": 10081,
+        "support_name": "Tsurumaru Tsuyoshi",
+        "support_rarity": 1,
+        "hint_level": 1,
+        "hint_gain_type": 0
+      }
+    ],
     "202112": [
       {
         "support_card_id": 20048,
@@ -62010,6 +62853,15 @@
         "support_card_id": 30106,
         "support_name": "Air Groove",
         "support_rarity": 3,
+        "hint_level": 1,
+        "hint_gain_type": 0
+      }
+    ],
+    "202152": [
+      {
+        "support_card_id": 10081,
+        "support_name": "Tsurumaru Tsuyoshi",
+        "support_rarity": 1,
         "hint_level": 1,
         "hint_gain_type": 0
       }

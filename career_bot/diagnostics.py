@@ -1,4 +1,4 @@
-"""Runtime diagnostics helpers for Eden Bot.
+"""Runtime diagnostics helpers for Icarus.
 
 These helpers intentionally read only bot-owned files under uma_runtime. They do
 not inspect game memory, protected traffic, or client files.

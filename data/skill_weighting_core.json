@@ -2469,6 +2469,30 @@
     "is_general_skill": 0
   },
   {
+    "skill_id": 120011,
+    "name": "Dreams Donned with Pride!",
+    "rarity": 5,
+    "group_id": 12001,
+    "group_rate": 1,
+    "grade_value": 340,
+    "cost": 0,
+    "skill_category": 5,
+    "tags": [
+      401
+    ],
+    "icon_id": 20013,
+    "activate_lot": 0,
+    "ability_types": [
+      27
+    ],
+    "conditions": [
+      "phase>=2&is_finalcorner==1&corner!=0&is_activate_any_skill==1",
+      "phase>=2&is_finalcorner==1&corner!=0&is_activate_any_skill==1"
+    ],
+    "disable_singlemode": 1,
+    "is_general_skill": 0
+  },
+  {
     "skill_id": 200011,
     "name": "Right-Handed ◎",
     "rarity": 1,
@@ -8012,6 +8036,30 @@
     "is_general_skill": 1
   },
   {
+    "skill_id": 201113,
+    "name": "Refraction Arc",
+    "rarity": 2,
+    "group_id": 20111,
+    "group_rate": 3,
+    "grade_value": 508,
+    "cost": 150,
+    "skill_category": 4,
+    "tags": [
+      203,
+      401
+    ],
+    "icon_id": 20012,
+    "activate_lot": 1,
+    "ability_types": [
+      27
+    ],
+    "conditions": [
+      "distance_type==3&all_corner_random==1"
+    ],
+    "disable_singlemode": 1,
+    "is_general_skill": 1
+  },
+  {
     "skill_id": 201122,
     "name": "Hawkeye",
     "rarity": 1,
@@ -12229,6 +12277,52 @@
     "is_general_skill": 0
   },
   {
+    "skill_id": 300131,
+    "name": "Ruler of Japan",
+    "rarity": 5,
+    "group_id": 30013,
+    "group_rate": 1,
+    "grade_value": 340,
+    "cost": 0,
+    "skill_category": 5,
+    "tags": [
+      401
+    ],
+    "icon_id": 20013,
+    "activate_lot": 0,
+    "ability_types": [
+      27
+    ],
+    "conditions": [
+      "remain_distance>=350&remain_distance<=400"
+    ],
+    "disable_singlemode": 1,
+    "is_general_skill": 0
+  },
+  {
+    "skill_id": 300141,
+    "name": "Indomitable",
+    "rarity": 5,
+    "group_id": 30014,
+    "group_rate": 1,
+    "grade_value": 340,
+    "cost": 0,
+    "skill_category": 5,
+    "tags": [
+      401
+    ],
+    "icon_id": 20013,
+    "activate_lot": 0,
+    "ability_types": [
+      27
+    ],
+    "conditions": [
+      "remain_distance>=350&remain_distance<=400"
+    ],
+    "disable_singlemode": 1,
+    "is_general_skill": 0
+  },
+  {
     "skill_id": 900011,
     "name": "Shooting Star",
     "rarity": 1,
@@ -14295,6 +14389,30 @@
     "is_general_skill": 1
   },
   {
+    "skill_id": 920011,
+    "name": "Dreams Donned with Pride!",
+    "rarity": 1,
+    "group_id": 92001,
+    "group_rate": 2,
+    "grade_value": 180,
+    "cost": 200,
+    "skill_category": 5,
+    "tags": [
+      401
+    ],
+    "icon_id": 20011,
+    "activate_lot": 1,
+    "ability_types": [
+      27
+    ],
+    "conditions": [
+      "phase>=2&is_finalcorner==1&corner!=0&is_activate_any_skill==1",
+      "phase>=2&is_finalcorner==1&corner!=0&is_activate_any_skill==1"
+    ],
+    "disable_singlemode": 1,
+    "is_general_skill": 1
+  },
+  {
     "skill_id": 1000011,
     "name": "Carnival Bonus",
     "rarity": 1,
@@ -14360,6 +14478,81 @@
     ],
     "conditions": [
       "always==1"
+    ],
+    "disable_singlemode": 1,
+    "is_general_skill": 0
+  },
+  {
+    "skill_id": 1200011,
+    "name": "Medium Race Enthusiast",
+    "rarity": 1,
+    "group_id": 120001,
+    "group_rate": 1,
+    "grade_value": 508,
+    "cost": 0,
+    "skill_category": 0,
+    "tags": [
+      203,
+      405,
+      501
+    ],
+    "icon_id": 10051,
+    "activate_lot": 0,
+    "ability_types": [
+      5
+    ],
+    "conditions": [
+      "distance_type==3&ground_type==1"
+    ],
+    "disable_singlemode": 1,
+    "is_general_skill": 0
+  },
+  {
+    "skill_id": 1200021,
+    "name": "Long Race Enthusiast",
+    "rarity": 1,
+    "group_id": 120002,
+    "group_rate": 1,
+    "grade_value": 508,
+    "cost": 0,
+    "skill_category": 0,
+    "tags": [
+      204,
+      402,
+      501
+    ],
+    "icon_id": 10021,
+    "activate_lot": 0,
+    "ability_types": [
+      2
+    ],
+    "conditions": [
+      "distance_type==4&ground_type==1"
+    ],
+    "disable_singlemode": 1,
+    "is_general_skill": 0
+  },
+  {
+    "skill_id": 1200031,
+    "name": "Mile Race Enthusiast",
+    "rarity": 1,
+    "group_id": 120003,
+    "group_rate": 1,
+    "grade_value": 508,
+    "cost": 0,
+    "skill_category": 0,
+    "tags": [
+      202,
+      403,
+      501
+    ],
+    "icon_id": 10031,
+    "activate_lot": 0,
+    "ability_types": [
+      3
+    ],
+    "conditions": [
+      "distance_type==2&ground_type==1"
     ],
     "disable_singlemode": 1,
     "is_general_skill": 0

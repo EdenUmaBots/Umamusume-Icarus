@@ -2,7 +2,7 @@
 
 ## Purpose
 
-SweepyModv5.13 adds the P1 master-data pass for Trackblazer decision quality. It exports official training baselines and scenario turn-calendar metadata from `master.mdb` so SweepyMod can make safer fallback decisions and produce clearer traces.
+Pre Icarus v5.13 adds the P1 master-data pass for Trackblazer decision quality. It exports official training baselines and scenario turn-calendar metadata from `master.mdb` so Pre Icarus can make safer fallback decisions and produce clearer traces.
 
 ## Generated Files
 
@@ -25,7 +25,7 @@ Each training row is grouped by scenario, command, level, and result state. Rows
 - energy delta
 - failure-rate basis points from the official training table
 
-SweepyMod uses this as a fallback and trace source. Live API command payloads remain the preferred per-turn source when available.
+Pre Icarus uses this as a fallback and trace source. Live API command payloads remain the preferred per-turn source when available.
 
 ### `data/scenario_turns_core.json`
 

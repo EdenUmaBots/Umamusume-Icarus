@@ -1,26 +1,13 @@
 {
   "display_name": "Sakura Bakushin O",
   "_comment": "Pure Sprinter (Sprint=A, Mile=B, Medium/Long=G per Android DB). Speed-Power priority with everything else trimmed. Stamina targets aggressively low since she only races up to Mile -- pushing her Stamina to 800+ wastes turns she should spend on Speed. Long-distance stamina floor at 300 because the solver would otherwise penalize Sprint/Mile picks late-game when stamina hasn't grown -- but for Bakushin O that's correct behavior, she shouldn't be in long-distance races at all. epithet_value bumped for when her signature 'Sakura Burst' epithet (or whatever her catalog title is) gets auto-picked.",
-  "training_scorer_mode": "hint",
-
-  "training_scorer_overrides": {
-    "stat_priority": ["speed", "power", "wit", "stamina", "guts"],
-    "event_stat_priority": ["speed", "power", "wit", "stamina", "guts"],
-    "summer_stat_priority": ["speed", "power", "wit", "stamina", "guts"],
-    "rainbow_bonus_enabled": true,
-    "stat_targets": {
-      "sprint": {"speed": 1200, "stamina": 400, "power": 1100, "guts": 400, "wit": 1000},
-      "mile":   {"speed": 1150, "stamina": 500, "power": 1050, "guts": 400, "wit": 1000},
-      "medium": {"speed": 900, "stamina": 600, "power": 850, "guts": 400, "wit": 900},
-      "long":   {"speed": 700, "stamina": 700, "power": 700, "guts": 400, "wit": 800}
-    }
-  },
-
   "solver_overrides": {},
   "target_epithets": [],
   "forced_epithets": [],
-  "preferred_distances": ["sprint", "mile"],
-
+  "preferred_distances": [
+    "sprint",
+    "mile"
+  ],
   "scenarios": {
     "4": {
       "_comment": "Trackblazer for a Sprinter. Stamina floor dropped to 300 since she has Medium/Long=G aptitude (the solver would never schedule a long race anyway, but the floor was penalizing late-game G2 sprint picks when stamina lagged). targetOptionalRaceCount at 36 (default) since sprint-only races aren't as plentiful as miler schedules. distancePreferenceMode 'strict' pushes the solver to penalize off-aptitude distances harder.",

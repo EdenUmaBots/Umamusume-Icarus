@@ -14,6 +14,7 @@ const state = {
     selectedRaces: [],
     scenarioType: "Mant",
     burnClocks: false,
+    finalizeSingleRuns: (localStorage.getItem('uma_finalize_single_runs') === 'true'),
     displayedClocksUsed: 0,
     caratsEnabled: (localStorage.getItem('uma_retry_carats') === 'true'),
     maxClocksPerCareer: Number(localStorage.getItem('uma_retry_max_clocks') ?? '0') || 0,
@@ -58,6 +59,7 @@ const els = {
     temptFateBtn: document.getElementById('tempt-fate-btn'),
     temptFatePanel: document.getElementById('tempt-fate-panel'),
     burnClocksBtn: document.getElementById('burn-clocks-btn'),
+    finalizeRunsBtn: document.getElementById('finalize-runs-btn'),
     retryOptionsBtn: document.getElementById('retry-options-btn'),
     retryOptionsPanel: document.getElementById('retry-options-panel'),
     retryCaratsToggle: document.getElementById('retry-carats-toggle'),
@@ -165,10 +167,6 @@ const els = {
     v543LocalLlmShadowBtn: document.getElementById('v543-local-llm-shadow-btn'),
     v543LocalLlmStatus: document.getElementById('v543-local-llm-status'),
     v543LocalLlmOutput: document.getElementById('v543-local-llm-output'),
-    v544EventKbImportBtn: document.getElementById('v544-event-kb-import-btn'),
-    v544EventKbRefreshBtn: document.getElementById('v544-event-kb-refresh-btn'),
-    v544EventKbStatus: document.getElementById('v544-event-kb-status'),
-    v544EventKbSummary: document.getElementById('v544-event-kb-summary'),
     v534AiHealth: document.getElementById('v534-ai-health'),
     v537AiImportPath: document.getElementById('v537-ai-import-path'),
     v537AiImportBtn: document.getElementById('v537-ai-import-btn'),
@@ -249,6 +247,7 @@ const els = {
     eventChoicesStatus: document.getElementById('event-choices-status'),
     eventChoicesList: document.getElementById('event-choices-list'),
     eventChoicesSearch: document.getElementById('event-choices-search'),
+    eventChoicesDeckFilter: document.getElementById('event-choices-deck-filter'),
     discordWebhookUrl: document.getElementById('discord-webhook-url'),
     discordWebhookSaveBtn: document.getElementById('discord-webhook-save-btn'),
     discordWebhookTestBtn: document.getElementById('discord-webhook-test-btn'),
@@ -510,12 +509,28 @@ const els = {
             });
             setInitial();
         }
-        makeSectionToggle('deck-bonuses-toggle', 'deck-bonuses-chevron', 'deck-bonuses-body', true);
-        makeSectionToggle('decks-toggle',    'decks-chevron',    'decks-body',    true);
-        makeSectionToggle('friends-toggle',  'friends-chevron',  'friends-body',  true);
-        makeSectionToggle('trainees-toggle', 'trainees-chevron', 'trainees-body', true);
-        makeSectionToggle('parents-toggle',  'parents-chevron',  'parents-body',  true);
-        makeSectionToggle('cards-toggle',    'cards-chevron',    'card-grid-wrapper', false);
+        // v2.1: the Library is now a tab bar (Trainees / Parents / Guest Parents /
+        // Decks / Friend Supports / Owned Cards) instead of collapsible sections.
+        // Deck Bonuses shares the "decks" tab (pinned above the deck list). Section
+        // bodies are forced open via CSS; the tab controls which section shows.
+        function showLibraryTab(name) {
+            if (!name) name = 'trainees';
+            document.querySelectorAll('#lib-tabs .lib-tab').forEach(function (b) {
+                b.classList.toggle('is-active', b.dataset.libTab === name);
+            });
+            if (name === 'guests' && typeof renderGuestParentsSection === 'function') {
+                try { renderGuestParentsSection(); } catch (e) {}
+            }
+            document.querySelectorAll('[data-lib-section]').forEach(function (sec) {
+                sec.style.display = (sec.dataset.libSection === name) ? '' : 'none';
+            });
+            try { localStorage.setItem('sweepy_lib_tab', name); } catch (e) {}
+        }
+        window.showLibraryTab = showLibraryTab;
+        document.querySelectorAll('#lib-tabs .lib-tab').forEach(function (b) {
+            b.addEventListener('click', function () { showLibraryTab(b.dataset.libTab); });
+        });
+        showLibraryTab((function () { try { return localStorage.getItem('sweepy_lib_tab'); } catch (e) { return null; } })() || 'trainees');
         makeSectionToggle('v4-toggle',       'v4-chevron',       'v4-body', true);
         const dashboardThemeStorageKey = 'sweepy_dashboard_theme';
         const ICARUS_THEMES = ['icarus', 'icarus-alt', 'neon', 'blue', 'clean-dark'];
@@ -605,7 +620,15 @@ const els = {
             for (let i = 0; i < frames; i++) await nextFrame();
         }
         async function apiJson(url, options = {}) {
-            const res = await fetch(url, options);
+            // v2.1: abort a hung request so a stalled fetch can't wedge the UI.
+            const ctrl = (typeof AbortController !== 'undefined') ? new AbortController() : null;
+            const timer = ctrl ? setTimeout(() => { try { ctrl.abort(); } catch (e) {} }, options.timeoutMs || 15000) : null;
+            let res;
+            try {
+                res = await fetch(url, ctrl ? { ...options, signal: ctrl.signal } : options);
+            } finally {
+                if (timer) clearTimeout(timer);
+            }
             let data = {};
             try {
                 data = await res.json();
@@ -741,9 +764,16 @@ const els = {
         }
         // Highlights the active speed option inside the Tempt Fate popover.
         function markActiveSpeed(level) {
+            state.speedLevel = level || 'safe';
             document.querySelectorAll('#tempt-fate-panel .speed-option').forEach(btn => {
                 btn.classList.toggle('is-active', btn.dataset.speed === level);
             });
+            // v3: TEMPT FATE button is green on Safe, red on every other speed
+            // (the green-base / red-.is-active styling for these buttons already
+            // exists in styles.css).
+            if (els.temptFateBtn) {
+                els.temptFateBtn.classList.toggle('is-active', state.speedLevel !== 'safe');
+            }
         }
         // Speed options (inside the Tempt Fate popover; replaces the old dropdown).
         // Posts the level to the backend, which sets both inter-turn pacing and the
@@ -894,7 +924,9 @@ const els = {
         }
         function showLoginError(message, cooldownSeconds) {
             setLoadingScreen(false);
-            els.errorMsg.innerText = String(message || 'FAIL').toUpperCase();
+            // Show the real server/exception detail (was uppercased + defaulted to
+            // "FAIL", which hid the actual reason on the most failure-prone screen).
+            els.errorMsg.innerText = String(message || 'Login failed — please retry');
             els.errorMsg.style.display = 'block';
             resetLoginState();
             applyLoginCooldown(cooldownSeconds);
@@ -906,8 +938,11 @@ const els = {
             els.standardFields.style.display = 'none';
             els.faFields.style.display = 'block';
             els.loginBtn.innerText = 'VALIDATE';
-            els.errorMsg.innerText = '2FA REQUIRED';
+            els.errorMsg.innerText = 'Enter your authenticator code';
             els.errorMsg.style.display = 'block';
+            // Auto-focus the 2FA code input so the user can type immediately.
+            const _codeInput = document.getElementById('code');
+            if (_codeInput) { _codeInput.focus(); try { _codeInput.select(); } catch (e) {} }
         }
         function readLoginPayload() {
             return {
@@ -983,10 +1018,10 @@ const els = {
                     await renderDashboard(data, { animateIntro: true, waitForIntro: true });
                     state.isLoading = false;
                 } else {
-                    showLoginError(data.detail || 'FAIL', data.cooldown_seconds);
+                    showLoginError(data.detail || 'Login failed', data.cooldown_seconds);
                 }
             } catch (e) {
-                showLoginError('NETWORK ERROR', 5);
+                showLoginError('Network error: ' + ((e && e.message) ? e.message : 'could not reach the server'), 5);
             }
         });
 
@@ -1015,6 +1050,20 @@ const els = {
         });
 
         const formatNumber = value => Number(value || 0).toLocaleString();
+
+        // Compact formatter for large navbar resources (e.g. GOLD):
+        // >= 1,000,000 -> "1M" / "1.1M"  |  >= 100,000 -> "100k"  |  else full with commas.
+        const formatCompact = value => {
+            const n = Number(value || 0);
+            if (n >= 1000000) {
+                const m = Math.round((n / 1000000) * 10) / 10;
+                return (m % 1 === 0 ? m.toFixed(0) : m.toFixed(1)) + 'M';
+            }
+            if (n >= 100000) {
+                return Math.floor(n / 1000) + 'k';
+            }
+            return Number(value || 0).toLocaleString();
+        };
 
         function formatHistoryTime(value) {
             if (!value) return '';
@@ -1647,12 +1696,25 @@ const els = {
             const stored = readLocalSetting(localStorage.getItem(burnClocksStorageKey));
             if (stored !== null) setBurnClocks(stored);
         }
+        function syncFinalizeRunsBtn() {
+            if (!els.finalizeRunsBtn) return;
+            els.finalizeRunsBtn.classList.toggle('is-active', !!state.finalizeSingleRuns);
+            els.finalizeRunsBtn.innerText = `FINISH RUN: ${state.finalizeSingleRuns ? 'ON' : 'OFF'}`;
+        }
+        function setFinalizeSingleRuns(value, options = {}) {
+            state.finalizeSingleRuns = Boolean(value);
+            syncFinalizeRunsBtn();
+            if (options.persist) localStorage.setItem('uma_finalize_single_runs', String(state.finalizeSingleRuns));
+        }
+        els.finalizeRunsBtn?.addEventListener('click', () => setFinalizeSingleRuns(!state.finalizeSingleRuns, { persist: true }));
+        syncFinalizeRunsBtn();
 
         function renderAccountStrip(account) {
             state.account = account || null;
             if (!account) {
                 els.accountStrip.style.display = 'none';
                 els.accountStrip.innerHTML = '';
+                state._accountStripKey = null;
                 return;
             }
             const tp = account.tp || {};
@@ -1669,6 +1731,12 @@ const els = {
             const carrots = account.carrots || {};
             const tpRecoveryMode = normalizeTpRecoveryMode((account.tp_recovery && account.tp_recovery.mode) || state.tpRecoveryMode);
             state.tpRecoveryMode = tpRecoveryMode;
+            // Dirty-check (runs every 1.5s poll): skip the full innerHTML rebuild
+            // when nothing affecting the strip changed, so the TP-recovery <select>
+            // isn't wiped mid-selection. Mirrors renderMainActionLog's guard.
+            const _stripKey = `${tp.current}|${tp.max}|${account.potions || 0}|${carrots.total}|${account.gold}|${account.clocks}|${career && career.active ? 1 : 0}|${tpRecoveryMode}`;
+            if (_stripKey === state._accountStripKey) return;
+            state._accountStripKey = _stripKey;
             const tpRecoveryOptions = [
                 ['potion_first', 'Items → Carrots'],
                 ['potion_only', 'Items Only'],
@@ -1694,7 +1762,7 @@ const els = {
                 </div>
                 <div class="account-pill pill-gold">
                     <span class="label">GOLD</span>
-                    <strong>${formatNumber(account.gold)}</strong>
+                    <strong>${formatCompact(account.gold)}</strong>
                 </div>
                 <div class="account-pill pill-clk">
                     <span class="label">CLOCKS</span>
@@ -1711,6 +1779,13 @@ const els = {
             syncBurnClocksControls();
         }
 
+        var _exportLogsBtn = document.getElementById('export-logs-btn');
+        if (_exportLogsBtn) {
+            _exportLogsBtn.addEventListener('click', () => {
+                // GET endpoint returns the zip as an attachment -> browser downloads it.
+                window.location.href = '/api/logs/export';
+            });
+        }
         els.burnClocksBtn.addEventListener('click', async () => {
             setBurnClocks(!state.burnClocks, { persist: true });
             if (state.runner && state.runner.running) {
@@ -2145,13 +2220,17 @@ const els = {
         }
 
         function renderGuestParentsSection() {
-            const libraryGroup = document.getElementById('v516-library-group') || document.querySelector('.v516-library-group');
+            const libraryGroup = document.getElementById('v516-library-group')
+                || document.querySelector('.v516-library-group')
+                || document.querySelector('#content-panel .panel-body')
+                || document.querySelector('.panel-body');
             if (!libraryGroup) return;
             let section = document.getElementById('guest-parents-section');
             if (!section) {
                 section = document.createElement('section');
                 section.id = 'guest-parents-section';
                 section.className = 'dashboard-section guest-parents-section';
+                section.dataset.libSection = 'guests';
                 section.innerHTML = `
                     <h2 class="dashboard-section-title section-title-toggle" id="guest-parents-toggle">
                         <span class="collapse-chevron expanded" id="guest-parents-chevron">&#9658;</span>
@@ -2167,8 +2246,9 @@ const els = {
                 const parentSection = parentHeader ? parentHeader.closest('section') || parentHeader.parentElement : null;
                 if (parentSection) parentSection.insertAdjacentElement('afterend', section);
                 else libraryGroup.appendChild(section);
-                // wire the collapse toggle (same engine as the other sections)
-                try { makeSectionToggle('guest-parents-toggle', 'guest-parents-chevron', 'guest-parents-body', true); } catch (e) {}
+                // v2.1: shown via the Library "Guest Parents" tab (no collapse).
+                var _activeLibTab = document.querySelector('#lib-tabs .lib-tab.is-active');
+                section.style.display = (_activeLibTab && _activeLibTab.dataset.libTab === 'guests') ? '' : 'none';
             }
             const grid = document.getElementById('guest-parent-grid');
             const status = document.getElementById('guest-parent-status');
@@ -2480,6 +2560,15 @@ const els = {
             try {
                 const res = await apiJson('/api/smart-solver/config?t=' + Date.now());
                 state.smartSolverConfig = res.config || {};
+                // v2.1: restore the planner mode from the PERSISTED source so a
+                // reload (or a different browser, or cleared storage) can't silently
+                // drop a manual schedule back to "smart". The saved preset is the
+                // runtime authority the engine reads (extra_race_list_source); match
+                // the visible mode to it. Only act on an explicit saved source.
+                const savedSource = String(res.source || '').trim().toLowerCase();
+                if (savedSource === 'manual' || savedSource === 'smart') {
+                    setRacePlannerMode(savedSource, { persist: true, render: false });
+                }
             } catch (e) {
                 state.smartSolverConfig = state.smartSolverConfig || {};
             }
@@ -2861,6 +2950,7 @@ const els = {
                         openSlotPopup(slot, yearIdx);
                         renderRaces();
                         syncStartButton();
+                        autoSaveRaces().catch(() => {}); // v2.1 auto-persist manual pick
                     };
                     list.appendChild(item);
                 });
@@ -2871,7 +2961,13 @@ const els = {
 
         async function autoSaveRaces({ force = false } = {}) {
             try {
-                if (state.racePlannerMode === 'manual' && !force) return;
+                // v2.1: manual picks now auto-persist (no separate "Apply Manual"
+                // click required). This used to bail in manual mode unless forced,
+                // so manual picks stayed "staged" and the preset's
+                // extra_race_list_source could drift to "smart" on a reload -> the
+                // Smart Race Solver silently took over a manual schedule. Persist in
+                // either mode; the saved `source` (below) always matches the mode.
+                void force;
                 const solverCfg = currentSmartSolverConfig();
                 state.manualRaceSelectionActive = !state.trackblazerPlan && Boolean((state.selectedRaces || []).length);
                 solverCfg.extra_race_list = [...state.selectedRaces];
@@ -3602,9 +3698,13 @@ const els = {
                 </div></section>
                 <section class="skill-settings-section v73-manual-tier-section"><h3>MANUAL SKILL TIERS <span class="v73-section-mode-badge" id="v73-manual-tier-mode-badge"></span></h3><div class="skill-card v73-manual-tier-card">
                     <div class="v73-manual-tier-intro">
-                        Build a tier list of skills the bot should buy when <strong>Enable Skill Point Check Plan (Beta)</strong> is <strong>off</strong>. Higher tiers are purchased before lower ones. Within a tier, the existing scoring (smart score / cost) breaks ties.
-                        <span class="v73-manual-tier-fallback-note">If all tiers are empty, the bot silently falls back to the smart scorer — toggling Plan Check off doesn't brick skill purchases on its own.</span>
+                        Build a tier list of the skills you want the bot to buy. Whenever any tier has skills, this list <strong>drives purchasing</strong> — the bot buys these by tier (T1 first), and manually-listed skills are bought even if they're off-distance/off-style. Within a tier, smart score / cost breaks ties.
+                        <span class="v73-manual-tier-fallback-note">If all tiers are empty, the bot uses the automatic skill-point plan instead. The plan now hard-filters off-distance and off-style skills so it never buys skills that don't fit the trainee.</span>
                     </div>
+                                        <label class="v73-manual-tier-toggle" for="v73-dont-spend-extra" title="Off (default): buy only the listed skills, then stop. On: once every listed skill is owned, switch to the automatic plan and spend remaining skill points on it.">
+                        <input type="checkbox" id="v73-dont-spend-extra">
+                        <span><strong>After selected skills are bought, switch to AUTO purchasing</strong> - off (default) buys only the skills in these tiers then stops, leaving remaining SP unspent; turn on to let the automatic plan spend the rest once your listed skills are all owned.</span>
+                    </label>
                     <div id="v73-manual-tier-rows" class="v73-manual-tier-rows"></div>
                     <div class="v73-manual-tier-search-row">
                         <input id="v73-manual-tier-search" class="form-input" placeholder="Search skills to add to a tier...">
@@ -3819,18 +3919,24 @@ const els = {
             if (!rows) return;
             const cfg = getSkillConfig();
             const tiers = _v73GetTiers();
-            const planCheckOn = cfg.enable_skill_point_check_plan !== false;
-            // Mode badge — make it clear when this section is active.
+            const totalAssigned = _v73TotalAssigned(tiers);
+            const autoFallback = cfg.skill_manual_auto_fallback === true;
+            // Keep the toggle's checked state in sync with the saved config.
+            const toggle = document.getElementById('v73-dont-spend-extra');
+            if (toggle) toggle.checked = autoFallback;
+            // Mode badge — make it clear when this section is active. Manual tiers
+            // now drive purchasing whenever any tier has skills, regardless of the
+            // Plan Check (Beta) toggle.
             const badge = document.getElementById('v73-manual-tier-mode-badge');
             if (badge) {
-                if (planCheckOn) {
-                    badge.textContent = 'INACTIVE — Plan Check is ON';
+                if (totalAssigned === 0) {
+                    badge.textContent = 'INACTIVE — no tiers set (auto plan in use)';
                     badge.className = 'v73-section-mode-badge is-inactive';
-                } else if (_v73TotalAssigned(tiers) === 0) {
-                    badge.textContent = 'PLAN CHECK OFF — fallback to smart scorer (no tiers set)';
-                    badge.className = 'v73-section-mode-badge is-fallback';
+                } else if (!autoFallback) {
+                    badge.textContent = 'ACTIVE — buying listed skills only, then stopping';
+                    badge.className = 'v73-section-mode-badge is-active';
                 } else {
-                    badge.textContent = 'ACTIVE — driving skill purchases';
+                    badge.textContent = 'ACTIVE — listed skills first, then auto plan';
                     badge.className = 'v73-section-mode-badge is-active';
                 }
             }
@@ -3946,6 +4052,16 @@ const els = {
                 el.dataset.v73Bound = '1';
                 el.addEventListener('change', () => setTimeout(renderManualTierSection, 80));
             });
+            // "Don't spend extra skill points" toggle.
+            const dontSpend = document.getElementById('v73-dont-spend-extra');
+            if (dontSpend && !dontSpend.dataset.v73Bound) {
+                dontSpend.dataset.v73Bound = '1';
+                dontSpend.addEventListener('change', async () => {
+                    await saveSkillConfig({ skill_manual_auto_fallback: dontSpend.checked });
+                    renderManualTierSection();
+                    renderSkillConfigSummary();
+                });
+            }
         }
         function renderSkillConfigSummary() {
             const box = document.getElementById('skill-config-summary');
@@ -3959,8 +4075,7 @@ const els = {
             const tierSummary = totalTiered === 0
                 ? '(none)'
                 : `${totalTiered} total · ` + tierCounts.map((n, i) => `T${i+1}:${n}`).filter((_, i) => tierCounts[i] > 0).join(' ');
-            const planCheckOn = cfg.enable_skill_point_check_plan !== false;
-            const tierActive = !planCheckOn && totalTiered > 0;
+            const tierActive = totalTiered > 0;
             box.innerHTML = `<div class="skill-summary-grid"><span>STRATEGY</span><strong>${escapeHtml(cfg.skill_spending_strategy === 'optimize_rank' ? 'Optimize Rank' : 'Best Skills First')}</strong><span>THRESHOLD</span><strong>${escapeHtml(cfg.learn_skill_threshold ?? 888)}</strong><span>NEGATIVE</span><strong>${cfg.purchase_negative_skills ? 'Yes' : 'No'}</strong><span>EXCLUDED</span><strong>${[cfg.skip_green_skills?'Green':'', cfg.skip_red_skills?'Red':'', cfg.skip_unique_skills?'Unique':''].filter(Boolean).join(', ') || '(none)'}</strong><span>PLANNED</span><strong>${(strategy.forced_skills || []).join(', ') || '(none)'}</strong><span>BLACKLISTED</span><strong>${(strategy.blacklist || []).join(', ') || '(none)'}</strong><span>MANUAL TIERS${tierActive ? ' <em class="v73-summary-active">(active)</em>' : ''}</span><strong>${tierSummary}</strong></div>`;
         }
         function bindSkillConfigControls(root = document) {
@@ -4054,7 +4169,7 @@ const els = {
         }
 
 
-        // v4.9 Trackblazer settings windows: only exposes controls backed by native SweepyCL logic.
+        // v4.9 Trackblazer settings windows: only exposes controls backed by native Pre Icarus logic.
         const SETTINGS_STATS = [
             ['speed', 'Speed'], ['power', 'Power'], ['wit', 'Wit'], ['stamina', 'Stamina'], ['guts', 'Guts']
         ];
@@ -4112,7 +4227,7 @@ const els = {
             current.mant_config = current.mant_config || {};
             return current.mant_config;
         }
-        async function saveSettingsPreset(current) {
+        async function saveSettingsPreset(current, { refreshUI = true } = {}) {
             if (!current) return;
             current.selection = buildSelectionPresetSnapshot();
             try {
@@ -4125,7 +4240,12 @@ const els = {
                     const idx = (state.presets || []).findIndex(p => p.name === res.preset.name);
                     if (idx >= 0) state.presets[idx] = res.preset;
                 }
-                populatePresetUI();
+                // refreshUI:false skips the full panel rebuild (populatePresetUI ->
+                // renderScenarioSettings -> body.innerHTML), which otherwise resets
+                // the scroll position. Used by in-place toggles (e.g. shop-exclude
+                // checkboxes) that need no re-render -- the control + in-memory
+                // state are already updated and the POST already persisted.
+                if (refreshUI) populatePresetUI();
             } catch (e) {
                 console.warn('Failed to save settings preset', e);
             }
@@ -4269,6 +4389,39 @@ const els = {
             const map = c.race_strategy_by_distance || {};
             return SETTINGS_DISTANCE_VALUES.map(([key, label]) => selectSetting(`${label} Strategy`, `Running style to use for ${label.toLowerCase()} races when per-distance strategy is enabled.`, `race_strategy_by_distance.${key}`, map[key] || '0', SETTINGS_STYLE_VALUES, 'mant_nested')).join('');
         }
+        // v2.1: curated stamina-relevant marquee races for per-race style overrides.
+        // Names are the EXACT race_planner_core.json names (matched case-insensitively
+        // on the backend) so there is no name-mismatch footgun -- the backend matches
+        // every program_id variant via the stable name.
+        const PER_RACE_STYLE_RACES = [
+            ['Kikuka Sho', '3000m · G1'],
+            ['Tenno Sho (Spring)', '3200m · G1'],
+            ['Tenno Sho (Autumn)', '2000m · G1'],
+            ['Arima Kinen', '2500m · G1'],
+            ['Niigata Junior Stakes', '1600m · G3'],
+        ];
+        function perRaceStyleRows(current) {
+            const c = mantCfg(current);
+            const list = Array.isArray(c.per_race_style_overrides) ? c.per_race_style_overrides : [];
+            const byName = {};
+            list.forEach(r => { if (r && r.match) byName[String(r.match).toLowerCase()] = r; });
+            // Override style must be concrete (1-4); "" = no override for that race.
+            const styleOpts = [['', 'No override'], ['1', 'Front Runner'], ['2', 'Pace Chaser'], ['3', 'Late Surger'], ['4', 'End Closer']];
+            const rows = PER_RACE_STYLE_RACES.map(([race, meta]) => {
+                const cur = byName[race.toLowerCase()] || {};
+                const curStyle = String(cur.style || '');
+                const curStamina = (cur.stamina_below === undefined || cur.stamina_below === null) ? '' : cur.stamina_below;
+                const opts = styleOpts.map(([v, l]) => `<option value="${v}" ${v === curStyle ? 'selected' : ''}>${escapeHtml(l)}</option>`).join('');
+                return `<div class="settings-row per-race-style-row" data-race="${escapeAttr(race)}">
+                    <div><strong>${escapeHtml(race)}</strong><span>${escapeHtml(meta)}</span></div>
+                    <div class="per-race-style-controls">
+                        <label class="settings-muted">Stamina &lt; <input type="number" class="settings-control settings-text-input" data-control="per-race-style" data-field="stamina" min="0" max="2000" step="10" value="${escapeAttr(curStamina)}" placeholder="any"></label>
+                        <select class="settings-control" data-control="per-race-style" data-field="style">${opts}</select>
+                    </div>
+                </div>`;
+            }).join('');
+            return rowShell('Per-Race Style Overrides', 'Override the running style for specific races, optionally only when Stamina is below a threshold (blank = always). Applies even in Manual mode and reverts to your main style on the next race. Requires a concrete Original Strategy (not Auto).', `<div class="per-race-style-list">${rows}</div>`);
+        }
         function statTargetGrid(current) {
             const c = mantCfg(current);
             const targets = c.stat_targets_by_distance || {};
@@ -4315,7 +4468,12 @@ const els = {
                 <section class="settings-card"><h3>Scoring</h3>
                     ${toggleSetting('Weight Score by Training Level', 'Boost top-priority stats when native training level fields are present.', 'enable_training_level_weighting', getSetting(current,'mant','enable_training_level_weighting',true))}
                     ${toggleSetting('Rainbow Training Bonus', 'Apply the friendship/rainbow multiplier in training scoring.', 'enable_rainbow_training_bonus', getSetting(current,'mant','enable_rainbow_training_bonus',true))}
+                    ${toggleSetting('Attenuate Rainbow on Capped Stats', 'Scale the rainbow bonus down as the trained stat fills toward its cap, so the bot stops chasing rainbows on already-finished stats. Off = flat 2.0x as before.', 'rainbow_attenuate_by_usefulness', getSetting(current,'mant','rainbow_attenuate_by_usefulness',true))}
+                    ${sliderSetting('Rainbow Attenuation Floor', 'Minimum fraction of the rainbow bonus kept even on a fully-capped stat, so a real friendship turn is still valued.', 'rainbow_attenuate_floor', getSetting(current,'mant','rainbow_attenuate_floor',0.25), 0, 1, 0.05)}
                     ${toggleSetting('Near-Max Friendship Boost', 'Reward near-rainbow bond stacks without outranking true rainbow turns.', 'enable_near_rainbow_bonus', getSetting(current,'mant','enable_near_rainbow_bonus',true))}
+                    ${sliderSetting('Low-Bond Training Value', 'How much an un-bonded (orange, <60) support partner is worth to train near. Higher = the bot bond-rushes harder in Junior so off-priority cards (e.g. a Stamina SSR like Super Creek) actually reach rainbow. 0 = legacy (ignores low bonds).', 'bond_value_orange', getSetting(current,'mant','bond_value_orange',0.4), 0, 2, 0.1)}
+                    ${sliderSetting('Bond-to-Rainbow Push', 'Extra weight for finishing a green (60-79) bond up to rainbow (80). Higher = the bot pushes partial bonds to max instead of abandoning them for raw stats.', 'bond_finish_push_cap', getSetting(current,'mant','bond_finish_push_cap',1.0), 0, 2, 0.1)}
+                    ${sliderSetting('Bond Priority Weight', 'How heavily bond/friendship counts vs raw stat gain in the training score (stat weight is ~0.6). Higher favors bond-building.', 'bond_weight', getSetting(current,'mant','bond_weight',0.15), 0, 1, 0.05)}
                 </section>
                 <section class="settings-card"><h3>Distance</h3>
                     ${selectSetting('Preferred Distance', 'Used to resolve stat targets when Auto is not desired.', 'preferred_distance', getSetting(current,'mant','preferred_distance','auto'), [['auto','Auto'], ...SETTINGS_DISTANCE_VALUES])}
@@ -4351,6 +4509,7 @@ const els = {
                     ${selectSetting('Junior Year Strategy', 'Running style used during Junior Year races.', 'junior_running_style', getSetting(current,'mant','junior_running_style','0'), SETTINGS_STYLE_VALUES)}
                     ${selectSetting('Original Strategy', 'Default running style for Year 2+ and fallback races.', 'running_style', current.running_style || '1', SETTINGS_STYLE_VALUES.filter(([v]) => v !== '0'), 'preset')}
                     ${strategyByDistanceRows(current)}
+                    ${perRaceStyleRows(current)}
                 </section>`;
             bindSettingsControls(body, current, renderRacingSettings);
         }
@@ -4372,6 +4531,7 @@ const els = {
                     ${sliderSetting('Energy Threshold to use Energy Items', 'HP threshold below which recovery items may be used.', 'energy_recovery_threshold', getSetting(current,'mant','energy_recovery_threshold',40), 0, 100, 1)}
                     ${sliderSetting('Force-Train Energy Floor', 'During Summer/Finale, fall back to recovery at or below this HP.', 'force_train_energy_floor', getSetting(current,'mant','force_train_energy_floor',20), 0, 50, 1)}
                     ${sliderSetting('Skip Items During Bad Mood Below Stat Gain', 'Conserve Charm/Megaphone/Whistle on low-mood low-gain turns.', 'trackblazer_skip_bad_mood_items_below_gain', getSetting(current,'mant','trackblazer_skip_bad_mood_items_below_gain',15), 0, 50, 1)}
+                    ${toggleSetting('Skip Energy Items on Year-End Races', 'Do not spend energy/recovery items chaining into a year-end race (Hopeful Stakes, Arima Kinen, finale) - the year/career ends right after, so the energy can never be used. (The bot already will not REST over these races regardless of this setting.)', 'skip_energy_items_year_end', getSetting(current,'mant','skip_energy_items_year_end',false))}
                 </section>
                 <section class="settings-card"><h3>Training</h3>
                     ${sliderSetting('Skip Risky Charm Training Below Stat Gain', 'Minimum main gain before Charm protects a risky training.', 'charm_min_main_gain', getSetting(current,'mant','charm_min_main_gain',20), 20, 100, 1)}
@@ -4384,14 +4544,22 @@ const els = {
                     ${chipsSetting('Race Grades to check Shop Afterwards', 'Eligible race grades for shop-check frequency logic.', 'trackblazer_shop_check_grades', c.trackblazer_shop_check_grades || ['G1','G2','G3'], SETTINGS_GRADE_VALUES, 'checkbox', 'mant')}
                     ${rowShell('Items to Exclude from Shop', 'Checked items will never be purchased by the shop logic.', shopList)}
                 </section>
+                <section class="settings-card"><h3>Shop Purchase Logic</h3>
+                    ${sliderSetting('Coin Reserve Override', 'Coins always kept unspent in the shop. 0 = automatic (a finale-aware reserve curve). Set a value to force a flat reserve every turn.', 'mant_coin_reserve', getSetting(current,'mant','mant_coin_reserve',0), 0, 300, 5)}
+                    ${sliderSetting('BBQ Buy Threshold (unmaxxed cards)', 'Buy Grilled Carrots (BBQ) more aggressively when more than this many support cards are still below max friendship. Lower = start buying BBQ sooner.', 'bbq_unmaxxed_cards', getSetting(current,'mant','bbq_unmaxxed_cards',3), 0, 6, 1)}
+                    ${toggleSetting('Fast Learner Shop Boost', "Prioritize Scholar's Hat early so the Fast Learner skill stacks sooner. Off by default (the race/economy kit comes first).", 'enable_fast_learner_shop_boost', getSetting(current,'mant','enable_fast_learner_shop_boost',false))}
+                    ${toggleSetting('Preemptive Cure Reserve', 'Keep one Cure-All / Rich Hand Cream on hand before any condition appears. Off by default — cures are only bought when a bad condition is actually active.', 'preemptive_cure_reserve', getSetting(current,'mant','preemptive_cure_reserve',false))}
+                </section>
                 <section class="settings-card"><h3>Item Conservation</h3>
+                    ${toggleSetting('Save Items for Late Game', 'When OFF (default), after turn 64 the bot dumps every remaining item (megaphones, anklets, charms, cupcakes, Vita/Kale) on any slightly-useful training — summer is over and finale races pay zero coins, so an unspent item is pure waste. It also stops hoarding coins for finals (keeps only ~60 for the turn-71 Master Cleat Hammer). Turn ON to keep the conservative reserve / finale priority-stat behavior instead.', 'save_items_lategame', getSetting(current,'mant','save_items_lategame',false))}
                     ${sliderSetting('Energy Item Emergency Reserve', 'Lowest-tier Vita copies reserved for emergency race recovery.', 'trackblazer_energy_item_reserve', getSetting(current,'mant','trackblazer_energy_item_reserve',1), 0, 3, 1)}
                     ${sliderSetting('Cupcake Reserve for Kale Juice Synergy', 'Cupcakes preserved for Royal Kale mood repair.', 'trackblazer_cupcake_reserve', getSetting(current,'mant','trackblazer_cupcake_reserve',1), 0, 3, 1)}
-                    ${sliderSetting('Master Cleat Hammer Finale Reserve', 'Master Hammers saved for Finale race windows.', 'trackblazer_master_hammer_finale_reserve', getSetting(current,'mant','trackblazer_master_hammer_finale_reserve',2), 0, 3, 1)}
-                    ${sliderSetting('Artisan Hammer Min Stock for G3', 'Minimum Artisan stock before spending one on G3 races.', 'trackblazer_artisan_hammer_min_stock_for_g3', getSetting(current,'mant','trackblazer_artisan_hammer_min_stock_for_g3',3), 0, 3, 1)}
-                    ${sliderSetting('Artisan Hammer Min Stock for G2', 'Minimum Artisan stock before spending one on G2 races.', 'trackblazer_artisan_hammer_min_stock_for_g2', getSetting(current,'mant','trackblazer_artisan_hammer_min_stock_for_g2',2), 0, 3, 1)}
+                    ${sliderSetting('Master Cleat Hammer Finale Reserve', 'Master Hammers saved for Finale race windows.', 'trackblazer_master_hammer_finale_reserve', getSetting(current,'mant','trackblazer_master_hammer_finale_reserve',3), 0, 3, 1)}
+                    ${sliderSetting('Artisan Hammer Min Stock for G3', 'Minimum Artisan stock before spending one on G3 races.', 'trackblazer_artisan_hammer_min_stock_for_g3', getSetting(current,'mant','trackblazer_artisan_hammer_min_stock_for_g3',0), 0, 3, 1)}
+                    ${sliderSetting('Artisan Hammer Min Stock for G2', 'Minimum Artisan stock before spending one on G2 races.', 'trackblazer_artisan_hammer_min_stock_for_g2', getSetting(current,'mant','trackblazer_artisan_hammer_min_stock_for_g2',0), 0, 3, 1)}
                     ${sliderSetting('Glow Stick Final-Day Reserve', 'Glow Sticks saved for the final Trackblazer race.', 'trackblazer_glow_stick_final_reserve', getSetting(current,'mant','trackblazer_glow_stick_final_reserve',1), 0, 3, 1)}
                     ${sliderSetting('Glow Stick Minimum Fans', 'Minimum projected fan gain before spending Glow Sticks.', 'trackblazer_glow_stick_min_fans', getSetting(current,'mant','trackblazer_glow_stick_min_fans',20000), 0, 30000, 1000)}
+                    ${sliderSetting('Late Whistle Lackluster Threshold', 'Past turn 64, use a Reset Whistle when the best training\'s total stat gain is below this.', 'late_whistle_lackluster_threshold', getSetting(current,'mant','late_whistle_lackluster_threshold',30), 0, 80, 1)}
                     <div class="settings-row"><div><strong>Reset Trackblazer to Defaults</strong><span>Clears Trackblazer-specific override values from this preset.</span></div><div><button id="settings-reset-trackblazer" class="btn btn-sm settings-reset-btn" type="button">RESET TRACKBLAZER TO DEFAULTS</button></div></div>
                 </section>`;
             bindSettingsControls(body, current, renderScenarioSettings);
@@ -4437,7 +4605,27 @@ const els = {
                         const item = control.dataset.item;
                         const arr = Array.isArray(c.exclude_shop_items) ? [...c.exclude_shop_items] : [];
                         c.exclude_shop_items = control.checked ? Array.from(new Set([...arr, item])) : arr.filter(v => v !== item);
-                        await saveSettingsPreset(current);
+                        // refreshUI:false -> don't rebuild the panel (keeps the
+                        // blacklist list from scrolling back to the top on toggle).
+                        await saveSettingsPreset(current, { refreshUI: false });
+                    });
+                } else if (type === 'per-race-style') {
+                    control.addEventListener('change', async () => {
+                        const c = mantCfg(current);
+                        // Rebuild the whole override list from the current rows.
+                        const list = [];
+                        root.querySelectorAll('.per-race-style-row').forEach(row => {
+                            const race = row.dataset.race;
+                            const style = parseInt(row.querySelector('select[data-field="style"]')?.value || '', 10);
+                            if (!(style >= 1 && style <= 4)) return; // no override for this race
+                            const entry = { match: race, style };
+                            const thr = parseInt(row.querySelector('input[data-field="stamina"]')?.value || '', 10);
+                            if (Number.isFinite(thr) && thr > 0) entry.stamina_below = thr;
+                            list.push(entry);
+                        });
+                        c.per_race_style_overrides = list;
+                        // refreshUI:false -> keep scroll position (same as shop list).
+                        await saveSettingsPreset(current, { refreshUI: false });
                     });
                 } else if (type === 'target-grid') {
                     control.addEventListener('change', async () => {
@@ -4449,7 +4637,9 @@ const els = {
                         const row = Array.isArray(c.stat_targets_by_distance[distance]) ? [...c.stat_targets_by_distance[distance]] : [...defaults[distance]];
                         row[idx] = Number(control.value || 0);
                         c.stat_targets_by_distance[distance] = row;
-                        await saveSettingsPreset(current);
+                        // refreshUI:false -> keep scroll position (same as the shop
+                        // list); a number input editing its own value needs no rebuild.
+                        await saveSettingsPreset(current, { refreshUI: false });
                     });
                 }
             });
@@ -5979,7 +6169,6 @@ const els = {
             renderAiLivePolicy(state.lastAiStatus?.auto_training, dashboard);
             // Do not hydrate the Local LLM card from dashboard.local_llm; it may be stale.
             // refreshAiLearningStatus fetches /api/ai/local-llm/latest separately as the source of truth.
-            if (dashboard.event_outcome_kb) renderEventOutcomeKb(dashboard.event_outcome_kb);
 
             if (dashboard.warnings && dashboard.warnings.length && els.v532AiAdvisor) {
                 // Keep the deeper dashboard content visible without replacing a user-requested advisor report.
@@ -6019,64 +6208,6 @@ const els = {
             return `<div class="v532-ai-tip"><strong>${escapeHtml(label)}</strong><span>${escapeHtml(parts.filter(Boolean).join(' · '))}</span></div>`;
         }
 
-
-        function renderEventOutcomeKb(payload) {
-            if (!payload || !payload.success) {
-                if (els.v544EventKbStatus) els.v544EventKbStatus.textContent = payload?.detail || 'Event outcome KB not loaded.';
-                return;
-            }
-            const bits = [
-                `${formatNumber(payload.known_events || 0)} known events`,
-                `${formatNumber(payload.known_choices || 0)} known choices`,
-                `${formatNumber(payload.native_observed_events || 0)} observed from bot runs`,
-                `${formatNumber(payload.imported_static_events || 0)} imported static events`,
-                `${formatNumber(payload.unknown_event_choices_seen || 0)} unknown seen`
-            ];
-            if (els.v544EventKbStatus) els.v544EventKbStatus.textContent = bits.join(' · ');
-            // v7.6.2: keep the native-capture checkbox in sync with the server.
-            const nativeToggle = document.getElementById('v762-native-capture-toggle');
-            if (nativeToggle && payload.native_capture_enabled != null) nativeToggle.checked = !!payload.native_capture_enabled;
-            if (els.v544EventKbSummary) {
-                const top = (payload.top_events || []).slice(0, 4).map(row => `${escapeHtml(row.event_name || row.event_key || 'event')} (${escapeHtml(row.choices || 0)} choices)`).join(' · ');
-                const unknown = (payload.unknown_events || []).slice(0, 3).map(row => `${escapeHtml(row.event_name || row.story_id || 'unknown')} seen ${escapeHtml(row.count || 0)}x`).join(' · ');
-                els.v544EventKbSummary.innerHTML = [
-                    top ? `<div class="v532-ai-tip"><strong>Known outcomes</strong><span>${top}</span></div>` : '',
-                    unknown ? `<div class="v532-ai-tip"><strong>Unknown events seen</strong><span>${unknown}</span></div>` : ''
-                ].filter(Boolean).join('') || '<div class="v536-ai-line">No event outcome summary yet.</div>';
-            }
-        }
-
-        async function refreshEventOutcomeKb() {
-            try {
-                const data = await apiJson('/api/events/outcome-kb?t=' + Date.now());
-                renderEventOutcomeKb(data);
-                return data;
-            } catch (e) {
-                if (els.v544EventKbStatus) els.v544EventKbStatus.textContent = e.message || 'Failed to refresh event outcome KB';
-                return null;
-            }
-        }
-
-        async function importBundledEventOutcomes() {
-            if (!els.v544EventKbImportBtn) return;
-            els.v544EventKbImportBtn.disabled = true;
-            if (els.v544EventKbStatus) els.v544EventKbStatus.textContent = 'Importing bundled event outcomes...';
-            try {
-                const data = await apiJson('/api/events/outcome-kb/import', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ replace: false })
-                });
-                if (!data.success) throw new Error(data.detail || 'import failed');
-                if (els.v544EventKbStatus) els.v544EventKbStatus.textContent = `Imported ${formatNumber(data.imported_events || 0)} events · known ${formatNumber(data.known_events || 0)} / choices ${formatNumber(data.known_choices || 0)} · dataset rows ${formatNumber(data.dataset_rows_written || 0)}`;
-                await refreshEventOutcomeKb();
-                await refreshAiDashboard();
-            } catch (e) {
-                if (els.v544EventKbStatus) els.v544EventKbStatus.textContent = `Event outcome import failed: ${e.message || e}`;
-            } finally {
-                els.v544EventKbImportBtn.disabled = false;
-            }
-        }
         function renderLocalLlmStatus(payload, opts = {}) {
             const cfg = payload?.config || payload || {};
             const localControls = [
@@ -6962,8 +7093,11 @@ const els = {
                     els.v4TrackblazerStatus.innerHTML = `<div class="v4-error">${escapeHtml(e.message || 'Sync failed')}</div>`;
                 }
             });
-            els.v47SmartModeBtn?.addEventListener('click', () => setRacePlannerMode('smart'));
-            els.v47ManualModeBtn?.addEventListener('click', () => setRacePlannerMode('manual'));
+            // v2.1: switching mode persists the source immediately, so "Manual
+            // Selection" applies by default (matches the visible mode to the saved
+            // authority the engine reads). No separate Apply Manual click required.
+            els.v47SmartModeBtn?.addEventListener('click', () => { setRacePlannerMode('smart'); autoSaveRaces().catch(() => {}); });
+            els.v47ManualModeBtn?.addEventListener('click', () => { setRacePlannerMode('manual'); autoSaveRaces().catch(() => {}); });
             els.v47ApplyManualBtn?.addEventListener('click', () => applyManualRaceSelection().catch(() => {}));
             setRacePlannerMode(state.racePlannerMode || 'smart', { persist: false, render: false });
             els.v4PlanBtn?.addEventListener('click', () => generateTrackblazerPlan({ apply: false }).catch(() => {}));
@@ -6986,24 +7120,6 @@ const els = {
             els.v543LocalLlmTestBtn?.addEventListener('click', testLocalLlm);
             els.v543LocalLlmAnalyzeBtn?.addEventListener('click', analyzeLatestRunWithLocalLlm);
             els.v543LocalLlmShadowBtn?.addEventListener('click', shadowReviewWithLocalLlm);
-            els.v544EventKbImportBtn?.addEventListener('click', importBundledEventOutcomes);
-            els.v544EventKbRefreshBtn?.addEventListener('click', refreshEventOutcomeKb);
-            // v7.6.2: native event-outcome capture toggle.
-            document.getElementById('v762-native-capture-toggle')?.addEventListener('change', async (e) => {
-                const enabled = !!e.target.checked;
-                try {
-                    await apiJson('/api/events/native-capture', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ enabled })
-                    });
-                    if (els.v544EventKbStatus) els.v544EventKbStatus.textContent = enabled
-                        ? 'Auto-capture ON — the bot will record event outcomes from its runs.'
-                        : 'Auto-capture OFF — event outcomes will not be recorded from bot runs.';
-                } catch (err) {
-                    if (els.v544EventKbStatus) els.v544EventKbStatus.textContent = err.message || 'Failed to update auto-capture setting';
-                }
-            });
             els.v534AiSafeBundleBtn?.addEventListener('click', downloadSafeAiBundle);
             els.v537AiImportBtn?.addEventListener('click', importPreviousAiLogs);
             if (els.v515SetupBody && els.v515SetupModal) {
@@ -7123,6 +7239,28 @@ const els = {
                 });
                 if (els.v535AiLearningModal) els.v535AiLearningModal.dataset.v535Bound = '1';
             }
+            // v2.1: Diag/AI tabs — the Diagnostics and AI/Misc modals now act as
+            // two tabs of one "Diag / AI" page. Switching a tab swaps which modal
+            // is shown and refreshes that view.
+            document.querySelectorAll('[data-diagai-tab]').forEach(btn => {
+                if (btn.dataset.diagaiBound) return;
+                btn.dataset.diagaiBound = '1';
+                btn.addEventListener('click', () => {
+                    var tab = btn.dataset.diagaiTab;
+                    if (tab === 'ai') {
+                        if (els.v516DiagnosticsModal) els.v516DiagnosticsModal.style.display = 'none';
+                        if (els.v535AiLearningModal) els.v535AiLearningModal.style.display = 'flex';
+                        if (typeof refreshAiLearningStatus === 'function') refreshAiLearningStatus();
+                    } else {
+                        if (els.v535AiLearningModal) els.v535AiLearningModal.style.display = 'none';
+                        if (els.v516DiagnosticsModal) els.v516DiagnosticsModal.style.display = 'flex';
+                        if (typeof refreshV4Status === 'function') refreshV4Status();
+                    }
+                    document.querySelectorAll('[data-diagai-tab]').forEach(function (b) {
+                        b.classList.toggle('is-active', b.dataset.diagaiTab === tab);
+                    });
+                });
+            });
         }
         function startV4Polling() {
             refreshTrackblazerStatus();
@@ -7144,8 +7282,13 @@ const els = {
         }
         function eventChoiceEffect(ev, i) {
             const out = (ev && ev.outcomes) || {};
-            // outcomes are keyed by 1-based select_index; choice index i is 0-based
-            const raw = out[String(i + 1)] ?? out[i + 1] ?? '';
+            // v3: outcomes are keyed by the game's select_index, which is NOT always
+            // sequential (borrowed/friend-card events use 1/2/4-style or gapped
+            // numbering). Resolve the real select_index for choice position i from
+            // choice_select_indices when present; fall back to i+1 only when absent.
+            const idxList = Array.isArray(ev && ev.choice_select_indices) ? ev.choice_select_indices : null;
+            const sel = idxList && i < idxList.length ? Number(idxList[i]) : (i + 1);
+            const raw = out[String(sel)] ?? out[sel] ?? out[String(i + 1)] ?? out[i + 1] ?? '';
             return String(raw || '').trim();
         }
         function eventEffectClass(effect) {
@@ -7174,6 +7317,61 @@ const els = {
         // v7.4 — cache the fetched events so the search box can filter client-side
         // without re-hitting the network on every keystroke.
         let _eventChoicesCache = [];
+        // v3 — Story vs Support Card event category filter. A row is a support-card
+        // event when its `category` is "support_card" (the game8 tag — most events
+        // are support-card events) OR it carries a real support_card_id (a seen
+        // borrowed/rental-card event); otherwise it's a Story event.
+        let _eventChoicesCategory = 'story';
+        function _evIsSupport(e) {
+            return !!(e && (e.category === 'support_card' || Number(e.support_card_id || 0) > 0));
+        }
+        // "Only my deck's events" view filter for the Support Card Events tab.
+        // Persisted to the active preset (mant_config.event_choices_deck_filter)
+        // so loading a preset restores the user's choice. Seen events carry a real
+        // card id; catalog events (no card id) are hidden while this is on.
+        let _eventChoicesDeckFilter = false;
+        function _eventChoicesDeckIdSet() {
+            const ids = new Set();
+            (selectedDeckSupportIds() || []).forEach(id => { const n = Number(id); if (n) ids.add(n); });
+            try {
+                const friendId = selection.friend && selection.friend.support_card_id;
+                if (friendId) ids.add(Number(friendId));
+            } catch (e) {}
+            return ids;
+        }
+        function syncEventChoicesDeckFilterFromPreset() {
+            const current = getCurrentPreset();
+            const on = current ? !!getSetting(current, 'mant', 'event_choices_deck_filter', false) : false;
+            _eventChoicesDeckFilter = on;
+            if (els.eventChoicesDeckFilter) els.eventChoicesDeckFilter.checked = on;
+        }
+        function setEventChoicesCategory(cat, { persist = true } = {}) {
+            _eventChoicesCategory = cat;
+            const sb = document.getElementById('event-cat-story');
+            const ub = document.getElementById('event-cat-support');
+            if (sb) sb.classList.toggle('active', cat === 'story');
+            if (ub) ub.classList.toggle('active', cat === 'support');
+            // The deck filter only applies to the Support Card Events tab.
+            const wrap = els.eventChoicesDeckFilter?.parentElement;
+            if (wrap) wrap.style.display = (cat === 'support') ? '' : 'none';
+            applyEventChoicesFilter();
+            if (persist) saveEventChoicesCategoryToPreset(cat);
+        }
+        async function saveEventChoicesCategoryToPreset(cat) {
+            const current = getCurrentPreset();
+            if (!current) return;
+            setSettingValue(current, 'mant', 'event_choices_tab', cat);
+            try { await saveSettingsPreset(current, { refreshUI: false }); }
+            catch (e) { console.warn('Failed to save event-choices tab', e); }
+        }
+        function updateEventCategoryCounts() {
+            const storyN = _eventChoicesCache.filter(e => !_evIsSupport(e)).length;
+            const supN = _eventChoicesCache.length - storyN;
+            const sb = document.getElementById('event-cat-story');
+            const ub = document.getElementById('event-cat-support');
+            if (sb) sb.textContent = `Story Events (${storyN})`;
+            if (ub) ub.textContent = `Support Card Events (${supN})`;
+        }
         function eventChoiceAutoLine(ev) {
             const n = Math.max(0, Number(ev.num_choices || 0));
             const hasOutcomes = ev.outcomes && Object.keys(ev.outcomes).length > 0;
@@ -7192,18 +7390,6 @@ const els = {
             }
             return line;
         }
-        // v7.6.3 — confidence chip showing how well-backed an event's outcome
-        // data is: observed from the bot's own runs (and how many times),
-        // imported/scraped, or no data yet.
-        function _eventDataBadge(ev) {
-            const obs = Number(ev.observations || 0);
-            const src = String(ev.data_source || '');
-            const hasOutcomes = ev.outcomes && Object.keys(ev.outcomes).length > 0;
-            if (obs > 0) return `<span class="event-choice-conf conf-observed" title="Recorded from your own career runs">OBSERVED ${obs}×</span>`;
-            if (src === 'gametora') return `<span class="event-choice-conf conf-scraped" title="Effects from the community effects database (gametora)">DB EFFECTS</span>`;
-            if (hasOutcomes) return `<span class="event-choice-conf conf-imported" title="From the imported/curated knowledge base">KB</span>`;
-            return `<span class="event-choice-conf conf-none" title="No recorded outcome data yet">NO DATA</span>`;
-        }
         function eventChoiceRowHtml(ev) {
             const n = Math.max(0, Number(ev.num_choices || 0));
             const forced = ev.override != null;
@@ -7213,14 +7399,19 @@ const els = {
                 effects.push(`<span class="event-choice-effect ${eventEffectClass(eff)}"><b>${i + 1}</b> ${escapeHtml(eff || 'effect not in database')}</span>`);
             }
             const effectsHtml = effects.length ? `<div class="event-choice-effects">${effects.join('')}</div>` : '';
-            const metaBits = [`Story ${escapeHtml(ev.story_id || '')}`];
-            if (ev.support_card_id) metaBits.push(`Support ${escapeHtml(ev.support_card_id)}`);
+            const metaBits = [];
+            if (_evIsSupport(ev) && Number(ev.support_card_id || 0) > 0) {
+                metaBits.push(`Support ${escapeHtml(ev.support_card_id)}`);
+            } else if (_evIsSupport(ev)) {
+                metaBits.push('Support Card');
+            } else {
+                metaBits.push(`Story ${escapeHtml(ev.story_id || '')}`);
+            }
             if (ev.count) metaBits.push(`Seen ${escapeHtml(ev.count)}x`);
             return `
                 <div class="event-choice-row ${forced ? 'has-override' : ''}" data-story-id="${escapeAttr(ev.story_id || '')}">
                     <div class="event-choice-head">
                         <span class="event-choice-badge ${forced ? 'badge-override' : 'badge-auto'}">${forced ? 'FORCED' : 'AUTO'}</span>
-                        ${_eventDataBadge(ev)}
                         <strong class="event-choice-name">${escapeHtml(ev.event_name || `Story ${ev.story_id}`)}</strong>
                     </div>
                     <div class="event-choice-meta">${metaBits.join(' · ')}</div>
@@ -7278,16 +7469,41 @@ const els = {
         }
         function applyEventChoicesFilter() {
             const q = (els.eventChoicesSearch?.value || '').trim().toLowerCase();
-            const filtered = !q ? _eventChoicesCache : _eventChoicesCache.filter(ev => {
-                return String(ev.event_name || '').toLowerCase().includes(q)
-                    || String(ev.story_id || '').toLowerCase().includes(q)
-                    || String(ev.support_card_id || '').toLowerCase().includes(q);
-            });
+            const cat = _eventChoicesCategory || 'story';
+            const inCat = (ev) => (cat === 'support') ? _evIsSupport(ev) : !_evIsSupport(ev);
+            let filtered = _eventChoicesCache.filter(inCat);
+            // "Only my deck's events": narrow the Support Card list to events whose
+            // support card is in the selected deck. Seen events carry a real card id;
+            // catalog events with no card id (0) are hidden while this is on.
+            let deckFilterActive = false;
+            if (cat === 'support' && _eventChoicesDeckFilter) {
+                const deckIds = _eventChoicesDeckIdSet();
+                deckFilterActive = deckIds.size > 0;
+                if (deckFilterActive) {
+                    filtered = filtered.filter(ev => deckIds.has(Number(ev.support_card_id || 0)));
+                }
+            }
+            if (q) {
+                filtered = filtered.filter(ev => {
+                    return String(ev.event_name || '').toLowerCase().includes(q)
+                        || String(ev.story_id || '').toLowerCase().includes(q)
+                        || String(ev.support_card_id || '').toLowerCase().includes(q);
+                });
+            }
             renderEventChoiceList(filtered);
             if (els.eventChoicesStatus) {
-                els.eventChoicesStatus.textContent = q
-                    ? `${filtered.length} of ${_eventChoicesCache.length} events match "${q}"`
-                    : `${_eventChoicesCache.length} events · AUTO = bot decides, FORCED = your locked choice.`;
+                let txt;
+                if (q) {
+                    txt = `${filtered.length} of ${_eventChoicesCache.length} events match "${q}"`;
+                } else {
+                    txt = `${filtered.length} ${cat === 'support' ? 'support-card' : 'story'} events · AUTO = bot decides, FORCED = your locked choice.`;
+                }
+                if (_eventChoicesDeckFilter && cat === 'support') {
+                    txt += deckFilterActive
+                        ? ' · filtered to your selected deck.'
+                        : ' · select a deck to filter by it.';
+                }
+                els.eventChoicesStatus.textContent = txt;
             }
         }
         async function loadEventChoices() {
@@ -7302,6 +7518,15 @@ const els = {
                     if (els.eventChoicesStatus) els.eventChoicesStatus.textContent = 'No events discovered yet. Run a career or refresh after selecting a deck.';
                     return;
                 }
+                const _sb = document.getElementById('event-cat-story');
+                const _ub = document.getElementById('event-cat-support');
+                if (_sb) _sb.onclick = () => setEventChoicesCategory('story');
+                if (_ub) _ub.onclick = () => setEventChoicesCategory('support');
+                syncEventChoicesDeckFilterFromPreset();
+                const _preset = getCurrentPreset();
+                const _savedTab = (_preset && getSetting(_preset, 'mant', 'event_choices_tab', 'story') === 'support') ? 'support' : 'story';
+                setEventChoicesCategory(_savedTab, { persist: false });
+                updateEventCategoryCounts();
                 applyEventChoicesFilter();
             } catch (e) {
                 if (els.eventChoicesStatus) els.eventChoicesStatus.textContent = e.message || 'Failed to load event choices';
@@ -7392,6 +7617,7 @@ const els = {
                 burn_clocks: state.burnClocks,
                 carats_enabled: !!state.caratsEnabled,
                 max_clocks_per_career: Math.max(0, Number(state.maxClocksPerCareer) || 0),
+                finalize_single_runs: !!state.finalizeSingleRuns,
                 dev_mode: state.runCount !== 1,
                 run_count: normalizeRunCount(state.runCount),
                 race_planner_mode: state.racePlannerMode || 'smart',
@@ -7419,6 +7645,7 @@ const els = {
                 burn_clocks: state.burnClocks,
                 carats_enabled: !!state.caratsEnabled,
                 max_clocks_per_career: Math.max(0, Number(state.maxClocksPerCareer) || 0),
+                finalize_single_runs: !!state.finalizeSingleRuns,
                 dev_mode: state.runCount !== 1,
                 run_count: normalizeRunCount(state.runCount),
                 race_planner_mode: state.racePlannerMode || 'smart',
@@ -7519,12 +7746,22 @@ const els = {
                     : await apiJson('/api/career/runner'));
                 if (!data.success || !data.runner) return;
                 const runner = data.runner;
+                // The poll endpoint now returns a fresh account (TP/carats/gold/
+                // clocks) every cycle. Sync the optimistic clock-usage tracker
+                // first so applyRunnerClockUsage (inside applyRunnerSnapshot)
+                // does not re-subtract usage the server already reflects.
+                if (data.account) state.displayedClocksUsed = Number(runner.clocks_used || 0);
                 applyRunnerSnapshot(runner);
+                if (data.account) {
+                    if (dashData) dashData.account = data.account;
+                    renderAccountStrip(data.account);
+                }
                 // Refresh the (heavy) career history+report ONCE when a run finishes
                 // while the modal is open — not on every poll. A fresh run resets the
                 // latch so the next finish refreshes again.
                 if (runner.running) {
                     state.historyReloadedForFinish = false;
+                    state.finishHandledForRun = false;
                 } else if (runner.finished && !runner.last_error && !state.historyReloadedForFinish
                            && els.v543CareerHistoryModal?.style.display === 'flex') {
                     state.historyReloadedForFinish = true;
@@ -7539,28 +7776,41 @@ const els = {
                     if (runner.paused) {
                         setFooterStatus(`Paused at turn ${runner.turn || '?'}${loopSuffix}`, { transient: true });
                     } else {
-                        // Live turn/action details already live in the Action Log, Decision Reasoning,
-                        // Career card, and Monitor bar. Keeping this empty prevents it from sitting
-                        // behind the Run/Stop/Pause controls.
-                        setFooterStatus('');
+                        // Surface server throttling when present (recent 208/5xx/394-shaped
+                        // rejects + recovery count) so the owner can tell a throttled account
+                        // from a healthy run. Empty otherwise.
+                        const _rejects = Number(runner.recent_server_rejects || 0);
+                        const _recoveries = Number(runner.recoveries || 0);
+                        if (_rejects > 0 || _recoveries > 0) {
+                            setFooterStatus(`Server throttling — ${_rejects} reject(s) in 10min · ${_recoveries} recoveries`, { transient: true });
+                        } else {
+                            setFooterStatus('');
+                        }
                     }
                     return;
                 }
-                if (state.runnerTimer && state.runCount === 1) {
-                    bgClearTimer(state.runnerTimer);
-                    state.runnerTimer = 0;
-                }
+                // v2.1: do NOT stop polling when a snapshot reports not-running.
+                // running:false happens transiently (idle, startup, login, between
+                // careers in a loop, and right after a single run finishes) -- killing
+                // the timer here left the dashboard frozen on stale status until a
+                // manual page refresh. Keep the poll alive at a steady cadence so the
+                // live status always self-updates.
                 if (runner.last_error) {
                     els.startStatus.classList.toggle('error', true);
-                    if (!rows.length) els.startStatus.innerText = runner.last_error;
+                    if (!rows.length) els.startStatus.innerText = 'Career halted — ' + runner.last_error;
                     if (state.runCount !== 1) {
                         state.consecutiveRunnerFails++;
                         if (state.consecutiveRunnerFails >= 3) {
-                            if (!rows.length) els.startStatus.innerText = runner.last_error + " (Loop disabled after repeated failures)";
+                            if (!rows.length) els.startStatus.innerText = 'Career halted — ' + runner.last_error + " (Loop disabled after repeated failures)";
                             setRunCount(1, { persist: true });
                         }
                     }
-                } else if (runner.finished && !runner.last_error) {
+                } else if (runner.finished && !runner.last_error && !state.finishHandledForRun) {
+                    // v2.1: one-shot per finished run. The poll now stays alive while
+                    // idle (the live-status fix), so without this latch
+                    // clearFinishedSetupState would re-fire a POST /api/selection +
+                    // team-panel rebuild every 1.5s. Reset when a new run starts (above).
+                    state.finishHandledForRun = true;
                     state.consecutiveRunnerFails = 0;
                     els.startStatus.classList.toggle('error', false);
                     if (state.runCount !== 1 && runner.loop_active) {
@@ -7688,32 +7938,10 @@ const els = {
                 return `<span class="${cls}"><span class="cp-pill-label">${escapeHtml(label)}</span><span class="cp-pill-value">${escapeHtml(value)}</span></span>`;
             }
 
-            function statPriorityHtml(priority) {
-                if (!priority || !priority.length) return '<em>auto-derived from aptitudes at run start</em>';
-                return priority.map((s, i) => `<span class="cp-stat-rank">${i + 1}.</span>&nbsp;<span class="cp-stat-name">${escapeHtml(s)}</span>`).join('&nbsp;&nbsp;');
-            }
-
             function solverOverridesHtml(overrides) {
                 const keys = Object.keys(overrides || {});
                 if (!keys.length) return '<em>no solver overrides (scenario defaults)</em>';
                 return keys.map(k => `<div class="cp-override-row"><span class="cp-override-key">${escapeHtml(k)}:</span> <span class="cp-override-value">${escapeHtml(JSON.stringify(overrides[k]))}</span></div>`).join('');
-            }
-
-            function statTargetsHtml(targets) {
-                if (!targets) return '';
-                const rows = [];
-                for (const dist of ['sprint', 'mile', 'medium', 'long']) {
-                    const t = targets[dist];
-                    if (!t) continue;
-                    const cells = ['speed', 'stamina', 'power', 'guts', 'wit']
-                        .map(s => `<td class="cp-target-cell">${escapeHtml(t[s] || 0)}</td>`).join('');
-                    rows.push(`<tr><td class="cp-dist-label">${escapeHtml(dist)}</td>${cells}</tr>`);
-                }
-                if (!rows.length) return '';
-                return `<table class="cp-targets-table">
-                    <thead><tr><th></th><th>Speed</th><th>Stamina</th><th>Power</th><th>Guts</th><th>Wit</th></tr></thead>
-                    <tbody>${rows.join('')}</tbody>
-                </table>`;
             }
 
             function epithetSourcePill(source) {
@@ -7738,17 +7966,6 @@ const els = {
                 }).join('');
             }
 
-            async function persistMode(profileId, mode) {
-                try {
-                    const resp = await fetch('/api/character-profile/mode', {
-                        method: 'POST', headers: {'Content-Type': 'application/json'},
-                        body: JSON.stringify({profile_id: profileId, mode}),
-                    });
-                    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-                    return await resp.json();
-                } catch (e) { console.warn('mode persist failed', e); return null; }
-            }
-
             async function persistEpithets(profileId, targets) {
                 try {
                     const resp = await fetch('/api/character-profile/epithets', {
@@ -7771,88 +7988,16 @@ const els = {
                 } catch (e) { console.warn('auto-pick persist failed', e); return null; }
             }
 
-            async function persistTrainingTargets(profileId, body) {
-                try {
-                    const resp = await fetch('/api/character-profile/training-targets', {
-                        method: 'POST', headers: {'Content-Type': 'application/json'},
-                        body: JSON.stringify(Object.assign({profile_id: profileId}, body)),
-                    });
-                    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-                    return await resp.json();
-                } catch (e) { console.warn('training-targets persist failed', e); return null; }
-            }
-
-            // Mirrors career_bot/training_scorer.py TrainingScorerConfig.stat_targets
-            // defaults -- used to seed the editor when a profile has none yet.
-            const CP_DEFAULT_TARGETS = {
-                sprint: {speed: 1200, stamina: 400, power: 1100, guts: 400, wit: 1000},
-                mile:   {speed: 1200, stamina: 600, power: 1000, guts: 400, wit: 1000},
-                medium: {speed: 1100, stamina: 800, power: 1000, guts: 400, wit: 1000},
-                long:   {speed: 1000, stamina: 1100, power: 1000, guts: 400, wit: 1000},
-            };
-            const CP_STATS = ['speed', 'stamina', 'power', 'guts', 'wit'];
-            let cpWorkingPriority = [];
-
-            function priorityEditorRows() {
-                return cpWorkingPriority.map((s, i) => `
-                    <div class="cp-prio-edit-row" data-stat="${escapeHtml(s)}">
-                        <span class="cp-stat-rank">${i + 1}.</span>
-                        <span class="cp-stat-name">${escapeHtml(s)}</span>
-                        <span class="cp-prio-btns">
-                            <button type="button" class="cp-btn cp-btn-tiny cp-prio-up" data-i="${i}" ${i === 0 ? 'disabled' : ''}>&#9650;</button>
-                            <button type="button" class="cp-btn cp-btn-tiny cp-prio-down" data-i="${i}" ${i === cpWorkingPriority.length - 1 ? 'disabled' : ''}>&#9660;</button>
-                        </span>
-                    </div>`).join('');
-            }
-
-            function renderPriorityEditor() {
-                const host = document.getElementById('cp-priority-edit');
-                if (host) host.innerHTML = priorityEditorRows();
-            }
-
-            function targetsEditorTable(targets) {
-                const t = targets || CP_DEFAULT_TARGETS;
-                const head = '<th></th>' + CP_STATS.map(s => `<th>${s[0].toUpperCase() + s.slice(1)}</th>`).join('');
-                const rows = ['sprint', 'mile', 'medium', 'long'].map(dist => {
-                    const row = t[dist] || CP_DEFAULT_TARGETS[dist];
-                    const cells = CP_STATS.map(s =>
-                        `<td><input type="number" class="cp-target-input" min="0" max="1500" step="10"
-                            data-dist="${dist}" data-stat="${s}" value="${parseInt(row[s] || 0, 10)}"></td>`).join('');
-                    return `<tr><td class="cp-dist-label">${dist}</td>${cells}</tr>`;
-                }).join('');
-                return `<table class="cp-targets-table cp-targets-edit">
-                    <thead><tr>${head}</tr></thead><tbody>${rows}</tbody></table>`;
-            }
-
             function render(data) {
                 if (!data || !data.success) {
                     contentEl.innerHTML = `<div class="cp-error">Could not load profile: ${escapeHtml((data && data.detail) || 'no data')}</div>`;
                     return;
                 }
                 const p = data.profile || {};
-                const targets = p.training_scorer_overrides && p.training_scorer_overrides.stat_targets;
-                // Mirror the Training Settings stat priority into the profile view
-                // when the profile has no explicit override of its own, so the two
-                // stay consistent (an explicit profile override still wins).
-                const profilePriority = (p.training_scorer_overrides && p.training_scorer_overrides.stat_priority) || [];
-                let trainingPriority = [];
-                try {
-                    const _cur = (typeof currentPresetForSettings === 'function') ? currentPresetForSettings() : null;
-                    trainingPriority = (_cur && Array.isArray(_cur.training_stat_priority)) ? _cur.training_stat_priority : [];
-                } catch (e) { /* ignore */ }
-                const mirroredFromTraining = !profilePriority.length && !!trainingPriority.length;
-                const priority = profilePriority.length ? profilePriority
-                    : (trainingPriority.length ? trainingPriority
-                        : (typeof DEFAULT_STAT_PRIORITY !== 'undefined' ? DEFAULT_STAT_PRIORITY : []));
-                cpWorkingPriority = (priority || []).slice();
-                if (cpWorkingPriority.length !== 5) cpWorkingPriority = CP_STATS.slice();
                 const effectiveTargets = (p.target_epithets && p.target_epithets.length) ? p.target_epithets
                     : (p.auto_pick_epithets ? (p.auto_picked_epithets || []) : []);
                 const effectiveSource = (p.target_epithets && p.target_epithets.length) ? 'profile'
                     : (p.auto_pick_epithets && (p.auto_picked_epithets || []).length ? 'auto' : 'none');
-                const modeOptions = ['hint', 'authoritative', 'disabled']
-                    .map(m => `<option value="${m}" ${p.training_scorer_mode === m ? 'selected' : ''}>${m}</option>`).join('');
-
                 contentEl.innerHTML = `
                     <div class="cp-header">
                         <div class="cp-title">${escapeHtml(p.display_name || p.profile_id)}</div>
@@ -7861,19 +8006,6 @@ const els = {
                             ${pillHtml('Derivation', p.derivation, p.derivation === 'hand_curated' ? 'curated' : (p.derivation === 'auto_derived' ? 'auto' : 'muted'))}
                             ${pillHtml('Matched via', p.matched_via, 'info')}
                             ${pillHtml('Scenario', String(p.scenario_id), 'info')}
-                        </div>
-                    </div>
-
-                    <div class="cp-section">
-                        <div class="cp-section-title">Training Scorer Mode</div>
-                        <div class="cp-mode-row">
-                            <select id="cp-mode-select" class="cp-mode-select">${modeOptions}</select>
-                            <button type="button" id="cp-mode-save" class="cp-btn">Save</button>
-                            <span class="cp-mode-help">
-                                <strong>hint</strong> = scorer publishes for dashboard, strategy decides.
-                                <strong>authoritative</strong> = scorer overrides strategy on training picks (when margin warrants).
-                                <strong>disabled</strong> = scorer skipped entirely.
-                            </span>
                         </div>
                     </div>
 
@@ -7889,29 +8021,6 @@ const els = {
                                 When OFF (the v6.7.6 default), the smart race solver picks the best fan/epithet route without biasing toward any specific signature epithet.
                                 When ON, the catalog's signature epithets for this character seed the solver's target_epithets list and protect those races from the irregular-training hijack.
                             </span>
-                        </div>
-                    </div>
-
-                    <div class="cp-section">
-                        <div class="cp-section-title">Stat Priority &amp; Targets <span class="cp-mirror-note">editable profile override</span></div>
-                        <div class="cp-edit-help">Reorder the priority and edit per-distance targets, then Save. Writes to this profile's <code>training_scorer_overrides</code>. ${mirroredFromTraining ? 'This profile currently has no priority override (shown: Training Settings default) — saving creates one.' : ''}</div>
-                        <div class="cp-edit-grid">
-                            <div class="cp-edit-col">
-                                <div class="cp-edit-label">Priority (top = trained first)</div>
-                                <div id="cp-priority-edit" class="cp-priority-edit">${priorityEditorRows()}</div>
-                            </div>
-                            <div class="cp-edit-col cp-edit-col-wide">
-                                <div class="cp-edit-label">Per-distance stat targets</div>
-                                ${targetsEditorTable(targets)}
-                            </div>
-                        </div>
-                        <label class="cp-autopick-label cp-adapt-row">
-                            <input type="checkbox" id="cp-adapt-cb" ${p.adapt_targets_to_inheritance ? 'checked' : ''}>
-                            <span>Adapt stamina target to inheritance &mdash; when this trainee starts with weak stamina inheritance, relax its stamina target so the scorer stops chasing an unreachable number and redirects those turns to speed/wit.</span>
-                        </label>
-                        <div class="cp-epithet-actions">
-                            <button type="button" id="cp-targets-save" class="cp-btn">Save priority &amp; targets</button>
-                            <button type="button" id="cp-targets-reset" class="cp-btn cp-btn-secondary">Reset to scorer defaults</button>
                         </div>
                     </div>
 
@@ -7953,13 +8062,6 @@ const els = {
                     </div>
                 `;
 
-                document.getElementById('cp-mode-save')?.addEventListener('click', async () => {
-                    const sel = document.getElementById('cp-mode-select');
-                    if (!sel) return;
-                    const newMode = sel.value;
-                    await persistMode(p.profile_id, newMode);
-                    refresh();
-                });
                 document.getElementById('cp-autopick-save')?.addEventListener('click', async () => {
                     const cb = document.getElementById('cp-autopick-cb');
                     if (!cb) return;
@@ -7974,43 +8076,6 @@ const els = {
                 });
                 document.getElementById('cp-epithets-clear')?.addEventListener('click', async () => {
                     await persistEpithets(p.profile_id, []);
-                    refresh();
-                });
-                // Priority reorder (event-delegated so it survives sub-list re-render).
-                document.getElementById('cp-priority-edit')?.addEventListener('click', (ev) => {
-                    const up = ev.target.closest('.cp-prio-up');
-                    const down = ev.target.closest('.cp-prio-down');
-                    if (!up && !down) return;
-                    const i = parseInt((up || down).getAttribute('data-i'), 10);
-                    const j = up ? i - 1 : i + 1;
-                    if (j < 0 || j >= cpWorkingPriority.length) return;
-                    const tmp = cpWorkingPriority[i];
-                    cpWorkingPriority[i] = cpWorkingPriority[j];
-                    cpWorkingPriority[j] = tmp;
-                    renderPriorityEditor();
-                });
-                function readTargetInputs() {
-                    const out = {};
-                    document.querySelectorAll('.cp-target-input').forEach(inp => {
-                        const d = inp.getAttribute('data-dist'), s = inp.getAttribute('data-stat');
-                        const v = Math.max(0, Math.min(1500, parseInt(inp.value || '0', 10) || 0));
-                        (out[d] = out[d] || {})[s] = v;
-                    });
-                    return out;
-                }
-                document.getElementById('cp-targets-save')?.addEventListener('click', async () => {
-                    const adaptCb = document.getElementById('cp-adapt-cb');
-                    await persistTrainingTargets(p.profile_id, {
-                        stat_priority: cpWorkingPriority.slice(),
-                        stat_targets: readTargetInputs(),
-                        adapt_targets_to_inheritance: !!(adaptCb && adaptCb.checked),
-                    });
-                    refresh();
-                });
-                document.getElementById('cp-targets-reset')?.addEventListener('click', async () => {
-                    await persistTrainingTargets(p.profile_id, {
-                        stat_targets: JSON.parse(JSON.stringify(CP_DEFAULT_TARGETS)),
-                    });
                     refresh();
                 });
                 document.getElementById('cp-refresh')?.addEventListener('click', refresh);
@@ -8077,6 +8142,23 @@ const els = {
             refreshRunnerStatus();
             state.runnerTimer = bgSetInterval(refreshRunnerStatus, 1500);
         }
+        // v2.1: self-heal the live-status poll if it was ever torn down (older builds
+        // cleared it on a not-running snapshot; a backgrounded tab can also drop a
+        // worker timer). Re-arm on focus/visibility so status never stays stale
+        // without a manual refresh.
+        function ensureRunnerPolling() {
+            if (!state.runnerTimer) startRunnerPolling();
+            // v3: re-apply LOOP + TEMPT FATE visuals from state on refocus --
+            // tabbing away and back could leave them showing the default green/OFF
+            // even while the bot is looping / on a non-safe speed.
+            syncDevControls();
+            if (els.temptFateBtn) {
+                els.temptFateBtn.classList.toggle('is-active', (state.speedLevel || 'safe') !== 'safe');
+            }
+        }
+        document.addEventListener('visibilitychange', () => { if (!document.hidden) ensureRunnerPolling(); });
+        window.addEventListener('focus', ensureRunnerPolling);
+        window.addEventListener('pageshow', ensureRunnerPolling);
         els.friendRefreshBtn.addEventListener('click', event => {
             event.stopPropagation();
             loadFriends(true);
@@ -8084,6 +8166,16 @@ const els = {
         els.eventChoicesOpenBtn?.addEventListener('click', openEventChoices);
         els.eventChoicesRefreshBtn?.addEventListener('click', loadEventChoices);
         els.eventChoicesSearch?.addEventListener('input', applyEventChoicesFilter);
+        els.eventChoicesDeckFilter?.addEventListener('change', async () => {
+            _eventChoicesDeckFilter = !!(els.eventChoicesDeckFilter && els.eventChoicesDeckFilter.checked);
+            const current = getCurrentPreset();
+            if (current) {
+                setSettingValue(current, 'mant', 'event_choices_deck_filter', _eventChoicesDeckFilter);
+                try { await saveSettingsPreset(current, { refreshUI: false }); }
+                catch (e) { console.warn('Failed to save deck-filter preference', e); }
+            }
+            applyEventChoicesFilter();
+        });
         document.getElementById('event-choices-set-auto-btn')?.addEventListener('click', setAllEventChoicesToAuto);
         // v7.6 — custom deck builder controls (stopPropagation so the DECKS
         // section header toggle doesn't collapse when the button is clicked).
@@ -9266,12 +9358,6 @@ const els = {
         '<h4>How it could eventually influence decisions</h4>' +
         '<p>Today the LLM only produces text for you to read. The path by which AI ever nudges a live run is the <strong>Live Policy Assistance</strong> gate above — the small learned model, vetted by shadow precision — not the LLM. The LLM\'s value is interpretation: spotting patterns across logs, explaining why a run underperformed, and suggesting settings you then choose to apply. If a future version lets vetted advice feed the solver, it would go through that same precision-gated, score-nudging-only path, never direct control.</p>' +
         '<div class="v6719-callout tip"><strong>Recommendation</strong>If you do not run a local model, leave this <strong>Off</strong> — it changes nothing. If you do, <strong>Offline Analysis</strong> is the most useful setting: run a career, then hit ANALYZE for a readable post-mortem. Treat its output as a knowledgeable opinion to sanity-check, not as instructions.</div>' +
-        '<h3>Event outcomes — auto-captured from your runs</h3>' +
-        '<p>Icarus is an API bot: it already receives each event’s stat changes before and after every choice it makes, so it <strong>automatically records event outcomes from your own careers</strong> into the knowledge base (no Frida or external dumper needed). This improves <strong>event-choice scoring</strong> over time, and enriches the AI Dataset and LLM context. The <strong>Auto-capture</strong> checkbox in the Event Outcome Knowledge Base card turns this on/off (on by default).</p>' +
-        '<h3>Static outcome import (optional)</h3>' +
-        '<p>On top of native capture, the panel can still import a static outcome map (such as a community <code>dumper outcomes.json</code>) to seed events you have not run yet — use the <strong>Import Bundled Outcomes</strong> button. Observed data from your own runs takes precedence over imported data.</p>' +
-        '<h3>Resetting the data</h3>' +
-        '<p>If earlier runs were recorded under settings you have since fixed, the stored outcome history can mislead the solver — for example by penalizing high-value races that are now winnable. Starting fresh <strong>archives</strong> the old data (it is not deleted) and rebuilds from your corrected runs.</p>' +
         '<div class="v6719-callout warn"><strong>Recommended posture</strong>Keep LPA and any LLM influence off until you have many careers across several trainees. The bot performs well on the solver and training rules alone; the learned layers are refinements on top.</div>'
     },
     {
@@ -9290,9 +9376,9 @@ const els = {
         '<h2>Event choices</h2>' +
         '<p>During a career, story events pop up that ask you to pick an option. The ' + KW('EVENT CHOICES') + ' panel is where you control how the bot answers them. Each option in Umamusume gives different rewards — stats, skill hints, energy, mood — and the right pick depends on what you are building.</p>' +
         '<h3>How the bot decides (left on "Auto")</h3>' +
-        '<p>By default every event is set to <strong>Auto</strong>, and the bot picks in this order: a few game-critical events have hardcoded correct answers; otherwise it <strong>scores the options</strong> using the known effects (from its outcome database) against your <strong>Event Choice Prioritization</strong> stat order and picks the best; if it has no data for that event, it falls back to a safe default (the second option when there are several). So on Auto it is already making a reasonable, stat-aware choice.</p>' +
+        '<p>By default every event is set to <strong>Auto</strong>, and the bot picks in this order: a few game-critical events have hardcoded correct answers; otherwise it <strong>scores the options</strong> using the known effects (from the gametora + master.mdb event database) against your <strong>Event Choice Prioritization</strong> stat order and picks the best; if it has no data for that event, it falls back to a safe default (the second option when there are several). So on Auto it is already making a reasonable, stat-aware choice.</p>' +
         '<h3>What the panel shows</h3>' +
-        '<p>Each row lists the event, how often it has been seen, what the bot would auto-pick, and — where the database knows them — <strong>the effects of each choice</strong> (green for gains, red for losses). The dropdown lets you read those effects and choose. Events labelled <em>effect not in database</em> simply have no recorded outcome data yet; importing a static outcome map (see AI / Misc) fills more of them in.</p>' +
+        '<p>Each row lists the event, how often it has been seen, what the bot would auto-pick, and — where the database knows them — <strong>the effects of each choice</strong> (green for gains, red for losses). The dropdown lets you read those effects and choose. Events labelled <em>effect not in database</em> simply have no recorded outcome data yet; the gametora + master.mdb event database may simply not list it yet.</p>' +
         '<h3>Overriding a choice</h3>' +
         '<p>Pick a specific <strong>Choice</strong> from the dropdown to force it every time that event appears; pick <strong>Auto</strong> to hand the decision back to the bot. Overrides win over the automatic scoring, so this is how you guarantee, say, always taking the energy option or a particular skill hint. Overrides are saved immediately and persist across runs.</p>' +
         '<div class="v6719-callout tip"><strong>Is it affecting my runs?</strong>Left on Auto, Event Choices changes nothing about how the bot already behaves — it is just exposing and letting you override decisions the bot was making anyway. It will not break a run or get it stuck. Most runs never need an override; reach for it only when you want a specific event answered a specific way.</div>'
@@ -9583,7 +9669,7 @@ const els = {
       if (info.detection_warning) pieces.push(info.detection_warning);
       if (info.restart_required) pieces.push("Path changed in this session. Restart Icarus for the new location to take full effect.");
       if (info.is_fallback_build_dir) pieces.push("You're using the in-build folder. Settings will be lost on the next version unless you overwrite the same folder.");
-      if (info.is_legacy_path) pieces.push("Currently resolving via a legacy SweepyCL/SweepyClaude path. This still works; set an Icarus path here to migrate cleanly.");
+      if (info.is_legacy_path) pieces.push("Currently resolving via a legacy Pre Icarus/Pre Icarus path. This still works; set an Icarus path here to migrate cleanly.");
       if (pieces.length) {
         warnEl.innerHTML = pieces.map(function (p) { return '<div class="v71-userdata-warning-line">⚠ ' + escapeHtmlSafe(p) + '</div>'; }).join("");
         warnEl.style.display = "";
@@ -9708,7 +9794,7 @@ const els = {
         '<div class="v71-userdata-diag-row"><span>Resolved via</span><code id="v71-userdata-diag-source">(loading...)</code></div>' +
         '<div class="v71-userdata-diag-row"><span>Pointer file</span><code id="v71-userdata-diag-pointer">(loading...)</code></div>' +
         '<div id="v71-userdata-diag-warning" class="v71-userdata-diag-warning" style="display: none;"></div>' +
-        '<div class="v71-userdata-diag-hint">If the popup at startup got closed before you could finish setup, use the button above to reopen it. Settings, presets, and Steam auth all live in this folder.</div>' +
+        '<div class="v71-userdata-diag-hint">This is where your settings, presets, and Steam auth live. Use the button above to view or change the userdata folder.</div>' +
       '</div>';
     diagBody.appendChild(card);
     // Wire the reopen button
@@ -9933,12 +10019,31 @@ const els = {
     if (modal) modal.style.display = "none";
   }
 
+  // v2.1: show a persistent BETA badge (and red version pill) when the build's
+  // changelog version is a beta, so testers always know they're on a beta build.
+  function applyBetaBadge(version) {
+    var isBeta = /beta/i.test(String(version || ""));
+    var vEl = $("changelog-version");
+    if (vEl) vEl.classList.toggle("is-beta", isBeta);
+    var badge = document.getElementById("beta-build-badge");
+    if (isBeta && !badge) {
+      badge = document.createElement("div");
+      badge.id = "beta-build-badge";
+      badge.textContent = "BETA";
+      badge.title = "Beta build — " + String(version || "") + ". See BETA_CHANGES.txt for what's new and how to test.";
+      document.body.appendChild(badge);
+    } else if (!isBeta && badge) {
+      badge.remove();
+    }
+  }
+
   function openModal(data) {
     var modal = $("changelog-modal");
     if (!modal) return;
     var versionEl = $("changelog-version");
     var bodyEl = $("changelog-body");
     if (versionEl) versionEl.textContent = data.version || "";
+    applyBetaBadge(data.version);
     if (bodyEl) bodyEl.innerHTML = renderMarkdown(data.markdown || "");
     modal.style.display = "flex";
     if (bodyEl) bodyEl.scrollTop = 0;

@@ -1,7 +1,7 @@
 """Pure Trackblazer policy constants shared by item/race logic.
 
 These rules intentionally contain no OCR concepts.  They are the
-algorithmic part of the Trackblazer policy translated for SweepyCL's
+algorithmic part of the Trackblazer policy translated for Pre Icarus's
 native game-state payloads.
 """
 
@@ -84,6 +84,13 @@ DEFAULT_CUPCAKE_RESERVE = 1
 ENERGY_OVERSHOOT_CAP_RATIO = 1.10
 ENERGY_CRITICAL_KALE_THRESHOLD = 20
 
+# Late-game item policy. When False (the default), after turn 64 the bot dumps
+# every remaining item on any slightly-useful training -- summer is over and
+# finale races pay zero coins, so an unspent item is pure waste. Set True to keep
+# the conservative reserve/priority-gate behavior instead. (Scenario override:
+# mant_config.save_items_lategame.)
+DEFAULT_SAVE_ITEMS_LATEGAME = False
+
 VITA_GAINS = {
     "Vita 20": 20,
     "Vita 40": 40,
@@ -95,6 +102,9 @@ CUPCAKE_ORDER = ("Berry Sweet Cupcake", "Plain Cupcake")
 
 DEFAULT_CHARM_FAILURE_THRESHOLD = 20
 DEFAULT_CHARM_MIN_MAIN_GAIN = 20
+# Above this failure rate, fire the Good-Luck Charm even on a modest-gain
+# training (a wasted-turn failure is worse than the saved charm).
+DEFAULT_CHARM_FAILURE_RATE_HIGH = 40
 DEFAULT_LOW_MOOD_ITEM_GAIN_FLOOR = 15
 
 # P0: conservation must engage much earlier (was 65).  At 65 the bot burned
@@ -104,11 +114,48 @@ DEFAULT_LOW_MOOD_ITEM_GAIN_FLOOR = 15
 RACE_ITEM_CONSERVATION_START_TURN = 25
 TRACKBLAZER_FINALE_RACE_TURNS = (74, 76, 78)
 TRACKBLAZER_FINAL_RACE_TURN = 78
+
+# --- Year-end race handling -------------------------------------------------
+# A "year-end" race (Hopeful Stakes ~turn 24, Arima Kinen ~turn 72, plus the
+# career finale >= 73) is safe to chain into: the year/career ends right after,
+# so the consecutive-race energy penalty never carries forward, and any energy
+# topped up beforehand can never be spent.
+#
+# These are TWO distinct concerns with different correct turn-sets:
+#  * REST-GUARD exemption: don't rest/skip over a wrap-up race. Mirrors the
+#    original (now-removed) legacy engine's race-chain-break exemption. Covers the
+#    early-Dec half-turns too {23,47,71} because the chain-break is purely about
+#    not resting over the race.
+#  * ENERGY-ITEM waste: spending recovery items is pure waste ONLY on the LAST
+#    training turn of the year {24,48,72} (and the finale). 23/47/71 are
+#    EXCLUDED -- the next turn (24/48/72) is still a real training turn, so
+#    energy banked on 23/47/71 can still be used and must NOT be skipped.
+YEAR_END_REST_EXEMPT_TURNS = frozenset({23, 24, 47, 48, 71, 72})
+YEAR_END_ENERGY_WASTE_TURNS = frozenset({24, 48, 72})
+
+
+def is_year_end_rest_exempt(turn):
+    """True on year-end wrap-up race turns + the finale (>=73): the
+    consecutive-race rest guard should NOT fire (parity with mant.py legacy)."""
+    t = int(turn or 0)
+    return t in YEAR_END_REST_EXEMPT_TURNS or t >= 73
+
+
+def is_year_end_energy_waste_turn(turn):
+    """True on the LAST training turn of each year {24,48,72} + the finale
+    (>=73): spending energy/recovery items here is wasted (energy can't be
+    used after). Deliberately excludes 23/47/71."""
+    t = int(turn or 0)
+    return t in YEAR_END_ENERGY_WASTE_TURNS or t >= 73
 # P0: hold back ~3 Master hammers for the climax/finale (was 2) so regular G1s
 # stop draining the stock.  An analogous Artisan pre-finale reserve protects the
 # Artisan stock the same way.
 DEFAULT_MASTER_HAMMER_FINALE_RESERVE = 3
 DEFAULT_ARTISAN_HAMMER_FINALE_RESERVE = 2
+# v2.0: keep exactly this many hammers (Master-preferred) banked for the 3 climax
+# races; any hammer beyond this is "surplus" and gets spent on regular G1s
+# (weakest first) instead of being stranded unused at career end.
+DEFAULT_HAMMER_FINALE_RESERVE = 3
 DEFAULT_ARTISAN_HAMMER_MIN_STOCK_FOR_G3 = 3
 DEFAULT_ARTISAN_HAMMER_MIN_STOCK_FOR_G2 = 2
 DEFAULT_GLOW_STICK_FINAL_RESERVE = 1
@@ -199,6 +246,11 @@ EVENT_CHAIN_END_PENALTY = -300
 EVENT_RANDOM_PENALTY = -10
 EVENT_RANDOM_PARTIAL_BONUS = 50
 EVENT_SKILL_HINT_BONUS = 25
+# Extra bonus when a choice hints a skill the user explicitly PLANNED to buy
+# (forced_skills / manual_skill_tiers, minus blacklist). Moderate by design:
+# stacked on the generic hint (25 -> 55 total) it outranks a small stat/energy
+# advantage but not a big swing or a top-priority stat (priority bonus up to 50).
+EVENT_PLANNED_SKILL_HINT_BONUS = 30
 EVENT_POSITIVE_STATUS_BONUS = 25
 EVENT_NEGATIVE_STATUS_PENALTY = -25
 EVENT_BOND_GAIN_BONUS = 20

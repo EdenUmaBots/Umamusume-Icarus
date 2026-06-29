@@ -1,4 +1,4 @@
-/* SweepyCL Parent Spark Filter
+/* Pre Icarus Parent Spark Filter
    Filters existing parent and guest-parent grids without changing DOM order.
    Selection in app.js still uses original indices/data attributes, so this
    module only toggles display/CSS order and never removes nodes during

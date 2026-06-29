@@ -1,4 +1,4 @@
-"""Launch, health-check, and supervise multiple Eden Bot instances.
+"""Launch, health-check, and supervise multiple Icarus instances.
 
 Example accounts.json:
 [
@@ -63,6 +63,11 @@ RUNTIME = ROOT / "uma_runtime"
 LOG_DIR = RUNTIME / "manager_logs"
 STATUS_PATH = RUNTIME / "manager_status.json"
 
+# Ceiling on supervisor restarts per child in a rolling 1h window. A bricked
+# instance (e.g. main.py fails at startup) would otherwise restart-loop forever;
+# once this is hit the child is marked failed and left dead instead.
+MAX_RESTARTS_PER_HOUR = 10
+
 
 def load_accounts():
     if not ACCOUNTS.exists():
@@ -73,7 +78,18 @@ def load_accounts():
         ACCOUNTS.write_text(json.dumps(sample, indent=2), encoding="utf-8")
         print(f"Created {ACCOUNTS}. Edit it, then run manager.py again.")
         return []
-    data = json.loads(ACCOUNTS.read_text(encoding="utf-8"))
+    try:
+        data = json.loads(ACCOUNTS.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as exc:
+        backup = ACCOUNTS.with_suffix(ACCOUNTS.suffix + f".bad-{int(time.time())}")
+        try:
+            ACCOUNTS.replace(backup)
+        except Exception:
+            pass
+        raise SystemExit(
+            f"accounts.json is invalid JSON ({exc}); moved it to {backup.name}. "
+            f"Fix the file and rerun the manager."
+        )
     if not isinstance(data, list):
         raise SystemExit("accounts.json must be a list of account objects")
     return data
@@ -167,20 +183,38 @@ def stop_child(child, kill_after=6):
 def restart_child(children, child, reason: str):
     account = child["account"]
     name = child["config"].stem
+    now = time.time()
+    times = child.setdefault("restart_times", [])
+    times[:] = [t for t in times if now - t < 3600]
+    if len(times) >= MAX_RESTARTS_PER_HOUR:
+        child["failed"] = True
+        child["fail_reason"] = (
+            f"hit the {MAX_RESTARTS_PER_HOUR} restarts/hour ceiling -- instance is "
+            f"likely bricked at startup; halting to avoid a restart flood"
+        )
+        print(f"{name}: {child['fail_reason']}")
+        stop_child(child)
+        return
     print(f"Restarting {name}: {reason}")
     stop_child(child)
     child["restarts"] += 1
+    times.append(now)
     delay = min(180, 5 * (2 ** min(child["restarts"] - 1, 5)))
     time.sleep(delay)
     replacement = start_child(account)
     replacement["restarts"] = child["restarts"]
+    replacement["restart_times"] = times
+    replacement["failed"] = False
+    replacement.pop("fail_reason", None)
     children[children.index(child)] = replacement
 
 
 def write_status(children):
     rows = []
+    now = time.time()
     for child in children:
         proc = child["proc"]
+        restart_times = [t for t in child.get("restart_times", []) if now - t < 3600]
         rows.append({
             "name": child["config"].stem,
             "port": child["port"],
@@ -188,13 +222,16 @@ def write_status(children):
             "running": proc.poll() is None,
             "returncode": proc.returncode,
             "restarts": child["restarts"],
+            "restarts_last_hour": len(restart_times),
+            "failed": bool(child.get("failed")),
+            "fail_reason": child.get("fail_reason", ""),
             "last_start": child["last_start"],
             "last_health_at": child.get("last_health_at", 0),
             "last_health_error": child.get("last_health_error", ""),
             "last_health": child.get("last_health", {}),
             "log_path": child.get("log_path", ""),
         })
-    atomic_write_json(STATUS_PATH, {"updated_at": time.time(), "children": rows})
+    atomic_write_json(STATUS_PATH, {"updated_at": now, "children": rows})
 
 
 def main():
@@ -230,6 +267,10 @@ def main():
                     child["log"].close()
                 except Exception:
                     pass
+                if child.get("failed"):
+                    # Already marked failed (e.g. restart budget exhausted) -- leave
+                    # it dead rather than retrying every loop tick.
+                    continue
                 if stopping or not auto_restart:
                     children.remove(child)
                     continue
@@ -246,9 +287,16 @@ def main():
                     stale_limit = int(account.get("stale_restart_seconds") or 0)
                     stale = int(health.get("runner_stale_seconds") or 0)
                     runner_running = bool(health.get("runner_running"))
+                    # Opt-in: restart an instance whose runner crashed. The process
+                    # stays alive on a career crash, so the supervisor would otherwise
+                    # never restart it (it only restarts on process death). Off by
+                    # default to avoid surprise restart loops.
+                    if (auto_restart and account.get("restart_on_runner_crash")
+                            and health.get("runner_crashed")):
+                        restart_child(children, child, f"runner crashed: {str(health.get('runner_last_error', ''))[:120]}")
                     # Only stale-restart an actually running runner. A logged-in idle dashboard
                     # should not be treated as timed out.
-                    if auto_restart and stale_limit > 0 and runner_running and stale >= stale_limit:
+                    elif auto_restart and stale_limit > 0 and runner_running and stale >= stale_limit:
                         restart_child(children, child, f"runner stale for {stale}s")
                 except (urllib.error.URLError, TimeoutError, json.JSONDecodeError, OSError) as exc:
                     child["last_health_error"] = str(exc)

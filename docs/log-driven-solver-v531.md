@@ -1,4 +1,4 @@
-# SweepyModv5.31 Log-Driven Smart Race Solver Improvements
+# Pre Icarus v5.31 Log-Driven Smart Race Solver Improvements
 
 This build turns recent Android-vs-Sweepy career-log findings into solver and observability changes.
 
@@ -19,7 +19,7 @@ Solver output now includes `epithet_ledger`, `dead_epithets`, and per-race `epit
 
 ## Re-solving
 
-During active careers, SweepyMod now re-solves remaining smart-planned races after a solver-planned race is lost. The race planner also attempts a re-solve if a smart-planned race is no longer available on its scheduled turn.
+During active careers, Pre Icarus now re-solves remaining smart-planned races after a solver-planned race is lost. The race planner also attempts a re-solve if a smart-planned race is no longer available on its scheduled turn.
 
 ## Logs
 

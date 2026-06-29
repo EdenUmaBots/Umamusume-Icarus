@@ -9,6 +9,6 @@ These two JSON files are direct ports of community-maintained data from the
     character(s) it can be earned by, sourced from `src/data/epithets.json`
     upstream.  Built by their `scripts/scrapers/epithet_scraper.py`.
 
-We bundle them so SweepyClaude has a starting catalog without writing its own
+We bundle them so Pre Icarus has a starting catalog without writing its own
 scraper.  License & attribution as per the upstream repo.  Updating: copy
 fresh versions from the upstream `src/data/` directory whenever they refresh.

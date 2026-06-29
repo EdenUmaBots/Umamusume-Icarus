@@ -1,0 +1,336 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Seiun Sky · mini</title>
+<style>
+  * { margin: 0; padding: 0; }
+  html, body { width: 100%; height: 100%; overflow: hidden; background: transparent; }
+  #app, canvas { display: block; width: 100%; height: 100%; }
+  #ld { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center;
+        font: 600 9px 'JetBrains Mono', monospace; letter-spacing: .14em; color: #3a4150; background: transparent; }
+</style>
+</head>
+<body>
+<div id="app"></div>
+<div id="ld">loading model…</div>
+
+<script>
+  if (!new URLSearchParams(location.search).has('v')) {
+    location.replace('mini.html?v=5');
+  }
+  /* Offline-safe watchdog: three.js / MMD load from a CDN; if the machine is
+     offline the ES module never boots — show a clean fallback, not a stuck spinner. */
+  (function () {
+    var ld = document.getElementById('ld');
+    window.__mmdFallback = function (msg) { if (ld) { ld.textContent = msg; ld.style.display = 'flex'; } };
+    if (!navigator.onLine) window.__mmdFallback('3D offline');
+    setTimeout(function () {
+      if (!window.__mmdReady) window.__mmdFallback(navigator.onLine ? '3D unavailable' : '3D offline');
+    }, 9000);
+  })();
+</script>
+
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+} }
+</script>
+<script type="module">
+import * as THREE from 'three';
+import { MMDLoader } from 'three/addons/loaders/MMDLoader.js';
+import { OutlineEffect } from 'three/addons/effects/OutlineEffect.js';
+
+// The one and only model: the chibi Seiun Sky (UmaViewer .pmx export; textures in
+// model-test/Texture2D/). Shown for every trainee, framed to fill the box, posed
+// arms-down, and spun continuously like a turntable.
+const PMX  = 'seiun_sky.pmx';
+const qs = new URLSearchParams(location.search);
+const debugSpin = qs.has('spin') ? Number(qs.get('spin')) : NaN;
+const debugAngle = qs.has('angle') ? Number(qs.get('angle')) : NaN;
+const SPIN = Number.isFinite(debugSpin) ? debugSpin : 0.6;    // radians/sec → a full 360° about every ~10.5s
+const START_ANGLE = Number.isFinite(debugAngle) ? debugAngle : 0;
+const FILL = 0.92;   // fraction of the box the model fills (higher = closer/bigger)
+
+const app = document.getElementById('app');
+const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 1.75));
+renderer.setClearAlpha(0);
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+renderer.toneMapping = THREE.NoToneMapping;
+function size() { renderer.setSize(app.clientWidth, app.clientHeight); }
+size(); app.appendChild(renderer.domElement);
+// Cel outlines — the signature game / UmaViewer line-art look that the plain
+// MMD toon material lacks. Renders the scene then draws expanded back-face edges.
+const effect = new OutlineEffect(renderer, { defaultThickness: 0.003, defaultColor: [0, 0, 0], defaultAlpha: 1.0 });
+
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(28, app.clientWidth / app.clientHeight, 0.1, 1000);
+
+// Soft, even lighting so the chibi stays bright and vibrant on EVERY side as it
+// spins (no harsh dark side) — matches UmaViewer's flat toon look.
+// Bright, mostly-even lighting (so colours stay vibrant on every side as it spins)
+// with a soft key for gentle cel shading. The outlines provide the definition, so
+// we don't need harsh shadows — and low self-illumination keeps colours from washing.
+scene.add(new THREE.HemisphereLight(0xffffff, 0x6a7080, 0.80));
+scene.add(new THREE.AmbientLight(0xffffff, 0.50));
+const key  = new THREE.DirectionalLight(0xffffff, 0.95); key.position.set(4, 12, 9);   scene.add(key);
+const fill = new THREE.DirectionalLight(0xcfe0ff, 0.50); fill.position.set(-7, 5, -11); scene.add(fill);
+
+// A SMOOTH dark→light ramp used as every lit material's gradientMap, so cel
+// shading reads as a soft gradient instead of the default toon's blocky 2-step
+// patches (the hair self-shadow problem). LinearFilter = smooth interpolation.
+function makeToonRamp() {
+  const n = 64, data = new Uint8Array(n * 4);
+  for (let i = 0; i < n; i++) {
+    const v = Math.round((0.55 + 0.45 * (i / (n - 1))) * 255);   // shadow 0.55 → lit 1.0
+    data[i * 4] = data[i * 4 + 1] = data[i * 4 + 2] = v; data[i * 4 + 3] = 255;
+  }
+  const tex = new THREE.DataTexture(data, n, 1, THREE.RGBAFormat);
+  tex.minFilter = tex.magFilter = THREE.LinearFilter;
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.needsUpdate = true;
+  return tex;
+}
+
+const pivot = new THREE.Group();
+scene.add(pivot);
+let mesh = null;
+
+function disableOutline(material) {
+  material.userData.outlineParameters = { thickness: 0, color: [0, 0, 0], alpha: 0, visible: false };
+}
+
+function makeTextureFromCanvas(canvas, source) {
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.flipY = source.flipY;
+  tex.wrapS = source.wrapS;
+  tex.wrapT = source.wrapT;
+  tex.minFilter = source.minFilter;
+  tex.magFilter = source.magFilter;
+  tex.generateMipmaps = source.generateMipmaps;
+  tex.needsUpdate = true;
+  return tex;
+}
+
+function removeFaceAtlasBackground(map, mode = 'face') {
+  if (!map || !map.image) return map;
+  const img = map.image;
+  const w = img.width || img.videoWidth;
+  const h = img.height || img.videoHeight;
+  if (!w || !h) return map;
+
+  const canvas = document.createElement('canvas');
+  canvas.width = w;
+  canvas.height = h;
+  const ctx = canvas.getContext('2d', { willReadFrequently: true });
+  ctx.drawImage(img, 0, 0, w, h);
+  const image = ctx.getImageData(0, 0, w, h);
+  const px = image.data;
+
+  for (let p = 0; p < px.length; p += 4) {
+    const r = px[p], g = px[p + 1], b = px[p + 2], a = px[p + 3];
+    const max = Math.max(r, g, b);
+    const min = Math.min(r, g, b);
+    const isWhiteFeature = r > 245 && g > 245 && b > 245;
+    const isMouthFeature =
+      r < 190 ||
+      g < 125 ||
+      b < 130 ||
+      ((r - g) > 78 && g < 170) ||
+      isWhiteFeature;
+    const looksLikeAtlasSkin =
+      a > 0 &&
+      !isWhiteFeature &&
+      r > 205 && g > 145 && b > 135 &&
+      (r - g) < 62 &&
+      (g - b) < 42 &&
+      (r - b) < 100;
+    if ((mode === 'mouth' && !isMouthFeature) || (mode !== 'mouth' && looksLikeAtlasSkin)) {
+      px[p] = px[p + 1] = px[p + 2] = 0;
+      px[p + 3] = 0;
+    }
+  }
+
+  ctx.putImageData(image, 0, 0);
+  return makeTextureFromCanvas(canvas, map);
+}
+
+function makeUnlitDecalMaterial(source, map) {
+  const mat = new THREE.MeshBasicMaterial({
+    map,
+    color: 0xffffff,
+    transparent: true,
+    alphaTest: 0.02,
+    depthTest: true,
+    depthWrite: false,
+    side: source.side,
+    blending: THREE.NormalBlending,
+    toneMapped: false,
+  });
+  disableOutline(mat);
+  return mat;
+}
+
+function makeUnlitOpaqueMaterial(source, map) {
+  const mat = new THREE.MeshBasicMaterial({
+    map,
+    color: 0xffffff,
+    depthTest: true,
+    depthWrite: true,
+    side: source.side,
+    toneMapped: false,
+  });
+  disableOutline(mat);
+  return mat;
+}
+
+function makeHiddenMaterial(source) {
+  const mat = new THREE.MeshBasicMaterial({
+    transparent: true,
+    opacity: 0,
+    depthWrite: false,
+    side: source.side,
+  });
+  mat.visible = false;
+  mat.colorWrite = false;
+  disableOutline(mat);
+  return mat;
+}
+
+// Rotate bone `bn` so the direction toward its child `cn` points along `dir` (world).
+function orientBone(bn, cn, dir) {
+  const b = mesh.skeleton.bones.find(x => x.name === bn);
+  const c = mesh.skeleton.bones.find(x => x.name === cn);
+  if (!b || !c) return;
+  mesh.updateMatrixWorld(true);
+  const bp = new THREE.Vector3(), cp = new THREE.Vector3();
+  b.getWorldPosition(bp); c.getWorldPosition(cp);
+  const cur = cp.sub(bp).normalize(), des = new THREE.Vector3(...dir).normalize();
+  const q = new THREE.Quaternion().setFromUnitVectors(cur, des);
+  const bw = new THREE.Quaternion(); b.getWorldQuaternion(bw);
+  const nw = q.multiply(bw);
+  const pw = new THREE.Quaternion(); b.parent.getWorldQuaternion(pw);
+  b.quaternion.copy(pw.invert().multiply(nw)); b.updateMatrixWorld(true);
+}
+
+// T-pose → relaxed arms-down rest pose (both arms hang at the sides, slight out).
+function poseRest() {
+  const wx = (n) => { const b = mesh.skeleton.bones.find(x => x.name === n); if (!b) return 0; const v = new THREE.Vector3(); b.getWorldPosition(v); return v.x; };
+  mesh.updateMatrixWorld(true);
+  const lx = Math.sign(wx('Arm_L')) || 1;
+  const rx = Math.sign(wx('Arm_R')) || -1;
+  // Hang the arms WIDER (more outward x) and the forearms out + slightly FORWARD
+  // (z) so the hands sit beside/in front of the skirt instead of clipping through
+  // it. Tuned at load via bone rotation — no model edit.
+  orientBone('Arm_L', 'Elbow_L', [lx * 0.46, -0.86, 0.18]);
+  orientBone('Elbow_L', 'Wrist_L', [lx * 0.44, -0.80, 0.40]);
+  orientBone('Arm_R', 'Elbow_R', [rx * 0.46, -0.86, 0.18]);
+  orientBone('Elbow_R', 'Wrist_R', [rx * 0.44, -0.80, 0.40]);
+}
+
+// Centre the model on the pivot origin and pull the camera in to fill the box.
+function frame() {
+  if (!mesh) return;
+  const box = new THREE.Box3().setFromObject(mesh);
+  const c = box.getCenter(new THREE.Vector3());
+  const s = box.getSize(new THREE.Vector3());
+  mesh.position.set(-c.x, -c.y, -c.z);     // spin axis runs through the model centre
+  const fovR = camera.fov * Math.PI / 180;
+  const r = Math.max(s.y * 0.5, (s.x * 0.5) / camera.aspect);
+  camera.position.set(0, 0, (r / Math.tan(fovR / 2)) / FILL);
+  camera.lookAt(0, 0, 0);
+}
+
+const loader = new MMDLoader();
+loader.load(PMX, (m) => {
+  mesh = m;
+  const ramp = makeToonRamp();                     // smooth cel gradient (no blocky bands)
+  const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+  mats.forEach((mt, i) => {
+    if (!mt) return;
+    const name = mt.name || '';
+    const textureName = mt.map?.image?.src || '';
+    const isCheek = /cheek/i.test(name) || /cheek/i.test(textureName);
+    const isFaceBase = /face0/i.test(name) || /face0/i.test(textureName);
+    const isFaceAtlasDecal = /eye|mayu|mouth/i.test(name) || /eye|mayu|mouth/i.test(textureName);
+    // #1 CHEEK BLUSH: the texture is pink-on-OPAQUE-WHITE, but as a LIT toon
+    // material the white got toon-shaded to gray, so the multiply painted gray on
+    // the skin. Render it UNLIT (MeshBasicMaterial) so white stays white / pink
+    // stays pink, then MULTIPLY onto the face (white = no change, pink = blush).
+    if (isCheek) {
+      const basic = new THREE.MeshBasicMaterial({
+        map: mt.map,
+        transparent: true,
+        depthTest: true,
+        depthWrite: false,
+        blending: THREE.MultiplyBlending,
+        side: mt.side,
+        toneMapped: false,
+      });
+      if (basic.map) basic.map.colorSpace = THREE.SRGBColorSpace;
+      disableOutline(basic);
+      mats[i] = basic;
+      return;
+    }
+    if (isFaceBase) {
+      if (mt.map) mt.map.colorSpace = THREE.SRGBColorSpace;
+      const face = new THREE.MeshBasicMaterial({
+        map: mt.map,
+        color: 0xffffff,
+        depthTest: true,
+        depthWrite: true,
+        side: mt.side,
+        toneMapped: false,
+      });
+      disableOutline(face);
+      mats[i] = face;
+      return;
+    }
+    if (isFaceAtlasDecal) {
+      if (/mouth/i.test(name + textureName)) {
+        if (mt.map) mt.map.colorSpace = THREE.SRGBColorSpace;
+        mats[i] = makeUnlitOpaqueMaterial(mt, mt.map);
+        return;
+      }
+      const map = /eye/i.test(name + textureName) ? removeFaceAtlasBackground(mt.map) : mt.map;
+      if (map) map.colorSpace = THREE.SRGBColorSpace;
+      mats[i] = makeUnlitDecalMaterial(mt, map);
+      return;
+    }
+    if (mt.emissive) mt.emissive.multiplyScalar(0.5);   // low self-illum → colours don't wash out
+    if ('shininess' in mt) mt.shininess = 10;
+    if (mt.map) mt.map.colorSpace = THREE.SRGBColorSpace;
+    // #2 SMOOTH CEL SHADE: a smooth gradient ramp replaces the default 2-step toon
+    // so hair self-shadow reads as a soft gradient, not blocky gray patches.
+    mt.gradientMap = ramp;
+    // Don't outline the flat face decals (eyes / eyebrows / mouth quads) — an
+    // outline around those little quads looks wrong. Body/hair/face/tail keep it.
+    mt.needsUpdate = true;
+  });
+  pivot.add(mesh);
+  poseRest();
+  mesh.updateMatrixWorld(true);
+  mesh.skeleton.update();
+  frame();                                  // frame AFTER posing (arms down → tighter fit)
+  window.__mmdReady = true;
+  document.getElementById('ld').style.display = 'none';
+}, undefined, () => { window.__mmdReady = true; (window.__mmdFallback || (() => {}))('no model'); });
+
+const clock = new THREE.Clock();
+function loop() {
+  requestAnimationFrame(loop);
+  if (document.hidden || !mesh) return;             // pause while hidden / before load
+  pivot.rotation.y = START_ANGLE + clock.getElapsedTime() * SPIN; // continuous 360° turntable spin
+  mesh.skeleton.update();                            // keep the posed skeleton applied
+  effect.render(scene, camera);                      // render with cel outlines
+}
+loop();
+
+addEventListener('resize', () => { size(); camera.aspect = app.clientWidth / app.clientHeight; camera.updateProjectionMatrix(); frame(); });
+</script>
+</body>
+</html>

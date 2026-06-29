@@ -2,7 +2,7 @@
 
 ## Purpose
 
-The Trackblazer item economy improves MANT/Trackblazer performance by using native SweepyMod state to decide what to buy and when to spend training, recovery, condition, and race items.
+The Trackblazer item economy improves MANT/Trackblazer performance by using native Pre Icarus state to decide what to buy and when to spend training, recovery, condition, and race items.
 
 ## Shop priorities
 
@@ -39,7 +39,7 @@ Race items use Trackblazer conservation rules:
 - Artisan Hammer for G2/G3 races, or G1 fallback if no Master Hammer exists
 - Glow Sticks for high-value G1 races
 - conservation starts at turn 65
-- Finale reserve logic uses SweepyMod native turn numbering
+- Finale reserve logic uses Pre Icarus native turn numbering
 
 ## Configuration
 

@@ -1,4 +1,4 @@
-"""SweepyCL character data loaders (v6.3).
+"""Pre Icarus character data loaders (v6.3).
 
 Reads two community-maintained JSON catalogs ported from the
 the reference automation project (see ``data/character_data/README.md``):

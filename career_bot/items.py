@@ -164,6 +164,42 @@ ENERGY_ITEMS = {
     "Royal Kale Juice": 100,
 }
 
+# Lv5 summer-camp facility turns. MUST equal mant.RACE_VALUE_CAMP_TURNS (a test
+# asserts parity): the strategy's summer all-out gate and the item layer reason
+# about the same set of camp turns.
+SUMMER_TRAINING_TURNS = frozenset({37, 38, 39, 40, 61, 62, 63, 64})
+
+# Per-item ENERGY contribution of the dedicated energy-top-up consumables.
+# The game owner confirmed Energy Drink MAX is a SMALL top-up item (value 5) that
+# exists only to escape 0 energy before a race -- it is not a full Vita-class
+# refill.  Vita 20/40/65 and Energy Drink MAX EX keep their established values.
+# This registry is consulted by the pre-race "smallest sufficient energy item"
+# logic so a tiny +5 EDM is preferred over a +20 Vita when both are owned.
+ENERGY_VALUES = {
+    "Energy Drink MAX": 5,
+    "Energy Drink MAX EX": 100,
+}
+
+# Late-game whistle policy (turn >= 65): reroll the training with a Reset Whistle
+# when the best available training's TOTAL stat gain falls below this threshold
+# (i.e. the training is lackluster).  Configurable via mant_config.
+DEFAULT_LATE_WHISTLE_LACKLUSTER_THRESHOLD = 30
+
+# Global stat cap (Trackblazer: all five stats cap at 1200).  Used by the
+# late-game "highest-priority NON-CAPPED stat" gates (R2 turn >= 71).
+GLOBAL_STAT_CAP = 1200
+
+# training_stat_priority list names -> the chara_info stat field + the
+# TRAINING_COMMAND_MAIN_TARGET index used by the training command payload.
+_STAT_FIELD_BY_NAME = {
+    "speed": ("speed", 1),
+    "stamina": ("stamina", 2),
+    "power": ("power", 3),
+    "guts": ("guts", 4),
+    "wit": ("wiz", 5),
+    "wiz": ("wiz", 5),
+}
+
 # Energy/vitality-restore items that live on the INSTANT_USE_ITEMS path.  These
 # must be gated by the energy threshold (and the vital cap) instead of firing
 # every turn -- otherwise the bot drinks an Energy Drink MAX EX at vital 95-112,
@@ -304,6 +340,10 @@ class MantItemManager:
         self.last_pre_race_use_result = {}
         self.buy_attempt_events = []
         self.use_attempt_events = []
+        # Turn the most recent handle_pre_race() ran on (-1 = never). Lets the
+        # runner's turn-debug record surface PRE-RACE item use (cleat hammers /
+        # glow sticks) on race turns instead of the empty decision-phase selection.
+        self._pre_race_ran_turn = -1
         self.guide_cache = None
         self.trackblazer_race_catalog_cache = {}
 
@@ -358,6 +398,9 @@ class MantItemManager:
 
     def handle(self, client, state, preset, best_command=None, status=None, race_planner=None):
         current = state
+        # Per-turn (train/rest) path never suppresses energy items -- the year-end
+        # energy skip is scoped to the pre-race path only (set in handle_pre_race).
+        self._skip_energy_items = False
         self.recover_after_exchange_error = False
         current, bought = self.buy_shop_items(client, current, preset, race_planner, status)
 
@@ -366,12 +409,42 @@ class MantItemManager:
 
         return current, bought, used
 
-    def handle_pre_race(self, client, state, preset, payload, status=None, race_planner=None):
+    def handle_pre_race(self, client, state, preset, payload, status=None, race_planner=None,
+                        consecutive_race_position=1):
+        # v2.1 R5: ``consecutive_race_position`` is the CURRENT race's 1-indexed
+        # position in its consecutive-race chain (1 = first race of a new chain,
+        # 2 = second, ...).  Threaded in from runner._race via the strategy's
+        # _recent_race_chain_count helper (position = preceding_races + 1).  Used
+        # to decide whether a 0-energy pre-race top-up is worth the item.
+        self._consecutive_race_position = int(consecutive_race_position or 1)
         self.recover_after_exchange_error = False
         current, bought = self.buy_shop_items(client, state, preset, race_planner, status)
 
+        # v2.1: year-end races (Hopeful Stakes ~t24, Arima ~t72, finale >=73) are
+        # safe to chain into -- the year/career ends right after, so energy topped
+        # up here is pure waste. Opt-in via Scenario Overrides
+        # (mant_config.skip_energy_items_year_end). Scoped to THIS pre-race path so
+        # per-turn training energy is unaffected. Restricted to {24,48,72,>=73}
+        # (NOT 23/47/71, whose next turn is still a real training turn).
+        _chara0 = (state.get("data") or {}).get("chara_info") or {}
+        _turn0 = int(_chara0.get("turn") or 0)
+        _mc0 = (preset or {}).get("mant_config") or {}
+        self._skip_energy_items = (
+            (bool(_mc0.get("skip_energy_items_year_end", False))
+             and tb_rules.is_year_end_energy_waste_turn(_turn0))
+            or _turn0 >= 71  # v2.1 R5: post-70 races cost no energy and carry no
+                             # 0-energy punishment -> NO pre-race energy management.
+                             # Suppresses the _energy_targets late-spend path too (it
+                             # has no upper turn cutoff), which would otherwise still
+                             # spend Vitas pre-race past turn 70.
+        )
+
         self.recover_after_use_error = False
-        current, instant_used = self.use_items(client, current, preset, None, status, race_planner)
+        # 2026-06-29: suppress the general (>0 threshold) energy-restore path on the
+        # race turn -- a race only needs >0 energy, so pre-race energy is decided
+        # SOLELY by the vital==0 rule below. Other pre-race items (mood/charm/mega/
+        # anklet/hammers) are unaffected.
+        current, instant_used = self.use_items(client, current, preset, None, status, race_planner, suppress_energy=True)
         data = current.get("data") or {}
         free = data.get("free_data_set") or {}
         chara = data.get("chara_info") or {}
@@ -382,6 +455,7 @@ class MantItemManager:
 
         turn = int(chara.get("turn") or 0)
         self._set_turn(turn)
+        self._pre_race_ran_turn = turn
         program_id = int((payload or {}).get("program_id") or 0)
 
         if not owned:
@@ -391,8 +465,14 @@ class MantItemManager:
         targets = []
 
         vital = int(chara.get("vital") or 0)
-        if owned.get("Energy Drink MAX", 0) > 0 and vital <= 1:
-            targets.append(("Energy Drink MAX", 1))
+        # 2026-06-29 doctrine: a race only needs >0 energy to avoid punishment, so
+        # the SOLE pre-race energy spend is at exactly 0 energy -- same turn, before
+        # the race (like a hammer) -- regardless of the race's position in a
+        # consecutive chain. (turn>=71 and opt-in year-end are suppressed via
+        # _skip_energy_items / the turn gate inside _prerace_energy_target.)
+        energy_item = self._prerace_energy_target(owned, turn, vital)
+        if energy_item:
+            targets.append((energy_item, 1))
 
         targets.extend(self._trackblazer_race_item_targets(owned, turn, program_id, preset, race_planner))
 
@@ -416,6 +496,7 @@ class MantItemManager:
             self.last_pre_race_use_attempt = list(use_payload)
             event = {
                 "turn": turn,
+                "phase": "pre_race",
                 "selected": list(self.last_pre_race_use_selected),
                 "attempt": list(use_payload),
                 "payload": list(use_payload),
@@ -758,12 +839,35 @@ class MantItemManager:
             event["result"] = self.last_buy_result
             return state, 0
 
-    def _is_g1_program(self, program_id, race_planner):
-        if not race_planner or not program_id:
-            return False
-        info = (race_planner.program or {}).get(program_id) or {}
-        race_inst = str(info.get("race_instance_id") or "")
-        return race_inst.startswith("1")
+
+    def _smallest_sufficient_prerace_energy(self, owned):
+        """At 0 energy before a race, pick the SMALLEST SUFFICIENT energy item to
+        escape 0 (doctrine: a race only needs >0 energy; any energy item works).
+        Energy Drink MAX (+5) is the small dedicated top-up -- preferred -- then
+        the smallest Vita; Energy Drink MAX EX (+100 full refill) is the wasteful
+        last resort so a 0-energy race is never left unrescued. Returns the item
+        name or None when no energy item is owned."""
+        if int(owned.get("Energy Drink MAX", 0) or 0) > 0:
+            return "Energy Drink MAX"
+        # Smallest Vita first (Vita 20 < Vita 40 < Vita 65).
+        for name in ("Vita 20", "Vita 40", "Vita 65"):
+            if int(owned.get(name, 0) or 0) > 0:
+                return name
+        # Last resort: the full-refill instant item, so 0 energy is always escaped.
+        if int(owned.get("Energy Drink MAX EX", 0) or 0) > 0:
+            return "Energy Drink MAX EX"
+        return None
+
+    def _prerace_energy_target(self, owned, turn, vital):
+        """2026-06-29 doctrine: a race only needs >0 energy. Return the smallest
+        sufficient energy item ONLY when vital is exactly 0 (any consecutive-race
+        position), else None. Suppressed for post-70 races (no punishment) and for
+        opt-in year-end skip via _skip_energy_items."""
+        if (getattr(self, "_skip_energy_items", False)
+                or int(turn or 0) >= 71
+                or int(vital or 0) > 0):
+            return None
+        return self._smallest_sufficient_prerace_energy(owned)
 
     def _trackblazer_race_item_targets(self, owned, turn, program_id, preset, race_planner):
         info = self._program_race_info(program_id, race_planner)
@@ -856,34 +960,73 @@ class MantItemManager:
                 return "Artisan Cleat Hammer"
             return None
 
-        if grade == "G1":
-            # P0: hold back a Master-hammer reserve for the finale so regular G1s
-            # stop draining the stock (the conservation window now opens at T25).
-            master_reserve = _cfg_num(cfg, "trackblazer_master_hammer_finale_reserve", tb_rules.DEFAULT_MASTER_HAMMER_FINALE_RESERVE)
-            artisan_reserve = _cfg_num(cfg, "trackblazer_artisan_hammer_finale_reserve", tb_rules.DEFAULT_ARTISAN_HAMMER_FINALE_RESERVE)
-            if master_qty > 0:
-                if not conservation or is_final_race:
-                    return "Master Cleat Hammer"
-                # During conservation, only swing a Master on a regular G1 once we
-                # are above the finale reserve floor.
-                if master_qty > master_reserve:
-                    return "Master Cleat Hammer"
-            if artisan_qty > 0:
-                if not conservation or is_final_race:
-                    return "Artisan Cleat Hammer"
-                # Same hold-back logic for the Artisan stock on regular G1s.
-                return "Artisan Cleat Hammer" if artisan_qty > artisan_reserve else None
+        if grade not in {"G1", "G2", "G3"}:
             return None
 
-        if grade not in {"G2", "G3"}:
-            return None
-        if artisan_qty <= 0:
-            return None
+        total = master_qty + artisan_qty
+
+        # Before conservation opens (or on the final race):
+        # G1 always swings the best it has (Artisan is always considered for a G1).
+        # G2/G3 respect the configured per-grade Artisan min-stock threshold (spec,
+        # Medium) so early-season races like Niigata Junior Stakes (turn 16) do NOT
+        # swing freely below the user's floor. Masters are never spent here (banked
+        # for the climax / G1s).
         if not conservation or is_final_race:
+            if grade == "G1":
+                if master_qty > 0:
+                    return "Master Cleat Hammer"
+                if artisan_qty > 0:
+                    return "Artisan Cleat Hammer"
+                return None
+            if artisan_qty > 0:
+                if grade == "G2" and artisan_qty < _cfg_num(cfg, "trackblazer_artisan_hammer_min_stock_for_g2", 0):
+                    return None
+                if grade == "G3" and artisan_qty < _cfg_num(cfg, "trackblazer_artisan_hammer_min_stock_for_g3", 0):
+                    return None
+                return "Artisan Cleat Hammer"
+            return None
+
+        # v2.0: during conservation, bank exactly `finale_reserve` hammers
+        # (Master-preferred) for the 3 climax races; spend any SURPLUS on regular
+        # graded races, weakest (Artisan) first, so Masters stay for the climax and
+        # nothing is stranded unused at career end.
+        # v2.1: the finale reserve + per-grade Artisan gates are configurable via
+        # the Item Conservation sliders. Defaults preserve v2.0 behavior (reserve
+        # DEFAULT_HAMMER_FINALE_RESERVE; no per-grade Artisan minimum). The legacy
+        # trackblazer_hammer_finale_reserve key is still honored as a fallback.
+        finale_reserve = _cfg_num(cfg, "trackblazer_master_hammer_finale_reserve",
+                                  _cfg_num(cfg, "trackblazer_hammer_finale_reserve",
+                                           tb_rules.DEFAULT_HAMMER_FINALE_RESERVE))
+        # Spec (High): Artisan Hammers are ALWAYS considered for a G1, independent
+        # of BOTH the G3/G2 min-stock threshold AND this finale-reserve bank that
+        # gates G2/G3 below. Spend an Artisan if any is owned (banking Masters for
+        # the climax); only dip into a SURPLUS Master when no Artisan is available,
+        # so the climax reserve stays protected. (Master-on-G1 behavior is left as
+        # the prior surplus-only design -- the spec only frees Artisan for G1.)
+        if grade == "G1":
+            if artisan_qty > 0:
+                return "Artisan Cleat Hammer"
+            if total > finale_reserve and master_qty > 0:
+                return "Master Cleat Hammer"
+            return None
+        if total <= finale_reserve:
+            return None
+        reserved_master = min(master_qty, finale_reserve)
+        surplus_master = master_qty - reserved_master
+        surplus_artisan = max(0, artisan_qty - max(0, finale_reserve - reserved_master))
+        if surplus_artisan > 0:
+            # Don't drain the Artisan bank on weaker graded races below the
+            # configured minimum stock (default 0 = no gate).
+            if grade == "G2" and artisan_qty < _cfg_num(cfg, "trackblazer_artisan_hammer_min_stock_for_g2", 0):
+                return None
+            if grade == "G3" and artisan_qty < _cfg_num(cfg, "trackblazer_artisan_hammer_min_stock_for_g3", 0):
+                return None
             return "Artisan Cleat Hammer"
-        floor_key = "trackblazer_artisan_hammer_min_stock_for_g2" if grade == "G2" else "trackblazer_artisan_hammer_min_stock_for_g3"
-        default_floor = tb_rules.DEFAULT_ARTISAN_HAMMER_MIN_STOCK_FOR_G2 if grade == "G2" else tb_rules.DEFAULT_ARTISAN_HAMMER_MIN_STOCK_FOR_G3
-        return "Artisan Cleat Hammer" if artisan_qty >= int(cfg.get(floor_key) or default_floor) else None
+        # Only G1 may dip into surplus Masters; G2/G3 never spend a Master (saved
+        # for the climax / G1s).
+        if grade == "G1" and surplus_master > 0:
+            return "Master Cleat Hammer"
+        return None
 
     def _should_use_glow_stick(self, owned, turn, grade, fans, cfg):
         qty = int(owned.get("Glow Sticks", 0) or 0)
@@ -907,114 +1050,38 @@ class MantItemManager:
         # wants to re-scale.
         fan_mult = _cfg_num(cfg, "glow_stick_fan_multiplier", 1.0, cast=float)
         eff_fans = int(fans * fan_mult) if fans else 0
-        # If fan data is unavailable for a known finale race, use the item. The
-        # finale is exactly what the reserve exists for.
-        if eff_fans and eff_fans < min_fans and not is_finale:
-            return False
+
+        # LATE/FINALE DUMP (fixes "not used at all if bought after turn 72"): in
+        # the finale or once past the late-dump turn (item-strategy doctrine:
+        # dump items after turn 64, unless save_items_lategame), spend it
+        # regardless of the fan figure or the final-reserve -- a glow stick held
+        # back to the very last turn is pure waste. This deliberately overrides
+        # the reserve, which previously trapped a single late-bought glow stick.
+        dump_late = is_final_race or is_finale or (
+            (not cfg.get("save_items_lategame", tb_rules.DEFAULT_SAVE_ITEMS_LATEGAME))
+            and turn > 64
+        )
+        if dump_late:
+            return True
+
+        # Early phase (before conservation): use on big OR unknown-fan races.
         if turn < tb_rules.RACE_ITEM_CONSERVATION_START_TURN:
             return (eff_fans == 0) or eff_fans >= min_fans
-        if is_final_race:
-            return True
-        if not is_finale and eff_fans >= tb_rules.TOP_TIER_G1_GLOW_FAN_FLOOR:
+
+        # Conservation phase (turns 25-64): require a KNOWN fan figure at/above
+        # the threshold. eff_fans == 0 means the race's fan reward is UNKNOWN ->
+        # do NOT spend (this was the path that mis-fired on an 11k race whose
+        # catalog fan figure read 0, the "used at 11k when set to 20k" bug).
+        if eff_fans < min_fans:
+            return False
+        if eff_fans >= tb_rules.TOP_TIER_G1_GLOW_FAN_FLOOR:
             return True
         reserve = _cfg_num(cfg, "trackblazer_glow_stick_final_reserve", tb_rules.DEFAULT_GLOW_STICK_FINAL_RESERVE)
         return qty > reserve
 
-    def _old_ui_cleat_before_race(self, owned, turn, program_id, race_planner):
-        SUMMER_CAMP_2_START = 60
-        CLASSIC_YEAR_END = 48
-        SENIOR_YEAR_END = 72
-        CLIMAX_RACE_TURNS = [74, 76, 78]
 
-        master_qty = owned.get("Master Cleat Hammer", 0)
-        artisan_qty = owned.get("Artisan Cleat Hammer", 0)
-        if master_qty + artisan_qty <= 0:
-            return None
 
-        if turn in CLIMAX_RACE_TURNS:
-            if master_qty > 0:
-                return "Master Cleat Hammer"
-            if artisan_qty > 0:
-                return "Artisan Cleat Hammer"
-            return None
-
-        if turn > SUMMER_CAMP_2_START:
-            total = master_qty + artisan_qty
-            if total <= 2:
-                return None
-            reserve_total = min(2, total)
-            reserve_master = min(master_qty, reserve_total)
-            spare_master = master_qty - reserve_master
-            spare_artisan = artisan_qty - (reserve_total - reserve_master)
-
-            is_senior = turn <= SENIOR_YEAR_END
-            if is_senior and master_qty < 3 and spare_artisan > 0:
-                return "Artisan Cleat Hammer"
-            if spare_master > 0:
-                return "Master Cleat Hammer"
-            if spare_artisan > 0:
-                return "Artisan Cleat Hammer"
-            return None
-
-        if not self._is_g1_program(program_id, race_planner):
-            return None
-
-        is_senior = CLASSIC_YEAR_END < turn <= SENIOR_YEAR_END
-        if is_senior and master_qty < 3:
-            if artisan_qty > 0:
-                return "Artisan Cleat Hammer"
-            if master_qty > 0:
-                return "Master Cleat Hammer"
-            return None
-
-        if master_qty > 0:
-            return "Master Cleat Hammer"
-        if artisan_qty > 0:
-            return "Artisan Cleat Hammer"
-        return None
-
-    def _old_ui_cleat_shop_target(self, available, owned, budget, current_turn):
-        CLASSIC_YEAR_END = 48
-        SENIOR_YEAR_END = 72
-
-        master_qty = owned.get("Master Cleat Hammer", 0)
-        artisan_qty = owned.get("Artisan Cleat Hammer", 0)
-        total_cleats = master_qty + artisan_qty
-        is_senior = CLASSIC_YEAR_END < current_turn <= SENIOR_YEAR_END
-        is_climax = current_turn > SENIOR_YEAR_END
-        if not (is_senior or is_climax):
-            return None
-
-        available_by_name = {name: row for name, row in available}
-        if is_senior:
-            if total_cleats >= 2:
-                return None
-            for candidate in ("Master Cleat Hammer", "Artisan Cleat Hammer"):
-                row = available_by_name.get(candidate)
-                if not row:
-                    continue
-                cost = int(row.get("coin_num") or SHOP_ITEM_COSTS.get(candidate, 9999))
-                if cost <= budget:
-                    return row
-            return None
-
-        if total_cleats >= 3:
-            return None
-        if total_cleats < 2 and budget < 40:
-            return None
-        for candidate in ("Master Cleat Hammer", "Artisan Cleat Hammer"):
-            row = available_by_name.get(candidate)
-            if not row:
-                continue
-            cost = int(row.get("coin_num") or SHOP_ITEM_COSTS.get(candidate, 9999))
-            if cost > budget:
-                continue
-            if total_cleats < 2 and budget - cost < 40:
-                continue
-            return row
-        return None
-
-    def use_items(self, client, state, preset, best_command=None, status=None, race_planner=None):
+    def use_items(self, client, state, preset, best_command=None, status=None, race_planner=None, suppress_energy=False):
         data = state.get("data") or {}
         free = data.get("free_data_set") or {}
         chara = data.get("chara_info") or {}
@@ -1040,6 +1107,18 @@ class MantItemManager:
         _vital = int(chara.get("vital") or 0)
         _max_vital = max(1, int(chara.get("max_vital") or 100))
 
+        # Doctrine (2026-06-29): energy/recovery items are only worth using when
+        # THIS turn's chosen action is TRAINING (command_type 1) and energy is the
+        # limiter -- NEVER as a top-up on a rest/recreation/medic turn, and never
+        # on the pre-race general pass (suppress_energy=True; the 0-energy pre-race
+        # rule in handle_pre_race is the sole pre-race energy decision). Late-game
+        # dump (turn>64, save_items_lategame off) still empties energy items on any
+        # turn so nothing is stranded at career end.
+        _is_training_turn = int((best_command or {}).get("command_type") or 0) == 1
+        _dump_late_energy = (not _energy_cfg.get(
+            "save_items_lategame", tb_rules.DEFAULT_SAVE_ITEMS_LATEGAME)) and current_turn > 64
+        _allow_energy_restore = (_is_training_turn or _dump_late_energy) and not suppress_energy
+
         targets = []
         for name in INSTANT_USE_ITEMS:
             qty = owned.get(name, 0)
@@ -1048,6 +1127,12 @@ class MantItemManager:
             if DISPLAY_TO_ID.get(name) in self.failed_use_this_turn:
                 continue
             if name in INSTANT_ENERGY_RESTORE_ITEMS:
+                # v2.1: skip pre-race energy restore on year-end race turns (waste).
+                if getattr(self, "_skip_energy_items", False):
+                    continue
+                # 2026-06-29: only on training turns (or late dump) -- not rest.
+                if not _allow_energy_restore:
+                    continue
                 # Only drink when actually low on energy, and never over the cap.
                 if _vital >= _max_vital or _vital >= _energy_threshold:
                     continue
@@ -1061,14 +1146,38 @@ class MantItemManager:
 
                 targets.append((name, qty))
 
+        # 2026-06-29: late-game dump for the small +5 "Energy Drink MAX" (non-EX).
+        # It has NO other training-turn use (only the 0-energy pre-race rescue), so
+        # past turn 64 it strands otherwise. Dump one per turn while below max vital;
+        # never on the pre-race general pass (suppress_energy) or a year-end skip.
+        if (_dump_late_energy and not suppress_energy
+                and not getattr(self, "_skip_energy_items", False)
+                and int(owned.get("Energy Drink MAX", 0) or 0) > 0
+                and _vital < _max_vital
+                and DISPLAY_TO_ID.get("Energy Drink MAX") not in self.failed_use_this_turn):
+            targets.append(("Energy Drink MAX", 1))
+
         whistle = self._whistle_target(best_command, owned, preset, status, current_turn)
-        if whistle:
+        # 2026-06-29: a Reset Whistle turn IS a training turn. Outside the late-game
+        # dump it stays exclusive (its reroll is the turn's action). But in dump mode
+        # (turn>64, save_items_lategame off) it must NOT short-circuit the megaphone/
+        # anklet/charm block -- that stranded leftover megaphones (T69 confirmed). So
+        # keep the whistle AND fall through to also dump the rest on the same turn.
+        if whistle and not _dump_late_energy:
             targets = [whistle]
         else:
-            charm = self._charm_target(best_command, owned, preset, status)
+            if whistle:
+                targets.append(whistle)
+            charm = self._charm_target(best_command, owned, preset, status, current_turn)
             save_energy_under_charm = bool((preset or {}).get("save_energy_under_charm", True))
+            # Late-game dump: past turn 64 (unless save_items_lategame) a charm and
+            # an energy item on the same turn is not wasteful -- the goal is to
+            # empty the inventory, and vitality is deducted after the protected
+            # training resolves -- so don't reserve energy under the charm.
+            if (not _energy_cfg.get("save_items_lategame", tb_rules.DEFAULT_SAVE_ITEMS_LATEGAME)) and current_turn > 64:
+                save_energy_under_charm = False
 
-            if not (charm and save_energy_under_charm):
+            if not (charm and save_energy_under_charm) and _allow_energy_restore:
                 targets.extend(self._energy_targets(chara, owned, preset, best_command, status))
             targets.extend(self._ailment_cure_targets(data, owned))
 
@@ -1144,6 +1253,7 @@ class MantItemManager:
         self.last_use_attempt = list(payload)
         event = {
             "turn": current_turn,
+            "phase": "decision",
             "selected": list(self.last_use_selected),
             "attempt": list(payload),
             "payload": list(payload),
@@ -1202,7 +1312,13 @@ class MantItemManager:
         start = _cfg_num(cfg, "trackblazer_finale_coin_reserve_start_turn", 65)
         end = _cfg_num(cfg, "trackblazer_finale_coin_reserve_end_turn", 73)
         if start <= int(turn or 0) <= end:
-            return max(0, _cfg_num(cfg, "trackblazer_finale_coin_reserve", 175))
+            reserve = max(0, _cfg_num(cfg, "trackblazer_finale_coin_reserve", 150))
+            # Late-game dump mode: don't hoard coins for finals (finale races pay
+            # no coins, and the only turn-71 must-buy is a ~55-coin Master Cleat
+            # Hammer). Keep just enough to cover that, so surplus converts to items.
+            if not cfg.get("save_items_lategame", tb_rules.DEFAULT_SAVE_ITEMS_LATEGAME):
+                reserve = min(reserve, _cfg_num(cfg, "trackblazer_finale_master_hammer_reserve", 60))
+            return reserve
         return 0
 
     def _coin_cap(self, turn, cfg):
@@ -1253,7 +1369,11 @@ class MantItemManager:
         f_start = _cfg_num(cfg, "trackblazer_finale_coin_reserve_start_turn", 65)
         f_end = _cfg_num(cfg, "trackblazer_finale_coin_reserve_end_turn", 73)
         if f_start <= int(turn or 0) <= f_end and not self._is_instant_stat_item(name):
-            finale_reserve = max(0, _cfg_num(cfg, "trackblazer_finale_coin_reserve", 175))
+            finale_reserve = max(0, _cfg_num(cfg, "trackblazer_finale_coin_reserve", 150))
+            # Mirror _coin_reserve: in dump mode keep only the Master Cleat Hammer
+            # floor, not the full 150-coin finale hoard.
+            if not cfg.get("save_items_lategame", tb_rules.DEFAULT_SAVE_ITEMS_LATEGAME):
+                finale_reserve = min(finale_reserve, _cfg_num(cfg, "trackblazer_finale_master_hammer_reserve", 60))
             floor = max(floor, finale_reserve)
         return max(0, int(floor))
 
@@ -1297,7 +1417,8 @@ class MantItemManager:
         cfg.setdefault("trackblazer_artisan_hammer_min_stock_for_g2", tb_rules.DEFAULT_ARTISAN_HAMMER_MIN_STOCK_FOR_G2)
         cfg.setdefault("trackblazer_glow_stick_final_reserve", tb_rules.DEFAULT_GLOW_STICK_FINAL_RESERVE)
         cfg.setdefault("trackblazer_glow_stick_min_fans", tb_rules.DEFAULT_GLOW_STICK_MIN_FANS)
-        cfg.setdefault("glow_stick_fan_multiplier", 2.0)
+        cfg.setdefault("glow_stick_fan_multiplier", 1.0)
+        cfg.setdefault("late_whistle_lackluster_threshold", DEFAULT_LATE_WHISTLE_LACKLUSTER_THRESHOLD)
         return cfg
 
     def _owned_map(self, free):
@@ -1323,15 +1444,6 @@ class MantItemManager:
                 result.append(name)
         return result
 
-    def _needed_cures(self, data, owned):
-        result = []
-        if owned.get(AILMENT_CURE_ALL, 0) > 0:
-            return result
-        for ailment in self._active_bad_statuses(data):
-            cure = AILMENT_CURE_MAP.get(ailment)
-            if cure and owned.get(cure, 0) <= 0:
-                result.append(cure)
-        return result
 
     def _ailment_cure_targets(self, data, owned):
         result = []
@@ -1354,15 +1466,25 @@ class MantItemManager:
     def _energy_targets(self, chara, owned, preset, best_command=None, status=None):
         """Choose recovery items using Trackblazer conservation rules.
 
-        Native SweepyCL payloads already tell us vitality and inventory, so this
+        Native Pre Icarus payloads already tell us vitality and inventory, so this
         is the standard policy without OCR: reserve one low-tier Vita, avoid
         over-healing past ~110%, and treat Royal Kale Juice as a guarded full
         restore because it costs motivation.
         """
+        # v2.1: in the pre-race path on a year-end race turn, skip recovery items
+        # entirely (energy is wasted -- the year/career ends right after the race).
+        if getattr(self, "_skip_energy_items", False):
+            return []
+        # Late-game dump: after turn 64 (unless save_items_lategame) spend energy
+        # items rather than stranding them at career end -- the small-gap floor
+        # below would otherwise refuse a top-up on a nearly-full bar.
+        _dump_late = ((not self._mant_cfg(preset).get(
+            "save_items_lategame", tb_rules.DEFAULT_SAVE_ITEMS_LATEGAME))
+            and int(chara.get("turn") or 0) > 64)
         hp = int(chara.get("vital") or 0)
         max_hp = max(1, int(chara.get("max_vital") or 100))
         gap = max_hp - hp
-        if gap < 20:
+        if gap < 20 and not _dump_late:
             return []
 
         cfg = self._mant_cfg(preset)
@@ -1371,27 +1493,55 @@ class MantItemManager:
         turn = int(chara.get("turn") or 0)
         if turn in (35, 59):
             threshold = max(threshold, _cfg_num(cfg, "pre_camp_energy_threshold", 65))
+        # v2.1 R3 late-game Vita policy:
+        #  * turns 60-64 (summer peak): use Vitas freely (no conservation reserve).
+        #  * turns >= 65: the energy-rescue path prefers energy items over resting,
+        #    so relax the threshold toward max-vital -- whenever HP is meaningfully
+        #    below max, spend an item rather than letting the strategy rest.
+        _late_summer = 60 <= turn <= 64
+        _late_spend = turn >= 65
+        if _late_spend:
+            threshold = max(threshold, max_hp - 10)
         # Never spend energy/recovery items once vital is already at/above the
-        # threshold, and never overcap (waste) at/over max vital.
-        if hp >= max_hp or hp >= threshold:
+        # threshold, and never overcap (waste) at/over max vital. In dump mode
+        # the threshold is ignored (spend down to any non-full bar); the
+        # hp>=max_hp / overshoot-cap guards still prevent pure overcap waste.
+        if hp >= max_hp or (hp >= threshold and not _dump_late):
             return []
 
         # Charm turns should not spend recovery items; failure is already zero and
         # vitality is deducted after the training resolves.
-        if (preset or {}).get("save_energy_under_charm", True) and self._charm_target(best_command, owned, preset, status):
+        if (not _dump_late) and (preset or {}).get("save_energy_under_charm", True) and self._charm_target(best_command, owned, preset, status, turn):
             return []
 
         motivation = int(chara.get("motivation") or 3)
-        reserve = max(0, _cfg_num(cfg, "trackblazer_energy_item_reserve", tb_rules.DEFAULT_ENERGY_ITEM_RESERVE))
+        if _late_summer or _late_spend:
+            # R3: spend Vitas freely -- no low-tier reserve in the late game.
+            reserve = 0
+        else:
+            reserve = max(0, _cfg_num(cfg, "trackblazer_energy_item_reserve", tb_rules.DEFAULT_ENERGY_ITEM_RESERVE))
         cupcake_reserve = max(0, _cfg_num(cfg, "trackblazer_cupcake_reserve", tb_rules.DEFAULT_CUPCAKE_RESERVE))
-        has_cupcake = self._available_cupcake(owned, reserve=cupcake_reserve, allow_reserved=True) is not None
+        # Spec (Low): the kale mood-offset must be patched with a PLAIN cupcake;
+        # Berry Sweet is reserved for the mood/Recovery path. Only count kale as
+        # "safe" when a Plain is actually available.
+        has_plain_for_kale = self._available_cupcake(
+            owned, reserve=cupcake_reserve, allow_reserved=True, kind="plain"
+        ) == "Plain Cupcake"
 
         # Royal Kale is a full refill with a mood bite. Use it as the panic lever
-        # at critical HP, or when a cupcake can patch the mood loss immediately.
+        # at critical HP, or when a Plain cupcake can patch the mood loss.
         if owned.get("Royal Kale Juice", 0) > 0:
             critical = hp <= _cfg_num(cfg, "kale_critical_threshold", tb_rules.ENERGY_CRITICAL_KALE_THRESHOLD)
-            safe_mood = has_cupcake or motivation <= 1
-            if critical or safe_mood:
+            safe_mood = has_plain_for_kale or motivation <= 1
+            # The cupcake+kale combo is locked to summer turns. After turn 64
+            # (dump mode) leftover kale is used as recovery instead of resting --
+            # even with no cupcake on hand -- but only when there's a real bar to
+            # refill (gap>=20 or critical) so a full kale is not wasted near max.
+            # Outside summer mid-career the combo is held back.
+            if _dump_late:
+                if critical or gap >= 20:
+                    return [("Royal Kale Juice", 1)]
+            elif is_summer_turn(turn, self._guide(preset)) and (critical or safe_mood):
                 return [("Royal Kale Juice", 1)]
 
         usable_vitas = self._usable_vita_counts(owned, reserve)
@@ -1423,8 +1573,16 @@ class MantItemManager:
                 break
         return counts
 
-    def _available_cupcake(self, owned, reserve=0, allow_reserved=False):
-        for name in tb_rules.CUPCAKE_ORDER:
+    def _available_cupcake(self, owned, reserve=0, allow_reserved=False, kind=None):
+        # kind=None     -> Berry-Sweet-first pick (mood recovery / Recreation
+        #                  substitution): Berry Sweet is the mood resource.
+        # kind="plain"  -> kale-juice mood offset ONLY: spend Plain Cupcake first,
+        #                  fall back to Berry Sweet only if no Plain is available.
+        if kind == "plain":
+            order = ("Plain Cupcake", "Berry Sweet Cupcake")
+        else:
+            order = tb_rules.CUPCAKE_ORDER
+        for name in order:
             qty = int(owned.get(name, 0) or 0)
             if qty <= 0:
                 continue
@@ -1436,9 +1594,30 @@ class MantItemManager:
     def _mood_target(self, chara, owned, preset=None, kale_queued=False):
         motivation = int(chara.get("motivation") or 3)
         hp = int(chara.get("vital") or 0)
+        turn = int(chara.get("turn") or 0)
         cfg = self._mant_cfg(preset)
         reserve = max(0, _cfg_num(cfg, "trackblazer_cupcake_reserve", tb_rules.DEFAULT_CUPCAKE_RESERVE))
         threshold = _cfg_num(cfg, "cupcake_energy_threshold", 70)
+
+        # v2.1 late-game cupcake policy (turn >= 60):
+        #  * Past turn 59 Plain Cupcake is NOT held back for the kale-juice mood
+        #    offset (the reserve that protects it mid-career no longer matters --
+        #    few training turns remain, spend freely).
+        #  * Use any cupcake for mood whenever motivation < 4.  Turns 60-64 and
+        #    65+ share this branch; "any cupcake type" = allow_reserved so a kept-
+        #    back copy is also eligible.
+        late_game = turn >= 60
+        # Late-game dump (after turn 64, unless save_items_lategame): spend
+        # cupcakes for mood up to GREAT (mood<5), not just below GOOD (mood<4), so
+        # leftover cupcakes are not stranded at career end. A cupcake at max mood
+        # is still genuinely wasted, so that one stays excluded.
+        _dump_late = (not cfg.get("save_items_lategame", tb_rules.DEFAULT_SAVE_ITEMS_LATEGAME)) and turn > 64
+        mood_ceiling = 5 if _dump_late else 4
+        if late_game and motivation < mood_ceiling:
+            cupcake = self._available_cupcake(owned, reserve=reserve, allow_reserved=True)
+            if not cupcake:
+                return None
+            return (cupcake, 1)
 
         if not kale_queued:
             if motivation >= 5:
@@ -1447,11 +1626,28 @@ class MantItemManager:
             # energy is already comfortable, mood can usually wait.
             if hp >= threshold:
                 return None
+            # Non-kale mood path: Berry Sweet is the dedicated mood resource
+            # (Berry-Sweet-first order).
             cupcake = self._available_cupcake(owned, reserve=reserve, allow_reserved=False)
+        elif late_game:
+            # R1: past turn 59 do NOT reserve Plain Cupcake for the kale offset.
+            # Spend whatever cupcake is on hand (plain-first), but do not dip into
+            # the protected reserve -- mid-career reservation is simply disabled.
+            cupcake = self._available_cupcake(
+                owned, reserve=0, allow_reserved=True, kind="plain"
+            )
+            if not cupcake:
+                return None
         else:
-            # Kale just lowered mood; spend the reserved cupcake if necessary so
-            # the full restore does not sabotage the training turn.
-            cupcake = self._available_cupcake(owned, reserve=reserve, allow_reserved=True)
+            # Kale just lowered mood; patch it with a PLAIN cupcake (the kale
+            # offset resource) so the full restore does not sabotage the training
+            # turn AND Berry Sweet stays preserved for Recreation substitution.
+            cupcake = self._available_cupcake(
+                owned, reserve=reserve, allow_reserved=True, kind="plain"
+            )
+            if cupcake != "Plain Cupcake":
+                # No Plain available -> do NOT burn a Berry Sweet on a kale offset.
+                return None
 
         if not cupcake:
             return None
@@ -1473,6 +1669,13 @@ class MantItemManager:
             return None
 
         cfg = self._mant_cfg(preset)
+        # v2.0: hold whistles for summer camp and the end-of-career stretch, where
+        # they're used to reroll into turns worth spending megaphones + anklets on.
+        # Don't burn them rerolling random mid-career turns.
+        SUMMER = {36, 37, 38, 39, 40, 60, 61, 62, 63, 64}
+        whistle_late_turn = int(_cfg_num(cfg, "whistle_late_turn", 65))
+        if int(turn or 0) not in SUMMER and int(turn or 0) < whistle_late_turn:
+            return None
         current_chara = None
         if isinstance(status, dict):
             current_chara = status.get("current_chara") or status.get("chara_info")
@@ -1488,6 +1691,17 @@ class MantItemManager:
         total_gain = self._command_stat_gain(best_command, sp_weight=0.5)
         main_gain = self._command_main_stat_gain(best_command)
         failure = int(best_command.get("failure_rate") or 0)
+        # v2.1 R4 late-game whistle policy:
+        #  * turns 60-64 (summer): spend freely -- the existing poor_gain logic
+        #    below already rerolls lackluster summer turns.
+        #  * turns >= 65: reroll ONLY when the best training's TOTAL stat gain is
+        #    below late_whistle_lackluster_threshold (default 30) -- i.e. the
+        #    training is lackluster.  Above the threshold, CONSERVE the whistle.
+        if int(turn or 0) >= 65:
+            lackluster = _cfg_num(cfg, "late_whistle_lackluster_threshold", DEFAULT_LATE_WHISTLE_LACKLUSTER_THRESHOLD)
+            if total_gain < int(lackluster):
+                return ("Reset Whistle", 1)
+            return None
         threshold = int(cfg.get("whistle_score_threshold") or tb_rules.DEFAULT_WHISTLE_SCORE_THRESHOLD)
         max_failure = int(cfg.get("whistle_max_failure") or tb_rules.DEFAULT_WHISTLE_MAX_FAILURE)
         # Genuine dead-turn definition: low total gain, low main gain, or an
@@ -1498,28 +1712,66 @@ class MantItemManager:
             return ("Reset Whistle", 1)
         return None
 
-    def _charm_target(self, best_command, owned, preset, status):
+    def _charm_target(self, best_command, owned, preset, status, turn=0):
         if owned.get("Good-Luck Charm", 0) <= 0:
             return None
         if not best_command or int(best_command.get("command_type") or 0) != 1:
             return None
         fail_rate = int(best_command.get("failure_rate") or 0)
         cfg = self._mant_cfg(preset)
+        _dump_late = (not cfg.get("save_items_lategame", tb_rules.DEFAULT_SAVE_ITEMS_LATEGAME)) and int(turn or 0) > 64
+        main_gain = self._command_main_stat_gain(best_command)
+        # 2026-06-29: in dump mode (past turn 64) spend charms EXTREMELY aggressively
+        # -- fire on ANY training that does SOMETHING, bypassing the failure /
+        # main-gain / low-mood floors so leftovers don't strand at career end
+        # (finale gives no coins). The ONLY skip is a literal 0%-failure AND 0-gain
+        # pick, where a charm protects nothing and secures nothing (pure waste).
+        if _dump_late:
+            if fail_rate < 1 and main_gain < 1:
+                return None
+            return ("Good-Luck Charm", 1)
+
+        # Normal (mid-career) charm policy below.
         threshold = _cfg_num(cfg, "charm_failure_rate", tb_rules.DEFAULT_CHARM_FAILURE_THRESHOLD)
         if fail_rate < threshold:
             return None
 
-        main_gain = self._command_main_stat_gain(best_command)
         min_gain = _cfg_num(cfg, "charm_min_main_gain", tb_rules.DEFAULT_CHARM_MIN_MAIN_GAIN)
+        # Aggressiveness (fixes "fails despite high failure rate"): on a HIGH
+        # failure-rate turn, protect even a modest-gain training -- a wasted-turn
+        # failure costs the whole turn, so the gain bar shouldn't block the charm.
+        high_fail = _cfg_num(cfg, "charm_failure_rate_high", tb_rules.DEFAULT_CHARM_FAILURE_RATE_HIGH)
+        if fail_rate >= high_fail:
+            min_gain = 1
         if main_gain < min_gain:
             return None
 
         low_mood_floor = _cfg_num(cfg, "trackblazer_skip_bad_mood_items_below_gain", tb_rules.DEFAULT_LOW_MOOD_ITEM_GAIN_FLOOR)
         current_chara = (status or {}).get("current_chara") if isinstance(status, dict) else {}
         motivation = int((current_chara or {}).get("motivation") or 3)
-        if motivation <= 2 and main_gain < low_mood_floor:
+        if motivation <= 2 and main_gain < low_mood_floor and not _dump_late:
             return None
         return ("Good-Luck Charm", 1)
+
+    def _rainbow_partner_count(self, best_command, current_chara):
+        """Count friendship/rainbow partners on this training: support partners
+        (slots 1-6) present whose bond is rainbow-ready (>=80)."""
+        partners = (best_command or {}).get("training_partner_array") or []
+        bonds = {}
+        for ev in (current_chara or {}).get("evaluation_info_array") or []:
+            try:
+                bonds[int(ev.get("target_id") or 0)] = int(ev.get("evaluation") or 0)
+            except Exception:
+                pass
+        n = 0
+        for pid in partners:
+            try:
+                p = int(pid or 0)
+            except Exception:
+                continue
+            if 1 <= p <= 6 and bonds.get(p, 0) >= 80:
+                n += 1
+        return n
 
     def _megaphone_target(self, state, best_command, owned, preset, status, turn, race_planner):
         if not best_command or int(best_command.get("command_type") or 0) != 1:
@@ -1532,10 +1784,29 @@ class MantItemManager:
 
         score = self._command_stat_gain(best_command, sp_weight=0.5)
         cfg = self._mant_cfg(preset)
+        # Late-game dump (after turn 64, unless save_items_lategame): in the
+        # finale window (turn>=71) keep firing megaphones on any non-zero training
+        # instead of hoarding them behind the priority-stat gate / fire_window.
+        _dump_late = (not cfg.get("save_items_lategame", tb_rules.DEFAULT_SAVE_ITEMS_LATEGAME)) and int(turn or 0) > 64
+        # v2.1 late-game item policy windows (R2):
+        #  * turns 60-64 (summer peak): fire on ANY non-zero training.
+        #  * turns 65-70: stop conserving -- spend remaining stock on training.
+        #  * turns >= 71: fire only when the training raises the current
+        #    highest-priority NON-CAPPED stat.
+        LATE_SUMMER = turn in {60, 61, 62, 63, 64}
+        LATE_SPEND = 65 <= turn <= 70
+        LATE_FINAL = turn >= 71
         small_threshold = float(cfg.get("mega_small_threshold") or 11)
         medium_threshold = float(cfg.get("mega_medium_threshold") or 21)
         large_threshold = float(cfg.get("mega_large_threshold") or 35)
-        if turn in {36, 37, 38, 39, 40, 60, 61, 62, 63, 64}:
+        if LATE_SUMMER:
+            # R2: "fire on ANY training (even a small gain)".  Drop thresholds to
+            # ~0 so any non-zero score qualifies, AND (below) disable the summer
+            # hold so strong megaphones are spent freely.
+            small_threshold = 0.0
+            medium_threshold = 0.0
+            large_threshold = 0.0
+        elif turn in {36, 37, 38, 39, 40}:
             small_threshold *= 0.82
             medium_threshold *= 0.82
             large_threshold *= 0.82
@@ -1556,11 +1827,53 @@ class MantItemManager:
         summer_reserve = _cfg_num(cfg, "megaphone_summer_reserve", 2)
         first_summer_turn = _cfg_num(cfg, "megaphone_summer_first_turn", 35)
         strong_owned = int(owned.get("Empowering Megaphone", 0) or 0) + int(owned.get("Motivating Megaphone", 0) or 0)
+        # R2: during the late-summer (60-64) / late-spend (65-70) windows the
+        # stock-conservation caps are lifted, so never hold strong megaphones back.
         hold_summer_strong = (
             turn < first_summer_turn
             and strong_owned <= summer_reserve
             and not (inventory_pressure or dump_mode)
+            and not (LATE_SUMMER or LATE_SPEND)
         )
+
+        # v2.0: megaphones only fire in summer camp, on strong rainbow turns (2+
+        # friendship partners), or when burning excess at end of career
+        # (dump/inventory pressure). Stops the year-round +25-gain misfires.
+        SUMMER = {36, 37, 38, 39, 40, 60, 61, 62, 63, 64}
+        current_chara = (status or {}).get("current_chara") if isinstance(status, dict) else {}
+        rainbow = self._rainbow_partner_count(best_command, current_chara or {})
+        min_rainbow = int(_cfg_num(cfg, "megaphone_min_rainbow_partners", 2))
+        # R2 65-70: stop conserving -- allow firing on any training (spend
+        # remaining stock with no reserve), like dump mode but unconditional.
+        if LATE_SPEND or (LATE_FINAL and _dump_late):
+            fire_window = True
+        else:
+            fire_window = (turn in SUMMER) or dump_mode or inventory_pressure or rainbow >= min_rainbow
+        if not fire_window:
+            return None
+
+        # R2 >= 71: fire ONLY on training that raises the current highest-priority
+        # NON-CAPPED stat (the first stat in training_stat_priority below its cap).
+        if LATE_FINAL and not _dump_late and not self._training_raises_priority_stat(state, best_command, preset):
+            return None
+
+        # R2 late-game: during 60-64 (fire on ANY non-zero training) and 65-70
+        # (spend remaining stock), fire the best owned megaphone immediately,
+        # bypassing the tier-threshold ladder and the summer hold.  LATE_FINAL's
+        # priority-stat gate already filtered above.
+        # 2026-06-29: in DUMP mode (save_items_lategame off) past turn 64, dump a
+        # megaphone on ANY training turn -- drop the score>0 floor so capped-stat /
+        # low-gain trainings still empty the stock. With the toggle ON, keep the
+        # original score>0 windows. Late-summer (60-64) always keeps score>0.
+        if ((_dump_late and (LATE_SPEND or LATE_FINAL))
+                or ((LATE_SUMMER or LATE_SPEND or (LATE_FINAL and _dump_late)) and score > 0)):
+            if owned.get("Empowering Megaphone", 0) > 0:
+                return ("Empowering Megaphone", 1)
+            if owned.get("Motivating Megaphone", 0) > 0:
+                return ("Motivating Megaphone", 1)
+            if owned.get("Coaching Megaphone", 0) > 0:
+                return ("Coaching Megaphone", 1)
+            return None
 
         target_tier = 0
         if current_mega_tier <= 0:
@@ -1704,7 +2017,32 @@ class MantItemManager:
         score = self._command_stat_gain(best_command, sp_weight=0.5)
         threshold = 30 * (1 - (0.2 * self._active_megaphone_tier(state)))
         turn = int(((state.get("data") or {}).get("chara_info") or {}).get("turn") or 0)
-        if turn in {36, 37, 38, 39, 40, 60, 61, 62, 63, 64}:
+        # v2.1 R2 late-game anklet policy:
+        #  * 60-64: fire on ANY non-zero training (lift the conservation caps so
+        #    anklet stock is spent freely during the summer peak).
+        #  * 65-70: stop conserving -- spend remaining stock on any training.
+        #  * >= 71: fire ONLY on training that raises the current highest-priority
+        #    NON-CAPPED stat.
+        # 2026-06-29: in DUMP mode (save_items_lategame off) past turn 64, fire the
+        # anklet on ANY matching-stat training -- drop the score>0 floor so leftover
+        # anklets empty instead of stranding at career end.
+        _dump_late = (not self._mant_cfg(preset).get(
+            "save_items_lategame", tb_rules.DEFAULT_SAVE_ITEMS_LATEGAME)) and turn > 64
+        if turn in {60, 61, 62, 63, 64}:
+            if score > 0:
+                return (anklet, 1)
+            return None
+        if 65 <= turn <= 70:
+            if _dump_late or score > 0:
+                return (anklet, 1)
+            return None
+        if turn >= 71:
+            # Late-game dump: after turn 64 fire the anklet on any matching-stat
+            # training, bypassing the priority gate AND the score floor.
+            if _dump_late or (score > 0 and self._training_raises_priority_stat(state, best_command, preset)):
+                return (anklet, 1)
+            return None
+        if turn in {36, 37, 38, 39, 40}:
             threshold *= 0.80
         elif turn >= 49:
             threshold *= 0.88
@@ -1736,6 +2074,52 @@ class MantItemManager:
         if field:
             return int(cmd.get(field) or 0)
         return int(self._command_stat_gain(cmd))
+
+    def _training_stat_priority(self, preset):
+        """Return the lower-cased training_stat_priority list from the preset
+        (preset.training_stat_priority, then mant_config.training_stat_priority),
+        or [] when unset."""
+        priority = (
+            (preset or {}).get("training_stat_priority")
+            or ((preset or {}).get("mant_config") or {}).get("training_stat_priority")
+            or []
+        )
+        if isinstance(priority, str):
+            priority = [p.strip() for p in priority.split(",") if p.strip()]
+        return [str(p).strip().lower() for p in (priority or []) if str(p).strip()]
+
+    def _training_raises_priority_stat(self, state, best_command, preset):
+        """R2 (turn >= 71): True when the training's main stat is the current
+        HIGHEST-PRIORITY NON-CAPPED stat (the first entry in
+        training_stat_priority whose live value is below GLOBAL_STAT_CAP) and the
+        command actually gains that stat.
+
+        If every priority stat is already capped there is nothing left to push, so
+        the gate is satisfied (the caller then applies its own score checks).
+        """
+        if not best_command:
+            return False
+        priority = self._training_stat_priority(preset)
+        if not priority:
+            return True
+        chara = ((state or {}).get("data") or {}).get("chara_info") or {}
+        main_idx = TRAINING_COMMAND_MAIN_TARGET.get(int(best_command.get("command_id") or 0))
+        chosen = None
+        for name in priority:
+            mapping = _STAT_FIELD_BY_NAME.get(name)
+            if not mapping:
+                continue
+            field, idx = mapping
+            current = int(chara.get(field) or 0)
+            if current < GLOBAL_STAT_CAP:
+                chosen = idx
+                break
+        # All priority stats capped -> nothing left to push; allow the gate.
+        if chosen is None:
+            return True
+        if main_idx != chosen:
+            return False
+        return self._command_main_stat_gain(best_command) > 0
 
     def _command_stat_gain(self, cmd, sp_weight=0):
         if not cmd: return 0
@@ -1869,14 +2253,39 @@ class MantItemManager:
         # tiny stat gain isn't worth the coins.  Medium Manual (+7) / Large Scroll
         # (+15) are unaffected (different slug suffixes).  Opt back in via config.
         if display_to_slug(name).endswith("_notepad") and not cfg.get("trackblazer_buy_notepads", False):
-            return True
+            # v2.1: the tiny +3 notepads are normally skipped, BUT when the bot is
+            # flush with coins (otherwise hoarded to career end -- the "~500 coins
+            # left over every run" complaint), a permanent +3 stat beats hoarding.
+            # Buy them once coins exceed the flush threshold so surplus coins convert
+            # into stats instead of being wasted.
+            if int(budget or 0) < _cfg_num(cfg, "trackblazer_notepad_flush_coin", 250):
+                return True
         if int(owned.get(name, 0) or 0) >= self._item_cap(name, preset):
             return True
-        if name in MEGAPHONE_TIERS and self._megaphone_buy_surplus(data or {}, owned, turn, race_planner, preset):
+        # v2.1 R2: during the late-summer window (turns 60-64) lift the
+        # stock-conservation caps so anklets/megaphones are bought freely and the
+        # use logic has stock to spend.  Past turn 64 (R6) conservation is off
+        # entirely, so the gates below also no longer apply from 65 on.
+        _late_summer = 60 <= int(turn or 0) <= 64
+        # Late-game dump (after turn 64, unless save_items_lategame): lift the
+        # stock-conservation buy caps so the use logic has megaphones/anklets to
+        # spend, mirroring the 60-64 summer window.
+        _dump_late = (not cfg.get("save_items_lategame", tb_rules.DEFAULT_SAVE_ITEMS_LATEGAME)) and int(turn or 0) > 64
+        _lift_conservation = _late_summer or _dump_late
+        if name in MEGAPHONE_TIERS and not _lift_conservation and self._megaphone_buy_surplus(data or {}, owned, turn, race_planner, preset):
             return True
+        # v2.0 megaphone buy policy: never buy small (Coaching); buy big
+        # (Empowering) freely; buy medium (Motivating) only if still short on big
+        # megaphones for the upcoming summer.
+        if name == "Coaching Megaphone" and not _lift_conservation and not cfg.get("trackblazer_buy_small_megaphone", False):
+            return True
+        if name == "Motivating Megaphone" and not _lift_conservation:
+            big_target = _cfg_num(cfg, "megaphone_big_summer_target", 2)
+            if int(owned.get("Empowering Megaphone", 0) or 0) >= big_target:
+                return True
         # P1: anklet over-buy guard.  Keep only ~2 anklets in stock total (main +
         # sub); once we hold that many across all types, stop buying more.
-        if name in set(TRAINING_TYPE_ANKLET.values()):
+        if name in set(TRAINING_TYPE_ANKLET.values()) and not _lift_conservation:
             anklet_max = _cfg_num(cfg, "trackblazer_anklet_max_stock", 2)
             total_anklets = sum(int(owned.get(a, 0) or 0) for a in set(TRAINING_TYPE_ANKLET.values()))
             if total_anklets >= anklet_max:

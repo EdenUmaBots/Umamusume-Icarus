@@ -6,7 +6,7 @@ Smart Race Solver plans Trackblazer/MANT race schedules using solver-backed race
 
 ## Solver backends
 
-SweepyMod supports:
+Pre Icarus supports:
 
 1. SciPy MILP exact backend, when SciPy is installed.
 2. Beam-search fallback backend, dependency-free.
@@ -43,7 +43,7 @@ The planner supports Smart Race Solver mode and Manual Selection mode. Manual ra
 
 ## Dependencies and interactions
 
-`requirements.txt` includes `scipy>=1.11`. If SciPy is missing or the model is infeasible, SweepyMod falls back to beam search. Trackblazer P2 added train-turn protection so solver-planned Train turns are not stolen by fallback fan racing.
+`requirements.txt` includes `scipy>=1.11`. If SciPy is missing or the model is infeasible, Pre Icarus falls back to beam search. Trackblazer P2 added train-turn protection so solver-planned Train turns are not stolen by fallback fan racing.
 
 ## Verification
 

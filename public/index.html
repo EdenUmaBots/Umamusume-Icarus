@@ -62,13 +62,14 @@
                         </div>
                         <button id="burn-clocks-btn" class="btn btn-sm turn-delay-button" type="button">BURN CLOCKS: OFF</button>
                         <div class="retry-popover-wrap">
-                            <button id="retry-options-btn" class="btn btn-sm turn-delay-button" type="button" title="Race-retry options: carats + max clocks per career">RETRY ⚙</button>
+                            <button id="retry-options-btn" class="btn btn-sm turn-delay-button" type="button" title="Race-retry options: carats + max clocks per career">RETRIES ⚙</button>
                             <div id="retry-options-panel" class="retry-options-panel" style="display:none;">
                                 <label class="retry-opt-row"><input id="retry-carats-toggle" type="checkbox"> Use carats when clocks run out</label>
                                 <label class="retry-opt-row">Max clocks / career <input id="retry-max-clocks" type="number" min="0" step="1" value="0" title="0 = unlimited paid clocks per career"></label>
                             </div>
                         </div>
                         <button id="dev-career-btn" class="btn btn-sm turn-delay-button loop-career-button" type="button" title="Loop career runs after completion">LOOP: OFF</button>
+                        <button id="finalize-runs-btn" class="btn btn-sm turn-delay-button" type="button" title="When ON, single (non-loop) runs play out the final URA turn and finalize the career instead of stopping one turn early. Lets you start a new run without restarting the bot.">FINISH RUN: OFF</button>
                         <label class="run-count-control" title="Number of careers to run: 1 = single, 0 = until stopped"><span>RUNS</span><input id="run-count-input" class="run-count-input" type="number" min="0" max="999" step="1" value="0"></label>
                     </div>
                 </div>
@@ -183,7 +184,7 @@
                             </h2>
                             <div id="v4-body" class="collapsible-body expanded">
                                 <div class="v53-cockpit">
-                                    <div class="v516-top-actions"><button id="v515-setup-btn" class="btn btn-sm v515-setup-launch" type="button">SETUP</button><button id="v6719-help-btn" class="btn btn-sm v6719-help-launch" type="button">HELP</button><button id="v525-accounts-btn" class="btn btn-sm v525-accounts-launch" type="button">ACCOUNTS</button><button id="v516-diagnostics-btn" class="btn btn-sm v516-diagnostics-launch" type="button">DIAGNOSTICS</button><button id="v535-ai-learning-btn" class="btn btn-sm v535-ai-learning-launch" type="button">AI / MISC</button><button id="v71-userdata-btn" class="btn btn-sm v71-userdata-launch" type="button">USERDATA</button><button id="v543-career-history-btn" class="btn btn-sm v543-career-history-launch" type="button">CAREER HISTORY</button></div>
+                                    <div class="v516-top-actions"><div class="v516-actions-side"><button id="v6719-help-btn" class="btn btn-sm v6719-help-launch" type="button">HELP</button><button id="v525-accounts-btn" class="btn btn-sm v525-accounts-launch" type="button">ACCOUNTS</button></div><button id="v515-setup-btn" class="btn btn-sm v515-setup-launch" type="button">SETUP</button><div class="v516-actions-side"><button id="v516-diagnostics-btn" class="btn btn-sm v516-diagnostics-launch" type="button">DIAG / AI</button><button id="v543-career-history-btn" class="btn btn-sm v543-career-history-launch" type="button">CAREER HISTORY</button></div></div>
                                     <div class="v53-career-card">
                                         <div class="v53-card-head">
                                             <span>CAREER</span>
@@ -329,7 +330,15 @@
                         <span class="panel-header-title">LIBRARY</span>
                     </div>
                     <div class="panel-body">
-                        <section class="dashboard-section">
+                        <div class="lib-tabs" id="lib-tabs">
+                            <button class="lib-tab is-active" data-lib-tab="trainees" type="button">Trainees</button>
+                            <button class="lib-tab" data-lib-tab="parents" type="button">Parents</button>
+                            <button class="lib-tab" data-lib-tab="guests" type="button">Guest Parents</button>
+                            <button class="lib-tab" data-lib-tab="decks" type="button">Decks</button>
+                            <button class="lib-tab" data-lib-tab="friends" type="button">Friend Supports</button>
+                            <button class="lib-tab" data-lib-tab="cards" type="button">Owned Cards</button>
+                        </div>
+                        <section class="dashboard-section" data-lib-section="trainees">
                             <h2 class="dashboard-section-title section-title-toggle" id="trainees-toggle">
                                 <span class="collapse-chevron expanded" id="trainees-chevron">&#9658;</span>
                                 TRAINEES <span id="uma-count"></span>
@@ -338,7 +347,7 @@
                                 <div id="uma-grid" class="data-grid"></div>
                             </div>
                         </section>
-                        <section class="dashboard-section">
+                        <section class="dashboard-section" data-lib-section="parents">
                             <h2 class="dashboard-section-title section-title-toggle" id="parents-toggle">
                                 <span class="collapse-chevron expanded" id="parents-chevron">&#9658;</span>
                                 PARENTS <span id="parent-count"></span>
@@ -347,7 +356,7 @@
                                 <div id="parent-grid" class="data-grid"></div>
                             </div>
                         </section>
-                        <section class="dashboard-section">
+                        <section class="dashboard-section" data-lib-section="decks">
                             <h2 class="dashboard-section-title section-title-toggle" id="deck-bonuses-toggle">
                                 <span class="collapse-chevron expanded" id="deck-bonuses-chevron">&#9658;</span>
                                 DECK BONUSES
@@ -359,7 +368,7 @@
                                 </div>
                             </div>
                         </section>
-                        <section class="dashboard-section">
+                        <section class="dashboard-section" data-lib-section="decks">
                             <h2 class="dashboard-section-title section-title-toggle" id="decks-toggle">
                                 <span class="collapse-chevron expanded" id="decks-chevron">&#9658;</span>
                                 DECKS
@@ -369,7 +378,7 @@
                                 <div id="deck-list"></div>
                             </div>
                         </section>
-                        <section class="dashboard-section">
+                        <section class="dashboard-section" data-lib-section="friends">
                             <h2 class="dashboard-section-title section-title-toggle" id="friends-toggle">
                                 <span class="collapse-chevron expanded" id="friends-chevron">&#9658;</span>
                                 FRIEND SUPPORTS <span id="friend-count"></span>
@@ -382,7 +391,7 @@
                                 <div id="friend-grid" class="data-grid"></div>
                             </div>
                         </section>
-                        <section class="dashboard-section">
+                        <section class="dashboard-section" data-lib-section="cards">
                             <h2 class="dashboard-section-title section-title-toggle" id="cards-toggle">
                                 <span class="collapse-chevron" id="cards-chevron">&#9658;</span>
                                 OWNED CARDS <span id="card-count"></span>
@@ -509,6 +518,9 @@
                     <div class="event-choices-toolbar">
                         <button id="event-choices-refresh-btn" class="btn btn-sm" type="button">REFRESH EVENTS</button>
                         <button id="event-choices-set-auto-btn" class="btn btn-sm" type="button" title="Set every event to Auto (clears all forced choices so the bot decides)">SET ALL TO AUTO</button>
+                        <button id="event-cat-story" class="btn btn-sm event-cat-btn active" type="button" title="Character story events">Story Events</button>
+                        <button id="event-cat-support" class="btn btn-sm event-cat-btn" type="button" title="Support card events (incl. borrowed/rental cards)">Support Card Events</button>
+                        <label class="event-cat-filter-toggle" title="Limit the Support Card Events list to events whose support card is in your selected deck (your 5 support cards + borrowed friend). Catalog events with no card id are hidden while this is on; only events the bot has actually seen carry a real card id."><input id="event-choices-deck-filter" type="checkbox"> Only my deck's events</label>
                         <input id="event-choices-search" class="form-input event-choices-search" type="text" placeholder="Search event name, story id, or support…" autocomplete="off" spellcheck="false">
                     </div>
                     <div class="event-choices-statusbar">
@@ -564,7 +576,11 @@
         <div id="v516-diagnostics-modal" class="v516-diagnostics-modal">
             <div class="v516-diagnostics-panel">
                 <div class="v516-diagnostics-topbar">
-                    <div class="v516-diagnostics-title">DIAGNOSTICS</div>
+                    <div class="v516-diagnostics-title">DIAG / AI</div>
+                    <div class="diagai-tabs">
+                        <button class="diagai-tab is-active" data-diagai-tab="diag" type="button">Diagnostics</button>
+                        <button class="diagai-tab" data-diagai-tab="ai" type="button">AI &amp; Misc</button>
+                    </div>
                     <button id="v516-diagnostics-done-btn" class="btn btn-sm v516-diagnostics-done" type="button">DONE</button>
                 </div>
                 <div id="v516-diagnostics-body" class="v516-diagnostics-body"></div>
@@ -574,7 +590,11 @@
         <div id="v535-ai-learning-modal" class="v516-diagnostics-modal v535-ai-learning-modal">
             <div class="v516-diagnostics-panel v535-ai-learning-panel">
                 <div class="v516-diagnostics-topbar">
-                    <div class="v516-diagnostics-title">AI / MISC</div>
+                    <div class="v516-diagnostics-title">DIAG / AI</div>
+                    <div class="diagai-tabs">
+                        <button class="diagai-tab" data-diagai-tab="diag" type="button">Diagnostics</button>
+                        <button class="diagai-tab is-active" data-diagai-tab="ai" type="button">AI &amp; Misc</button>
+                    </div>
                     <button id="v535-ai-learning-done-btn" class="btn btn-sm v516-diagnostics-done" type="button">DONE</button>
                 </div>
                 <div id="v535-ai-learning-body" class="v516-diagnostics-body v535-ai-learning-body">
@@ -637,17 +657,6 @@
                                                 </div>
                                                 <div id="v543-local-llm-status" class="v537-ai-import-status">Local LLM is optional and currently waiting.</div>
                                                 <div id="v543-local-llm-output" class="v532-ai-advisor"></div>
-                                            </div>
-                                            <div class="v544-event-kb-card v537-ai-import">
-                                                <div class="v537-ai-import-title">Event Outcome Knowledge Base</div>
-                                                <div class="v539-live-policy-help"><strong>What it is:</strong> a database of what each story-event choice actually <em>gives</em> (stat gains, energy, skill hints, conditions). A <strong>known outcome</strong> means the bot has the effects for that event's choices and can compare them.<br><br><strong>How it fills up:</strong> Icarus is an API bot, so it already sees the stat changes before/after every choice it makes — it <strong>auto-records outcomes from your own careers</strong> (no Frida or external dumper needed). You can also import a static <code>outcomes.json</code> below to seed events you haven't run yet; observed data from your runs takes precedence.<br><br><strong>How it's used:</strong> in <strong>Event Choices</strong>, the bot scores each option's known outcome against your event stat priority and picks the best; the data also enriches the AI Dataset and gives the Local LLM better context. Events with no data yet show "effect not in database" until they're observed or imported.</div>
-                                                <label class="v762-native-capture-row"><input type="checkbox" id="v762-native-capture-toggle" checked> <span>Auto-capture event outcomes from bot runs</span></label>
-                                                <div class="v532-ai-actions">
-                                                    <button id="v544-event-kb-import-btn" class="btn btn-sm v4-small-btn" type="button">IMPORT BUNDLED OUTCOMES</button>
-                                                    <button id="v544-event-kb-refresh-btn" class="btn btn-sm v4-small-btn" type="button">REFRESH EVENT KB</button>
-                                                </div>
-                                                <div id="v544-event-kb-status" class="v537-ai-import-status">Event outcome knowledge base waiting.</div>
-                                                <div id="v544-event-kb-summary" class="v532-ai-advisor"></div>
                                             </div>
                                             <div class="v537-ai-import">
                                                 <div class="v537-ai-import-title">Import Previous Logs & Presets</div>
@@ -799,7 +808,8 @@
                     <div class="v71-userdata-actions">
                         <button id="v71-userdata-apply-btn" class="btn btn-sm v4-small-btn" type="button">APPLY PATH</button>
                         <button id="v71-userdata-suggest-btn" class="btn btn-sm v4-small-btn" type="button" title="Fill the input with the recommended sibling-folder path">USE SUGGESTED</button>
-                        <button id="v71-userdata-dismiss-btn" class="btn btn-sm v4-small-btn" type="button">I'LL HANDLE IT LATER</button>
+                        <button id="export-logs-btn" class="btn btn-sm v4-small-btn" type="button" title="Download all career logs as a zip (personal data redacted) for sharing/feedback">EXPORT LOGS</button>
+                        <button id="v71-userdata-dismiss-btn" class="btn btn v4-small-btn" type="button">I'LL HANDLE IT LATER</button>
                     </div>
 
                     <label class="v71-userdata-migrate-toggle v71-userdata-dontshow-toggle">

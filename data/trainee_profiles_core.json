@@ -11700,6 +11700,156 @@
     "running_style": 3
   },
   {
+    "card_id": 100103,
+    "chara_id": 1001,
+    "name": "Special Week",
+    "rarity": 3,
+    "base_stats": {
+      "speed": 96,
+      "stamina": 82,
+      "power": 94,
+      "guts": 82,
+      "wit": 96
+    },
+    "max_stats": {
+      "speed": 1200,
+      "stamina": 1200,
+      "power": 1200,
+      "guts": 1200,
+      "wit": 1200
+    },
+    "growth": {
+      "speed": 10,
+      "stamina": 10,
+      "power": 0,
+      "guts": 0,
+      "wit": 10
+    },
+    "distance_aptitude": {
+      "sprint": "F",
+      "mile": "C",
+      "medium": "A",
+      "long": "A"
+    },
+    "style_aptitude": {
+      "front": "G",
+      "pace": "A",
+      "late": "A",
+      "end": "C"
+    },
+    "track_aptitude": {
+      "turf": "A",
+      "dirt": "G"
+    },
+    "ui_colors": {
+      "main": "EE6DCB",
+      "sub": "FFDEF9",
+      "border": "F759CD"
+    },
+    "available_skill_set_id": 100103,
+    "running_style": 3
+  },
+  {
+    "card_id": 100103,
+    "chara_id": 1001,
+    "name": "Special Week",
+    "rarity": 4,
+    "base_stats": {
+      "speed": 107,
+      "stamina": 91,
+      "power": 105,
+      "guts": 91,
+      "wit": 106
+    },
+    "max_stats": {
+      "speed": 1200,
+      "stamina": 1200,
+      "power": 1200,
+      "guts": 1200,
+      "wit": 1200
+    },
+    "growth": {
+      "speed": 10,
+      "stamina": 10,
+      "power": 0,
+      "guts": 0,
+      "wit": 10
+    },
+    "distance_aptitude": {
+      "sprint": "F",
+      "mile": "C",
+      "medium": "A",
+      "long": "A"
+    },
+    "style_aptitude": {
+      "front": "G",
+      "pace": "A",
+      "late": "A",
+      "end": "C"
+    },
+    "track_aptitude": {
+      "turf": "A",
+      "dirt": "G"
+    },
+    "ui_colors": {
+      "main": "EE6DCB",
+      "sub": "FFDEF9",
+      "border": "F759CD"
+    },
+    "available_skill_set_id": 100103,
+    "running_style": 3
+  },
+  {
+    "card_id": 100103,
+    "chara_id": 1001,
+    "name": "Special Week",
+    "rarity": 5,
+    "base_stats": {
+      "speed": 117,
+      "stamina": 100,
+      "power": 115,
+      "guts": 100,
+      "wit": 118
+    },
+    "max_stats": {
+      "speed": 1200,
+      "stamina": 1200,
+      "power": 1200,
+      "guts": 1200,
+      "wit": 1200
+    },
+    "growth": {
+      "speed": 10,
+      "stamina": 10,
+      "power": 0,
+      "guts": 0,
+      "wit": 10
+    },
+    "distance_aptitude": {
+      "sprint": "F",
+      "mile": "C",
+      "medium": "A",
+      "long": "A"
+    },
+    "style_aptitude": {
+      "front": "G",
+      "pace": "A",
+      "late": "A",
+      "end": "C"
+    },
+    "track_aptitude": {
+      "turf": "A",
+      "dirt": "G"
+    },
+    "ui_colors": {
+      "main": "EE6DCB",
+      "sub": "FFDEF9",
+      "border": "F759CD"
+    },
+    "available_skill_set_id": 100103,
+    "running_style": 3
+  },
+  {
     "card_id": 104501,
     "chara_id": 1045,
     "name": "Super Creek",

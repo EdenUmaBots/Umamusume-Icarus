@@ -29372,6 +29372,93 @@
       ]
     },
     {
+      "factor_id": 10010301,
+      "factor_group_id": 100103,
+      "name": "Dreams Donned with Pride!",
+      "rarity": 1,
+      "grade": 2,
+      "factor_type": 3,
+      "category": "unique",
+      "effects": [
+        {
+          "effect_id": 1,
+          "target_type": 41,
+          "value_1": 920011,
+          "value_2": 1
+        },
+        {
+          "effect_id": 2,
+          "target_type": 41,
+          "value_1": 920011,
+          "value_2": 2
+        },
+        {
+          "effect_id": 3,
+          "target_type": 41,
+          "value_1": 920011,
+          "value_2": 3
+        }
+      ]
+    },
+    {
+      "factor_id": 10010302,
+      "factor_group_id": 100103,
+      "name": "Dreams Donned with Pride!",
+      "rarity": 2,
+      "grade": 2,
+      "factor_type": 3,
+      "category": "unique",
+      "effects": [
+        {
+          "effect_id": 1,
+          "target_type": 41,
+          "value_1": 920011,
+          "value_2": 1
+        },
+        {
+          "effect_id": 2,
+          "target_type": 41,
+          "value_1": 920011,
+          "value_2": 2
+        },
+        {
+          "effect_id": 3,
+          "target_type": 41,
+          "value_1": 920011,
+          "value_2": 3
+        }
+      ]
+    },
+    {
+      "factor_id": 10010303,
+      "factor_group_id": 100103,
+      "name": "Dreams Donned with Pride!",
+      "rarity": 3,
+      "grade": 2,
+      "factor_type": 3,
+      "category": "unique",
+      "effects": [
+        {
+          "effect_id": 1,
+          "target_type": 41,
+          "value_1": 920011,
+          "value_2": 1
+        },
+        {
+          "effect_id": 2,
+          "target_type": 41,
+          "value_1": 920011,
+          "value_2": 2
+        },
+        {
+          "effect_id": 3,
+          "target_type": 41,
+          "value_1": 920011,
+          "value_2": 3
+        }
+      ]
+    },
+    {
       "factor_id": 10020101,
       "factor_group_id": 100201,
       "name": "The View from the Lead Is Mine!",

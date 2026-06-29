@@ -1,6 +1,6 @@
-# Guest Parent Start Fix (SweepyModv5.18)
+# Guest Parent Start Fix (Pre Icarus v5.18)
 
-SweepyModv5.18 fixes guest parent selection for career start.
+Pre Icarus v5.18 fixes guest parent selection for career start.
 
 ## Problem
 

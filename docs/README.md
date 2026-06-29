@@ -1,4 +1,4 @@
-# SweepyClaude documentation
+# Pre Icarus documentation
 
 Start here if you're new. The docs are organized into a few focused
 user guides plus a deeper archive of historical implementation notes.
@@ -56,7 +56,7 @@ folder layout.
   `smart-race-solver-settings.md`, `smart-race-solver.md`
 - AI subsystem details (see ai-learning.md for the user summary):
   `style-adaptation-v542AI.md`, `clock-aware-ai-logs-v540AI.md`,
-  `event-outcome-kb-v544.md`, `ai-modeling-bayesian-v543AI.md`,
+  `ai-modeling-bayesian-v543AI.md`,
   `running-style-ai-ui-v535.md`
 - AI feature history: `action-reasoning-training-v529.md`,
   `ai-advisor-dataset-v532.md`, `ai-auto-training-v533.md`,

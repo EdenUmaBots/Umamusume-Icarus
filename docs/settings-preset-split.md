@@ -2,7 +2,7 @@
 
 ## Purpose
 
-SweepyModv5.9 replaces the old all-in-one preset blob with three separate configuration stores. This prevents Training/Racing/Scenario settings from overwriting Configure Skills or Smart Race Solver settings.
+Pre Icarus v5.9 replaces the old all-in-one preset blob with three separate configuration stores. This prevents Training/Racing/Scenario settings from overwriting Configure Skills or Smart Race Solver settings.
 
 ## Storage Files
 

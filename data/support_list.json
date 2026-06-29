@@ -389,6 +389,11 @@
     "rarity": "R",
     "type": "Wisdom"
   },
+  "10081": {
+    "name": "Tsurumaru Tsuyoshi",
+    "rarity": "R",
+    "type": "Guts"
+  },
   "20001": {
     "name": "Fuji Kiseki",
     "rarity": "SR",
@@ -548,6 +553,11 @@
     "name": "Inari One",
     "rarity": "SR",
     "type": "Power"
+  },
+  "20033": {
+    "name": "El Condor Pasa",
+    "rarity": "SR",
+    "type": "Speed"
   },
   "20034": {
     "name": "Mejiro Ardan",
@@ -924,6 +934,11 @@
     "rarity": "SSR",
     "type": "Wisdom"
   },
+  "30067": {
+    "name": "Heirs to the Throne",
+    "rarity": "SSR",
+    "type": "Group"
+  },
   "30068": {
     "name": "Curren Chan",
     "rarity": "SSR",
@@ -1103,6 +1118,11 @@
     "name": "Zenno Rob Roy",
     "rarity": "SSR",
     "type": "Stamina"
+  },
+  "30105": {
+    "name": "Special Week",
+    "rarity": "SSR",
+    "type": "Guts"
   },
   "30106": {
     "name": "Air Groove",

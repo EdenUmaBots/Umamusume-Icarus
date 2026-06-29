@@ -1,4 +1,4 @@
-# SweepyMod v5.43AI — Bayesian AI Advisor
+# Pre Icarus v5.43AI — Bayesian AI Advisor
 
 Replaces the v1 advisor's point-estimate win rate and `-8.0` magic-number
 penalty with a Beta-Binomial posterior over race-program win rate.  Adds

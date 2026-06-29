@@ -1,4 +1,4 @@
-# SweepyModv5.28 Preset, History, and Control Polish
+# Pre Icarus v5.28 Preset, History, and Control Polish
 
 This build keeps skill configuration untouched while improving preset/team selection persistence and the run controls.
 

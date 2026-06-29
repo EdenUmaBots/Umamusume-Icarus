@@ -1,10 +1,10 @@
-# SweepyModv5.38AI AI Log + Preset Import
+# Pre Icarus v5.38AI AI Log + Preset Import
 
-SweepyModv5.38AI extends the AI Learning importer so old builds can bring over both learning history and user presets.
+Pre Icarus v5.38AI extends the AI Learning importer so old builds can bring over both learning history and user presets.
 
 ## What gets imported
 
-The AI importer accepts an old SweepyMod folder, an old `uma_runtime` folder, an old `bot_logs` folder, or a zip file. It imports:
+The AI importer accepts an old Pre Icarus folder, an old `uma_runtime` folder, an old `bot_logs` folder, or a zip file. It imports:
 
 - `career_log_*.json`
 - `race_outcomes.json`

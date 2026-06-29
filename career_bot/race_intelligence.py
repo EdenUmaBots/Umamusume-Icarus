@@ -1,4 +1,4 @@
-"""Runtime race intelligence helpers for SweepyCL.
+"""Runtime race intelligence helpers for Pre Icarus.
 
 This module keeps the Smart Race Solver grounded in observed career data without
 letting telemetry failures affect an active run.  The helpers intentionally use a

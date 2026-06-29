@@ -2319,7 +2319,7 @@
   },
   "Special Week": {
     "name": "Special Week",
-    "card_id": 100102,
+    "card_id": 100103,
     "profile_source": "master_mdb",
     "track_aptitude": {
       "turf": "A",
@@ -2349,11 +2349,11 @@
       "sprint"
     ],
     "growth": {
-      "speed": 0,
+      "speed": 10,
       "stamina": 10,
-      "power": 10,
-      "guts": 10,
-      "wit": 0
+      "power": 0,
+      "guts": 0,
+      "wit": 10
     },
     "target_stats": {
       "speed": 1200,

@@ -1,50 +1,9 @@
 {
   "display_name": "Default",
   "_comment": "Empty override bundle. Loading this profile produces the same behavior as v6.1 (TrainingScorerConfig defaults, solver defaults, hint-mode scorer). Used as the fallback whenever the active trainee_id doesn't match anything in index.json.",
-  "training_scorer_mode": "hint",
-  "training_scorer_overrides": {
-    "stat_priority": [
-      "speed",
-      "power",
-      "stamina",
-      "wit",
-      "guts"
-    ],
-    "stat_targets": {
-      "sprint": {
-        "speed": 1200,
-        "stamina": 400,
-        "power": 1100,
-        "guts": 400,
-        "wit": 1000
-      },
-      "mile": {
-        "speed": 1200,
-        "stamina": 600,
-        "power": 1000,
-        "guts": 400,
-        "wit": 1000
-      },
-      "medium": {
-        "speed": 1100,
-        "stamina": 800,
-        "power": 1000,
-        "guts": 400,
-        "wit": 1000
-      },
-      "long": {
-        "speed": 1000,
-        "stamina": 1100,
-        "power": 1000,
-        "guts": 400,
-        "wit": 1000
-      }
-    }
-  },
   "solver_overrides": {},
   "target_epithets": [],
   "forced_epithets": [],
   "preferred_distances": [],
-  "scenarios": {},
-  "adapt_targets_to_inheritance": true
+  "scenarios": {}
 }

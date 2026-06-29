@@ -2,7 +2,7 @@ import json
 from copy import deepcopy
 from pathlib import Path
 
-from .presets import hydrate_preset, serialize_preset, slugify
+from .presets import hydrate_preset, slugify
 
 SETTING_PRESET_KEYS = {
     "name",
@@ -15,6 +15,7 @@ SETTING_PRESET_KEYS = {
     "race_strategy_by_distance",
     "preferred_distances",
     "preferred_surfaces",
+    "extra_race_list_source",
     "event_overrides",
     "prioritize_event_energy",
     "event_energy_priority_multiplier",
@@ -22,6 +23,15 @@ SETTING_PRESET_KEYS = {
     "mant_config",
     "selection",
 }
+
+# event_overrides is managed ONLY by the dedicated save_event_overrides endpoint
+# (the Event Choices panel). A whole-preset Settings save round-trips a possibly
+# STALE snapshot of event_overrides (captured when the modal loaded, before the
+# user forced a choice), so applying it from the incoming preset CLOBBERED the
+# forced choices back to {} -- the root cause of "forced event choices ignored".
+# Whole-preset writes therefore exclude it; reads (compose/read_settings_presets)
+# still include it from the on-disk file.
+WHOLE_SAVE_PRESET_KEYS = SETTING_PRESET_KEYS - {"event_overrides"}
 
 SKILL_CONFIG_KEYS = {
     "enable_skill_point_check",
@@ -44,6 +54,14 @@ SKILL_CONFIG_KEYS = {
     "learn_skill_list",
     "learn_skill_blacklist",
     "manual_skill_tiers",
+    "manual_skill_tiers_dont_spend_extra",
+    "skill_stop_after_recommended",
+    "skill_manual_auto_fallback",
+    # Skill-purchase redesign: Stage 1 condition gate + Stage 3 optimization target.
+    "skill_condition_gating",
+    "skill_condition_dead_factor",
+    "skill_optimization_target",
+    "skill_tier_multipliers",
 }
 
 SMART_SOLVER_KEYS = {
@@ -154,6 +172,29 @@ def _default_skill_config():
             "4": [],
             "5": [],
         },
+        # v2.1 -- manual tiers buy ONLY the listed skills by default; the
+        # auto-fallback toggle (off by default) lets the auto plan spend the
+        # rest once every listed skill is owned.
+        "manual_skill_tiers_dont_spend_extra": True,
+        "skill_manual_auto_fallback": False,
+        # v2.1 -- auto strategy stops spending once the character's recommended
+        # / best (preferred + community SS/S) skills are all owned, so SP isn't
+        # dumped into marginal skills. Pre-finals dump still overrides.
+        # 2026-06-26: default OFF. The gate discarded ALL good, on-profile
+        # candidates on any turn where none was a top-tier "recommended" skill
+        # (not "once recommended owned" as intended), so the bot bought almost
+        # nothing and hoarded SP. The smart scorer already filters quality.
+        "skill_stop_after_recommended": False,
+        # Skill-purchase redesign. Stage 1: schedule-aware condition gate
+        # (penalize = dampen eval/SP for skills whose running_style/distance_type
+        # conditions can never fire for this trainee; enforce = hard drop; ignore
+        # = tag only). Stage 3: optimization target picks which spreadsheet rank
+        # column weights the graded tier and whether single-mode-disabled skills
+        # are dropped (career) or kept (team_trials / champions). Defaults keep the
+        # fans-first single-mode behavior unchanged.
+        "skill_condition_gating": "penalize",
+        "skill_condition_dead_factor": 0.15,
+        "skill_optimization_target": "career",
         "skill_strategy": {
             "forced_skills": [],
             "blacklist": [],
@@ -232,7 +273,7 @@ class ConfigStore:
         skill, and solver JSON files.  When None, defaults to
         ``<base_dir>/data`` (the legacy in-build location).  When set, the
         settings/skill/solver/preset files persist outside the build folder
-        so SweepyCL version upgrades don't blow away saved presets.
+        so Pre Icarus version upgrades don't blow away saved presets.
         ``base_dir`` is still used as the source for default templates and
         the legacy preset migration path.
         """
@@ -410,7 +451,7 @@ class ConfigStore:
         name = slugify(str((preset or {}).get("name") or self._active_name() or "Settings Preset").strip() or "Settings Preset")
         path = self._preset_path(name)
         full = self._read_full_preset(path) if path.exists() else self._full_default_preset(name)
-        full.update(_only_keys(preset, SETTING_PRESET_KEYS))
+        full.update(_only_keys(preset, WHOLE_SAVE_PRESET_KEYS))  # never clobber event_overrides
         full["name"] = name
         _write_json(path, self._normalize_full(full))
         self.set_active(name)
@@ -521,7 +562,7 @@ class ConfigStore:
         name = slugify(str((preset or {}).get("name") or self._active_name() or "Settings Preset").strip() or "Settings Preset")
         path = self._preset_path(name)
         full = self._read_full_preset(path) if path.exists() else self._full_default_preset(name)
-        full.update(_only_keys(preset, SETTING_PRESET_KEYS))
+        full.update(_only_keys(preset, WHOLE_SAVE_PRESET_KEYS))  # never clobber event_overrides
         full.update(_only_keys(preset, SKILL_CONFIG_KEYS))
         if "skill_strategy" in (preset or {}):
             strat = dict(full.get("skill_strategy") or {})

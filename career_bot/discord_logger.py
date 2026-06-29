@@ -27,6 +27,11 @@ DEFAULT_CONFIG = {
     "webhook_url": "",
     "send_turn_logs": True,
     "send_career_summary": True,
+    # User-facing notify toggles (Discord modal). finish/crash default ON to keep
+    # the prior "send on career end" behavior; epithet is a new opt-in milestone.
+    "notify_on_finish": True,
+    "notify_on_crash": True,
+    "notify_on_epithet": False,
     "batch_size": 10,
     "flush_interval_seconds": 20,
     "redact_sensitive": True,
@@ -62,7 +67,8 @@ def load_config(base_dir: str | Path) -> dict[str, Any]:
     if env_enabled is not None:
         cfg["enabled"] = str(env_enabled).strip().lower() in {"1", "true", "yes", "on"}
 
-    for key in ["send_turn_logs", "send_career_summary", "redact_sensitive"]:
+    for key in ["send_turn_logs", "send_career_summary", "redact_sensitive",
+                "notify_on_finish", "notify_on_crash", "notify_on_epithet"]:
         cfg[key] = bool(cfg.get(key, DEFAULT_CONFIG[key]))
 
     for key, default in [("batch_size", 10), ("flush_interval_seconds", 20)]:
@@ -136,14 +142,37 @@ class DiscordCareerLogger:
         self.emit(payload)
 
     def finish_career(self, summary: dict[str, Any]):
-        if self.config.get("send_career_summary", True):
-            payload = dict(summary or {})
+        # Route to the right user-facing notify toggle: a crash/stuck end (carries
+        # last_error) -> notify_on_crash; a clean finish -> notify_on_finish (AND
+        # the legacy send_career_summary telemetry switch). Either path emits the
+        # same summary payload, just typed + gated differently.
+        payload = dict(summary or {})
+        last_error = str(payload.get("last_error") or "").strip()
+        if last_error:
+            if self.config.get("notify_on_crash", True):
+                payload.setdefault("type", "career_crash")
+                payload.setdefault("run_id", self.run_id)
+                payload.setdefault("ts", time.time())
+                self.emit(payload, immediate=True)
+        elif self.config.get("notify_on_finish", True) and self.config.get("send_career_summary", True):
             payload.setdefault("type", "career_summary")
             payload.setdefault("run_id", self.run_id)
             payload.setdefault("ts", time.time())
             self.emit(payload, immediate=True)
         self.flush()
         self.close()
+
+    def notify_epithet(self, names, detail: str = ""):
+        """Milestone ping when one or more set-bonus epithets are newly earned.
+        Gated by notify_on_epithet (default off). No-op when the list is empty."""
+        names = [str(n).strip() for n in (names or []) if str(n).strip()]
+        if not names or not self.config.get("notify_on_epithet", False):
+            return
+        payload = {"type": "epithet_earned", "run_id": self.run_id,
+                   "ts": time.time(), "epithets": names}
+        if detail:
+            payload["detail"] = detail
+        self.emit(payload, immediate=True)
 
     def emit(self, event: dict[str, Any], immediate: bool = False):
         safe = sanitize(event) if self.config.get("redact_sensitive", True) else event

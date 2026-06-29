@@ -2,7 +2,7 @@
 
 ## Purpose
 
-The TP restore toggle lets the user choose whether SweepyMod should prefer Toughness items or Carats when restoring TP before starting or continuing automation.
+The TP restore toggle lets the user choose whether Pre Icarus should prefer Toughness items or Carats when restoring TP before starting or continuing automation.
 
 ## How it works
 

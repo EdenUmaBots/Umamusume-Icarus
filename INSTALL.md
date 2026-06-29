@@ -1,6 +1,6 @@
-# SweepyCL Installation Guide
+# Pre Icarus Installation Guide
 
-This guide explains how to install and verify SweepyCL on Windows, Linux, and macOS.
+This guide explains how to install and verify Pre Icarus on Windows, Linux, and macOS.
 
 ## 1. Prerequisites
 
@@ -63,37 +63,18 @@ node --version
 npm --version
 ```
 
-## SweepyCLv5.44 Event Outcome KB
-
-Open **AI Learning** and use the **Event Outcome Knowledge Base** card.
-
-1. Click **IMPORT BUNDLED OUTCOMES** to merge the bundled static `outcomes.json` map into SweepyCL's event scoring data.
-2. Click **REFRESH EVENT KB** to view current known-event and known-choice coverage.
-3. Run careers normally. Known outcomes are used for event-choice scoring and Local LLM analysis context.
-
-Artifacts are stored at:
-
-```text
-data/event_outcomes.json
-data/dumper_outcomes_import.json
-uma_runtime/ai/event_outcome_rows.jsonl
-uma_runtime/ai/event_outcome_import_report.json
-```
-
-This feature only imports static data. It does not include Frida/live traffic interception, packet capture, process hooks, memory scanning, or memory writes.
-
-## 2. Extract SweepyCL
+## 2. Extract Pre Icarus
 
 Extract the build archive, for example:
 
 ```text
-SweepyCLv4.1.zip
+Pre Icarus v4.1.zip
 ```
 
 Place it in a folder you can write to, such as:
 
 ```text
-C:\SweepyCL
+C:\Pre Icarus
 ```
 
 Avoid protected folders like `Program Files`.
@@ -162,7 +143,7 @@ data/mant_shop_core.json
 data/succession_core.json
 ```
 
-## 6. Launch SweepyCL
+## 6. Launch Pre Icarus
 
 ### Windows
 
@@ -186,7 +167,7 @@ Open that address in your browser.
 
 ## 7. Login and Auth Capture
 
-1. Start SweepyCL.
+1. Start Pre Icarus.
 2. Open the dashboard.
 3. Follow the login/auth capture instructions shown by the app.
 4. Launch Umamusume.
@@ -241,7 +222,7 @@ python3 -m pip install -r requirements.txt
 
 Try:
 
-1. Restart SweepyCL.
+1. Restart Pre Icarus.
 2. Restart the game.
 3. Reach the game menu.
 4. Retry auth capture.
@@ -275,7 +256,7 @@ Check that completed career logs exist and are imported into the expected datase
 
 Open the backend terminal and look for errors. Large log folders can take time to scan if the cache is cold.
 
-## 10. Updating SweepyCL
+## 10. Updating Pre Icarus
 
 Before updating:
 
@@ -297,7 +278,7 @@ Start with:
 - backend console output
 - browser console output
 
-## SweepyCLv5.42AI Style Adaptation Notes
+## Pre Icarus v5.42AI Style Adaptation Notes
 
 The AI Learning dashboard now has a **Racing Style Adaptation** card. Leave it on
 **Shadow Only** at first so the model can collect race outcomes without changing
@@ -309,14 +290,14 @@ Settings running style remains the fallback source of truth.
 
 ## Optional: Local LLM Advisor
 
-SweepyCLv5.43 can talk to a local OpenAI-compatible chat server. This is optional and disabled by default. The LLM is used for offline post-run analysis and shadow advice only; SweepyCL's deterministic runner remains the final authority.
+Pre Icarus v5.43 can talk to a local OpenAI-compatible chat server. This is optional and disabled by default. The LLM is used for offline post-run analysis and shadow advice only; Pre Icarus's deterministic runner remains the final authority.
 
 Recommended beginner setup:
 
 1. Install LM Studio.
 2. Download a chat/instruct model such as Qwen3 8B Instruct, or use Qwen3 4B on weaker PCs.
 3. In LM Studio, load the model and start the local server from the Developer/Server panel.
-4. Open SweepyCL and go to AI Learning → Local LLM Advisor.
+4. Open Pre Icarus and go to AI Learning → Local LLM Advisor.
 5. Set Provider to `LM Studio`.
 6. Set Base URL to `http://localhost:1234/v1`.
 7. Set Model to the exact model name shown by LM Studio.
@@ -331,7 +312,7 @@ Ollama alternative:
 1. Install Ollama.
 2. Run `ollama pull qwen3:8b`.
 3. Run `ollama run qwen3:8b` once so the model is ready.
-4. In SweepyCL, use Base URL `http://localhost:11434/v1`, Model `qwen3:8b`, and API Key `ollama`.
+4. In Pre Icarus, use Base URL `http://localhost:11434/v1`, Model `qwen3:8b`, and API Key `ollama`.
 
 Local LLM artifacts are written under `uma_runtime/ai/` as `llm_run_summaries.jsonl`, `llm_advice.jsonl`, `latest_llm_run_summary.json`, and `latest_llm_advice.json`.
 

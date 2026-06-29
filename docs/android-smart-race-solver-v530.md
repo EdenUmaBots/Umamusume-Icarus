@@ -1,10 +1,10 @@
-# SweepyModv5.30 Android Smart Race Solver Port
+# Pre Icarus v5.30 Android Smart Race Solver Port
 
 ## Overview
 
-SweepyModv5.30 replaces the older soft Trackblazer route heuristics with a local, desktop-native port of the Android bot SmartRaceSolver architecture:
+Pre Icarus v5.30 replaces the older soft Trackblazer route heuristics with a local, desktop-native port of the Android bot SmartRaceSolver architecture:
 
-- `SmartRaceSolverSettings` style UI snapshot from the existing SweepyMod Smart Solver panel.
+- `SmartRaceSolverSettings` style UI snapshot from the existing Pre Icarus Smart Solver panel.
 - Local solver state built from selected trainee aptitudes, preferred distances, manual locks, target epithets, and forced epithets.
 - Exact SciPy MILP backend first when constraints can be expressed linearly.
 - History-aware beam-search fallback when the exact backend is unavailable or the route requires dependency epithets.
@@ -19,7 +19,7 @@ The objective follows the Android solver documentation:
 score = sum(race_value) - sum(race_cost) + sum(epithet_reward) - penalties
 ```
 
-SweepyMod keeps the existing user-facing weights:
+Pre Icarus keeps the existing user-facing weights:
 
 - Race Value Weight
 - Epithet Value Weight

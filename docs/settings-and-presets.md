@@ -5,9 +5,9 @@ disk, and how to make customizations survive version upgrades.
 
 ## The three-tier storage model
 
-SweepyClaude stores configuration across three levels:
+Pre Icarus stores configuration across three levels:
 
-1. **In-build defaults** — `data/` inside the `SweepyClaudevX.Y.Z`
+1. **In-build defaults** — `data/` inside the `Pre Icarus vX.Y.Z`
    folder. Shipped with each release.
 2. **Userdata folder** — `SweepyClaude_userdata/` sibling to the
    build folder. Holds YOUR customizations. Persists across upgrades.
@@ -30,7 +30,7 @@ SweepyClaude stores configuration across three levels:
 
 ```
 C:\Umamusume API Bot Claude\
-    SweepyClaudev6.7.11\          ← the build, replaceable
+    Pre Icarus v6.7.11\          ← the build, replaceable
         main.py, career_bot/, public/, data/, ...
     SweepyClaude_userdata\        ← create once, persists across upgrades
         accounts.json
@@ -118,14 +118,9 @@ chara_info is available.
 
 Profile fields (see **trackblazer-guide.md** for full details):
 
-- `training_scorer_mode` — `hint` / `authoritative` / `disabled`
-- `training_scorer_overrides.stat_priority` — stat ordering
-- `training_scorer_overrides.stat_targets` — per-distance targets
 - `solver_overrides` — per-character solver weight nudges
 - `target_epithets` / `forced_epithets` — race-result goals
 - `auto_pick_epithets` — opt-in signature-epithet biasing
-- `override_margin_pct` / `override_margin_floor` — authoritative
-  override sensitivity (v6.7.9)
 
 > **Known limitation**: as of v6.7.11, character profile
 > customizations are still in the build folder, NOT in userdata.

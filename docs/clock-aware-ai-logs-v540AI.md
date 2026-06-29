@@ -1,6 +1,6 @@
-# SweepyModv5.40AI Clock-Aware AI Logs
+# Pre Icarus v5.40AI Clock-Aware AI Logs
 
-SweepyModv5.40AI expands the AI learning records so clock retry behavior is no longer hidden inside raw race flow.
+Pre Icarus v5.40AI expands the AI learning records so clock retry behavior is no longer hidden inside raw race flow.
 
 ## What changed
 

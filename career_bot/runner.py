@@ -11,7 +11,7 @@ import uuid
 from datetime import datetime
 from pathlib import Path
 
-from career_bot.scenarios.mant import MantStrategy
+from career_bot.scenarios.mant import MantStrategy, GROUP_OUTING_COMMAND_ID
 from career_bot.races import RacePlanner
 from career_bot.skills import SkillBuyer
 from career_bot.items import MantItemManager, ITEM_NAMES, SHOP_ITEM_COSTS, DISPLAY_TO_ID, display_to_slug
@@ -21,10 +21,9 @@ from career_bot.report import new_report, add_event, add_api_call, add_decision,
 from career_bot.delay import dna_sleep, dna_gauss
 from career_bot.discord_logger import DiscordCareerLogger
 from career_bot.race_intelligence import record_race_outcome
-from career_bot.running_style import resolve_running_style_for_race
+from career_bot.running_style import resolve_running_style_for_race, normalize_running_style
 from career_bot import trackblazer
 from career_bot import style_adaptation
-from career_bot import event_outcomes as event_kb
 
 
 STRATEGIES = {
@@ -68,6 +67,9 @@ class CareerRunner:
         self.burn_clocks = False
         self.carats_enabled = False          # spend carats on retries once clocks run out
         self.max_clocks_per_career = 0       # 0 = unlimited; per-career paid-clock budget
+        self.clocks_g1_debut_only = False    # navbar: only retry Debut + G1 + CLIMAX finale
+        self.max_retries_per_race = -1       # navbar: -1 = use preset/default; 0 = no retries
+        self._last_outing_turn = None        # Sirius/Throne group-outing stall detector
         self.loop_index = 1
         self.loop_target = 1
         self.race_planner = RacePlanner(base_dir)
@@ -76,11 +78,6 @@ class CareerRunner:
         self.discord_logger = None
         self.metrics = self._load_lifetime_metrics()
         self.current_run_recorded = False
-        # v7.6.2: native event-outcome capture. SweepyCL already receives
-        # chara_info before/after every event choice, so it records outcomes
-        # from its own runs into the KB — no Frida/dumper needed. main.py sets
-        # this from settings before each start; default on.
-        self.native_event_capture = True
         # #6 — goal-aware training lookahead (pace-to-target urgency in the
         # goal-aware scorer). main.py sets this from settings before each start;
         # default OFF so nothing changes unless the user opts in.
@@ -527,7 +524,8 @@ class CareerRunner:
             add_event(self.report, row)
 
     def start(self, client, preset, initial_result, max_steps=2500, burn_clocks=False, dev_mode=False,
-              carats_enabled=False, max_clocks_per_career=0):
+              carats_enabled=False, max_clocks_per_career=0, finalize_single_runs=False,
+              clocks_g1_debut_only=False, max_retries_per_race=-1):
         with self.lock:
             if self.status["running"]:
                 raise RuntimeError("Career runner already active")
@@ -540,7 +538,17 @@ class CareerRunner:
             self.burn_clocks = burn_clocks
             self.carats_enabled = bool(carats_enabled)
             self.max_clocks_per_career = int(max_clocks_per_career or 0)
+            self.clocks_g1_debut_only = bool(clocks_g1_debut_only)
+            try:
+                self.max_retries_per_race = int(max_retries_per_race)
+            except (TypeError, ValueError):
+                self.max_retries_per_race = -1
+            self._last_outing_turn = None    # reset the outing stall detector per career
             self.dev_mode = dev_mode
+            # When ON, single (non-loop) runs play out the final URA turn and
+            # finalize the career instead of self-terminating at turn 77 -- so the
+            # game-side career closes and a new run can start without a restart.
+            self.finalize_single_runs = bool(finalize_single_runs)
             self.current_run_recorded = False
             self.metrics["runs_started"] = int(self.metrics.get("runs_started") or 0) + 1
             self._save_lifetime_metrics()
@@ -577,6 +585,7 @@ class CareerRunner:
                 "fans_per_hour": 0,
                 "started_at": time.time(),
                 "recoveries": 0,
+                "recent_server_rejects": 0,
                 "last_seen_at": time.time(),
                 "stale_seconds": 0,
                 "same_turn_count": 0,
@@ -719,16 +728,10 @@ class CareerRunner:
     def _run(self, client, preset, result, strategy, max_steps):
 
         state = result or {}
-        # v6.7.17: capture the preset's training_stat_priority (the
-        # Training Settings panel value) into status so the decision-
-        # reasoning display can show the SAME priority the strategy
-        # actually used.  The strategy reads preset.training_stat_priority
-        # (mant.py _priority_indices), but the reasoning was displaying
-        # the character profile's separate training_scorer_overrides.
-        # stat_priority -- so a user who reordered priorities in the
-        # panel saw the OLD profile order in the reasoning even though
-        # the bot was training with their new order.  Storing it here
-        # lets the reasoning display match the actual behavior.
+        # Capture the preset's training_stat_priority (the Training Settings
+        # panel value) into status so the decision-reasoning display shows the
+        # SAME priority the strategy actually used (the strategy reads
+        # preset.training_stat_priority via mant.py _priority_indices).
         try:
             preset_priority = (
                 (preset or {}).get("training_stat_priority")
@@ -828,14 +831,17 @@ class CareerRunner:
                 self._heartbeat(turn)
                 self._mark(turn=turn)
                 self._update_analytics(chara)
-                self._track_turn_scores(state)
+                self._update_clocks_left(state)
+                self._update_route_info(state)
+                # v2.1: training_scorer removed -- the Trackblazer engine is the sole scorer.
                 self._write_state_snapshot(state)
                 if self._should_refresh_for_stuck_turn(turn):
                     self._warn(f"same turn seen repeatedly ({turn}); refreshing career state")
                     state = self._fresh_career_state(client, strategy)
                     continue
 
-                if turn == 77 and not getattr(self, "dev_mode", False):
+                if (turn == 77 and not getattr(self, "dev_mode", False)
+                        and not getattr(self, "finalize_single_runs", False)):
                     print("Turn 77 reached terminating", flush=True)
                     self.stop()
                     break
@@ -856,7 +862,7 @@ class CareerRunner:
                     state = self._ensure_chara_info(client, strategy, state, "event drain returned no chara_info")
                     data = state.get("data") or {}
                     chara = data.get("chara_info") or {}
-                    self._track_turn_scores(state)
+                    # v2.1: training_scorer removed -- the Trackblazer engine is the sole scorer.
                 
                 if self._blocked_playing_state(chara):
 
@@ -864,8 +870,10 @@ class CareerRunner:
                     data = state.get("data") or {}
                     chara = data.get("chara_info") or {}
                     if self._blocked_playing_state(chara):
-
-                        self._mark(last_action=f"blocked state {chara.get('playing_state')}")
+                        ri = self._route_info(chara)
+                        self._mark(last_action=(
+                            f"blocked state {chara.get('playing_state')} "
+                            f"(route {ri['route_id']}, {ri['route_race_count']} route races)"))
                         break
                 
                 self._debug_turn(state, preset)
@@ -896,6 +904,7 @@ class CareerRunner:
                     chara = data.get("chara_info") or {}
                     self._mark(turn=chara["turn"])
                     self._update_analytics(chara)
+                    self._update_clocks_left(state)
                     self._inject_runner_context(state)
                     decision = strategy.next_decision(state, preset)
 
@@ -933,8 +942,24 @@ class CareerRunner:
                     # speed" where Wit actually executed.  Applying here
                     # ensures the override either mutates the executed
                     # command_id or stays silent.
-                    self._apply_authoritative_scorer_override(state, decision)
+                    # v2.1: authoritative training_scorer override removed -- the
+                    # Trackblazer engine's own scoring is authoritative.
                     self._log("command_exec", decision.payload["current_turn"], f"{decision.payload.get('command_type')}:{decision.payload.get('command_id')}:{decision.payload.get('command_group_id')}")
+                    # Sirius/Throne group outing loop-breaker (stall detection). A wrong
+                    # select_id is a server no-op (same turn returns, no error); without
+                    # this guard the bot re-fires the same outing forever.
+                    _p = decision.payload
+                    _is_outing = (int(_p.get("command_type") or 0) == 3
+                                  and int(_p.get("command_group_id") or 0) == GROUP_OUTING_COMMAND_ID)
+                    if _is_outing:
+                        _ct = int(_p.get("current_turn") or 0)
+                        if getattr(self, "_last_outing_turn", None) == _ct:
+                            _is_card = bool(getattr(strategy, "_pending_outing_is_card", False))
+                            setattr(strategy, "_card_outing_blocked" if _is_card else "_scheduled_outing_blocked", True)
+                            self._last_outing_turn = None
+                            self._log("outing_stalled", _ct, f"card={_is_card} sel={_p.get('select_id')} -> blocked, re-decide")
+                            continue
+                        self._last_outing_turn = _ct
                     self._record_action(decision, chara)
                     try:
                         state = client.exec_command(**decision.payload)
@@ -944,6 +969,16 @@ class CareerRunner:
                     except Exception as exc:
                         if self._is_recoverable_error(exc):
                             state = self._recover_with_backoff(client, strategy, exc)
+                            continue
+                        # A bad group outing must NEVER kill the career: isolate it
+                        # (card error -> card steps only; char error -> all outings),
+                        # then re-decide into train/rest.
+                        if _is_outing:
+                            _is_card = bool(getattr(strategy, "_pending_outing_is_card", False))
+                            setattr(strategy, "_card_outing_blocked" if _is_card else "_scheduled_outing_blocked", True)
+                            self._last_outing_turn = None
+                            self._log("outing_exec_failed", int(_p.get("current_turn") or 0),
+                                      f"card={_is_card} sel={_p.get('select_id')} {str(exc)[:120]}")
                             continue
                         if not any(err in str(exc) for err in ("102", "1503")):
                             raise
@@ -1015,6 +1050,12 @@ class CareerRunner:
                 elif decision.action == "finish":
 
                     self._record_action(decision, chara)
+                    # The final climax race shares its turn with career FINISH
+                    # (turn 78). _record_action's 'finish' row would blank this
+                    # turn's item use, hiding the Master Cleat Hammer that fired
+                    # pre-race on the 3rd climax. Re-surface the pre-race items so
+                    # the History/decision panel shows the hammer on climax 3.
+                    self._reemit_item_use_debug(state)
 
                     state = self._buy_skills(client, state, preset, True)
 
@@ -1252,6 +1293,14 @@ class CareerRunner:
                 if is_server:
                     self.status["waiting_for_server"] = True
                     self.status["server_wait_reason"] = detail[:160]
+                    # Track server-side rejections (208/5xx/394-shaped errors) in a
+                    # rolling 10-min window so the dashboard can surface throttling
+                    # distinctly from a clean idle/finished state.
+                    _now = time.time()
+                    _times = [t for t in getattr(self, "_server_reject_times", []) if _now - t < 600]
+                    _times.append(_now)
+                    self._server_reject_times = _times
+                    self.status["recent_server_rejects"] = len(_times)
             # Server waits ride out longer (cap 5 min); other transient errors
             # use the original shorter cap so normal hiccups recover quickly.
             cap = 300 if is_server else 90
@@ -1303,6 +1352,27 @@ class CareerRunner:
                 "motivation": current_stats.get("motivation", 0),
                 "stats": current_stats,
             }
+
+    def _update_clocks_left(self, state):
+        """Refresh self.status['clocks_left'] from the live home_info so the smart
+        race solver's clock-aware terms see the real available continue count. This
+        was previously never written, so the solver permanently read 0 and a burn-
+        clocks setting never actually informed race planning."""
+        home_info = ((state or {}).get("data") or {}).get("home_info")
+        if not isinstance(home_info, dict):
+            return
+        std = int(home_info.get("available_continue_num", 0) or 0)
+        free = self._free_continue_count(home_info)
+        try:
+            refresh = int(home_info.get("free_continue_time", 0) or 0)
+        except Exception:
+            refresh = 0
+        with self.lock:
+            self.status["clocks_left"] = std + free
+            # Breakdown + free-pool refresh epoch for the v3 navbar readout.
+            self.status["standard_clocks"] = std
+            self.status["free_clocks"] = free
+            self.status["free_continue_time"] = refresh
 
     def _should_stop(self):
         with self.lock:
@@ -1431,47 +1501,20 @@ class CareerRunner:
         hp_ratio = hp / max(1, max_hp)
         reasons = []
 
-        # Profile context (used for richer reasoning -- NOT surfaced as its
-        # own line per user feedback).
-        profile_dict = None
-        scorer_hint = None
-        scorer_override = None
-        scorer_override_blocked = None
+        # Profile/priority context (used for richer reasoning -- NOT surfaced
+        # as its own line). The Trackblazer engine drives training off the
+        # preset's training_stat_priority (Training Settings panel), so that
+        # is what we display here.
         epithet_source = None
         preset_priority = []
         try:
             with self.lock:
-                profile_dict = self.status.get("active_character_profile")
-                scorer_hint = self.status.get("training_scorer_hint")
-                scorer_override = self.status.get("last_scorer_override")
-                scorer_override_blocked = self.status.get("last_scorer_override_blocked")
                 epithet_source = self.status.get("epithet_target_source")
                 preset_priority = list(self.status.get("preset_training_stat_priority") or [])
         except Exception:
             pass
-        priority = []
+        priority = list(preset_priority)
         targets = {}
-        if profile_dict:
-            tso = profile_dict.get("training_scorer_overrides") or {}
-            # v6.7.17: show the priority that ACTUALLY drove this
-            # decision.  In authoritative mode the scorer overrides the
-            # strategy, so the profile's stat_priority is what matters.
-            # In hint/disabled mode the strategy decides, and the
-            # strategy reads the PRESET's training_stat_priority (the
-            # Training Settings panel) -- so that's what we display.
-            # Previously the reasoning always showed the profile's
-            # priority, which confused users who reordered priorities in
-            # the panel: the bot trained with their new order but the
-            # reasoning kept showing the profile's old order.
-            mode = str(profile_dict.get("training_scorer_mode") or "hint").lower()
-            if mode == "authoritative":
-                priority = list(tso.get("stat_priority") or [])
-            else:
-                # Hint / disabled: strategy drives via preset priority.
-                priority = list(preset_priority) or list(tso.get("stat_priority") or [])
-            targets = tso.get("stat_targets") or {}
-        elif preset_priority:
-            priority = list(preset_priority)
 
         # Surface the raw decision reason FIRST so the user always sees the
         # engine's own explanation (especially important for irregular-
@@ -1532,76 +1575,6 @@ class CareerRunner:
                 why.append(f"HP low ({hp}/{max_hp}) but training value still won")
             elif mood >= 4:
                 why.append("mood favorable")
-            # Scorer agreement / disagreement
-            # v6.7.10: when an authoritative override JUST fired this
-            # turn, the "scorer agrees" message is tautologically true
-            # (the override mutated the action to match the scorer's
-            # pick).  Showing both "scorer agrees" AND "override swapped
-            # X -> Y" reads as a contradiction to users -- screenshots
-            # from one user's run showed multiple turns where the two
-            # lines together looked wrong.  Suppress the "agrees" line
-            # when the override fired this turn and let the override
-            # message carry the full story (with scorer score added so
-            # information isn't lost).
-            override_fired_this_turn = bool(
-                scorer_override
-                and int(scorer_override.get("turn") or 0) == int(payload.get("current_turn") or -1)
-            )
-            if scorer_hint and stat_name and not override_fired_this_turn:
-                top = str(scorer_hint.get("best_stat") or "").lower()
-                top_score = scorer_hint.get("best_score") or 0
-                if top and top == stat_name:
-                    why.append(f"v6.1 scorer agrees (score {top_score})")
-                elif top:
-                    # v6.7.9: when the scorer disagreed AND we're in
-                    # authoritative mode AND the override was blocked
-                    # by the margin gate, explain that to the user.
-                    # Without this they saw "scorer would have picked X"
-                    # with no idea why the swap didn't happen.
-                    blocked = scorer_override_blocked or {}
-                    blocked_turn = int(blocked.get("turn") or 0) if blocked else 0
-                    if (blocked and blocked_turn == int(payload.get("current_turn") or -1)
-                            and (blocked.get("reason") == "margin_below_threshold")):
-                        why.append(
-                            f"v6.1 scorer would have picked {top} (score {top_score}); "
-                            f"authoritative override blocked -- margin {blocked.get('margin')} "
-                            f"below threshold {blocked.get('min_margin')} "
-                            f"(tune via training_scorer_overrides.override_margin_pct / _floor)"
-                        )
-                    else:
-                        why.append(f"v6.1 scorer would have picked {top} (score {top_score})")
-            # Authoritative override note (rare).  v6.7.5: name the FROM
-            # stat instead of the raw command_id and only show this when
-            # the override actually swapped *this* training (post-fix the
-            # facility/stat_name reflects the post-override command, so
-            # ``to_stat`` should equal ``stat_name``).
-            # v6.7.10: include the scorer's score in the override line
-            # since the redundant "scorer agrees (score N)" line above
-            # is now suppressed when the override fired this turn.  The
-            # score gives users the same information without the
-            # apparent contradiction.
-            if scorer_override and int(scorer_override.get("turn") or 0) == int(payload.get("current_turn") or -1):
-                from_id = scorer_override.get("from_command_id")
-                to_stat = (scorer_override.get("to_stat") or "").lower()
-                # Translate from_command_id -> stat name for readability
-                from_stat_map = {101: "speed", 102: "power", 103: "guts", 105: "stamina", 106: "wit",
-                                 601: "speed", 602: "stamina", 603: "power", 604: "guts", 605: "wit"}
-                from_stat = from_stat_map.get(int(from_id or 0), f"cmd {from_id}")
-                scorer_score_part = ""
-                if scorer_hint and scorer_hint.get("best_score") is not None:
-                    scorer_score_part = f", scorer score {scorer_hint.get('best_score')}"
-                if to_stat == stat_name:
-                    why.append(
-                        f"v6.3 authoritative override swapped strategy's pick ({from_stat}) -> {to_stat} "
-                        f"(margin {scorer_override.get('margin')}{scorer_score_part})"
-                    )
-                else:
-                    # Override fired but executed action differs -- belt
-                    # and suspenders, shouldn't happen post-v6.7.5.
-                    why.append(
-                        f"override attempted strategy {from_stat} -> {to_stat} (margin {scorer_override.get('margin')}), "
-                        f"but final action was {stat_name}"
-                    )
             label = stat_name.title() if stat_name else "training"
             reasons.append(f"Trained {label} — " + (", ".join(why) if why else "highest-scoring training this turn"))
 
@@ -1676,6 +1649,15 @@ class CareerRunner:
         except Exception:
             pass
 
+        # v2.1: announce a set-bonus (epithet) the moment its races are complete,
+        # with the random-stat reward, so the panel shows what was earned.
+        try:
+            epi_line = self._epithet_completion_line(action)
+            if epi_line:
+                reasons.append(epi_line)
+        except Exception:
+            pass
+
         # Deduplicate while preserving order so the raw_reason at the top
         # doesn't repeat the same string the action branch already added.
         seen = set()
@@ -1709,8 +1691,9 @@ class CareerRunner:
         # Training-effectiveness boosts: 1001-1005 (Notepad), 1101-1105
         # (Manual), 1201-1205 (Scroll).
         if 1001 <= iid <= 1205:
-            stat = self._ITEM_STAT_BY_LAST_DIGIT.get(iid % 10, "")
-            return f"training effectiveness boost ({stat})" if stat else "training effectiveness boost"
+            # The stat is already in the item name (e.g. "Wit Manual"), so don't
+            # repeat it in the reason.
+            return "training effectiveness boost"
         # Energy recovery: Vita 2001-2003, Energy Drink MAX 2201-2202.
         if 2001 <= iid <= 2003 or 2201 <= iid <= 2202:
             return "energy recovery"
@@ -1726,13 +1709,13 @@ class CareerRunner:
         # Training boost (megaphone): 8001-8003 — boosts TRAINING stat gain over
         # several turns. NOT a race item (the cleat hammers below are the race buff).
         if 8001 <= iid <= 8003:
-            return "training boost (megaphone)"
+            return "training boost"
         # Race buff (hammer): 11001-11002 — boosts RACE stat gain.
         if 11001 <= iid <= 11002:
-            return "race buff (hammer)"
+            return "race buff"
         # Fan boost (glow sticks): 11003.
         if iid == 11003:
-            return "fan boost (glow sticks)"
+            return "fan boost"
         # Training-failure protection: Good-Luck Charm 10001.
         if iid == 10001:
             return "training-failure protection (charm)"
@@ -1797,42 +1780,102 @@ class CareerRunner:
         except Exception:
             return int(default_int)
 
+    def _epithet_completion_line(self, action):
+        """On a race turn, surface any set-bonus (epithet) that just completed,
+        with its random-stat reward, e.g.
+        '🏆 Set bonus earned: Classic Triple Crown (2 random stats +15)'.
+        Each epithet is reported once (the turn its final race is won)."""
+        if str(action or "").strip().lower() != "race":
+            return ""
+        try:
+            from career_bot import trackblazer as _tb
+            pool = getattr(self, "_epithet_pool_cache", None)
+            if pool is None:
+                pool = _tb._structured_epithet_data(self.base_dir) or []
+                self._epithet_pool_cache = pool
+            if not pool:
+                return ""
+            won = []
+            for r in (self.status.get("race_results") or []):
+                if not isinstance(r, dict):
+                    continue
+                if not (bool(r.get("won")) or int(r.get("rank") or 99) == 1):
+                    continue
+                nm = r.get("name") or (r.get("performance_hint") or {}).get("name")
+                if not nm:
+                    continue
+                row = dict(r)
+                row["name"] = nm
+                won.append(row)
+            completed = set(_tb._completed_epithets_for_history(pool, won))
+            seen = getattr(self, "_completed_epithets_seen", None)
+            if seen is None:
+                seen = set()
+            newly = completed - seen
+            self._completed_epithets_seen = completed
+            if not newly:
+                return ""
+            if self.discord_logger:
+                try:
+                    self.discord_logger.notify_epithet(sorted(newly))  # gated by notify_on_epithet
+                except Exception:
+                    pass
+            parts = []
+            for ep in pool:
+                nm = str(ep.get("name") or "").strip()
+                if not nm or nm not in newly:
+                    continue
+                # Only announce epithets that actually grant a reward (the
+                # Trackblazer set bonuses carry a "Reward: N random stats +M" or
+                # "... hint +1" bullet). Skip the generic game titles with no
+                # reward so the panel isn't spammed with single-race titles.
+                reward = ""
+                for b in (ep.get("bullet_points") or ep.get("bullets") or []):
+                    bs = str(b or "")
+                    low = bs.lower()
+                    if low.startswith("reward") or "random stat" in low or "hint +" in low:
+                        reward = (bs.split(":", 1)[-1] if low.startswith("reward") else bs).strip().strip(".")
+                        break
+                if not reward:
+                    continue
+                parts.append(f"{nm} ({reward})")
+            if not parts:
+                return ""
+            return "🏆 Set bonus earned: " + "; ".join(parts)
+        except Exception:
+            return ""
+
     def _items_used_reason_line(self, current_turn, action=None):
         """Build a single reasoning line describing what items the item
         manager USED this turn and why.  Returns "" if no items were
         used.  v6.7.10."""
         try:
-            # On a RACE turn the item manager only holds a train-vs-race PREVIEW
-            # selection (e.g. megaphones for a training that didn't happen); it is
-            # NOT consumed. The actual race items (cleat hammers / glow sticks) are
-            # applied + logged in the pre-race path. Don't surface the unconsumed
-            # training preview as "items used" on race turns.
-            if str(action or "").strip().lower() == "race":
-                return ""
             mgr = getattr(self, "item_manager", None)
             if not mgr:
                 return ""
-            # ``last_use_selected`` is the list of items the manager
-            # actually attempted to use this turn.  Each entry is
-            # ``{"name": "...", "item_id": N, "use_num": N}``.  When the
-            # API call succeeded, ``last_use_result`` carries
-            # ``result == "ok"``; on skip / failure we still want to
-            # acknowledge that the manager wanted to use something but
-            # couldn't.
-            selected = list(getattr(mgr, "last_use_selected", None) or [])
+            # v2.0: on a RACE turn the consumed items are the PRE-RACE items
+            # (cleat hammers / glow sticks), applied + logged in the pre-race path
+            # -- surface those instead of the unconsumed training preview, so the
+            # panel actually SHOWS the hammers firing on G1s/climax. On training
+            # turns, report the normal use selection.
+            is_race = str(action or "").strip().lower() == "race"
+            if is_race:
+                selected = list(getattr(mgr, "last_pre_race_use_selected", None) or [])
+                result = (getattr(mgr, "last_pre_race_use_result", None) or {})
+            else:
+                selected = list(getattr(mgr, "last_use_selected", None) or [])
+                result = (getattr(mgr, "last_use_result", None) or {})
             if not selected:
                 return ""
-            # Only attribute items to this turn -- the use_attempt_events
-            # list carries per-turn entries we can cross-reference.  When
-            # the most recent event's turn doesn't match the current
-            # turn, the selected list is stale (e.g. from a prior turn);
-            # don't double-report.
-            events = list(getattr(mgr, "use_attempt_events", None) or [])
-            if events:
-                last_event_turn = int((events[-1] or {}).get("turn") or 0)
-                if last_event_turn != int(current_turn):
-                    return ""
-            result = (getattr(mgr, "last_use_result", None) or {})
+            if not is_race:
+                # Only attribute training-turn items to this turn -- the
+                # use_attempt_events list lets us reject a stale selection from a
+                # prior turn. (Pre-race items are set fresh per race, so skip this.)
+                events = list(getattr(mgr, "use_attempt_events", None) or [])
+                if events:
+                    last_event_turn = int((events[-1] or {}).get("turn") or 0)
+                    if last_event_turn != int(current_turn):
+                        return ""
             result_state = ""
             if isinstance(result, dict):
                 if result.get("result") == "ok":
@@ -1861,6 +1904,38 @@ class CareerRunner:
         except Exception:
             return ""
 
+
+    def _items_used_names(self, current_turn, action=None):
+        """The item NAMES used this turn (e.g. ["Cleat Hammer", "Glow Sticks x2"]),
+        for the v3 decision-card item chips. Mirrors _items_used_reason_line's
+        per-turn selection (pre-race items on race turns; training items otherwise,
+        rejecting a stale selection from a prior turn)."""
+        try:
+            mgr = getattr(self, "item_manager", None)
+            if not mgr:
+                return []
+            is_race = str(action or "").strip().lower() == "race"
+            if is_race:
+                selected = list(getattr(mgr, "last_pre_race_use_selected", None) or [])
+            else:
+                selected = list(getattr(mgr, "last_use_selected", None) or [])
+                if not selected:
+                    return []
+                events = list(getattr(mgr, "use_attempt_events", None) or [])
+                if events and int((events[-1] or {}).get("turn") or 0) != int(current_turn):
+                    return []
+            out = []
+            for entry in selected:
+                if not isinstance(entry, dict):
+                    continue
+                name = str(entry.get("name") or "").strip()
+                if not name:
+                    continue
+                count = int(entry.get("use_num") or 1)
+                out.append(f"{name} x{count}" if count > 1 else name)
+            return out
+        except Exception:
+            return []
 
     def _record_action(self, decision, chara=None):
         payload = decision.payload or {}
@@ -1906,10 +1981,25 @@ class CareerRunner:
             "reason": str(getattr(decision, "reason", "") or ""),
             "reasoning": reasons,
             "time": time.strftime("%H:%M:%S"),
+            # v3 monitor/cards: cumulative fans this turn (frontend derives per-turn
+            # gain), item NAMES used this turn, and the skills bought this turn
+            # (filled in by _buy_skills, which runs after the action is recorded).
+            "fans": int((chara or {}).get("fans") or self.status.get("fans_current") or 0),
+            "items": self._items_used_names(turn, action),
+            "skills": [],
         }
         with self.lock:
             history = self.status.setdefault("action_history", [])
             if history and history[-1].get("turn") == row["turn"] and history[-1].get("action") == row["action"] and history[-1].get("facility") == row["facility"]:
+                # Same-turn re-record (race_progress/resume/retry): carry forward the
+                # enrichments already attached to this turn's row — skills are added
+                # by _buy_skills AFTER the first record, and items at first record —
+                # so the replace doesn't wipe them.
+                _prev = history[-1]
+                if not row.get("skills"):
+                    row["skills"] = _prev.get("skills") or []
+                if not row.get("items"):
+                    row["items"] = _prev.get("items") or []
                 history[-1] = row
             else:
                 history.append(row)
@@ -1964,6 +2054,58 @@ class CareerRunner:
     def _blocked_playing_state(self, chara):
         playing_state = int((chara or {}).get("playing_state") or 1)
         return playing_state not in {1, 2, 3, 4, 5}
+
+    def _race_short_mode(self, state):
+        """Decide is_short for race_start from the SERVER's skip-race state instead of
+        hardcoding 1, and surface the server's race-availability flags. Skip (short)
+        mode is the long-standing working default, so we keep is_short=1 unless the
+        server explicitly signals skip is NOT unlocked (shortened_race_state present
+        and falsy). An absent flag keeps the default -> never a regression.
+        Returns (is_short, flags)."""
+        data = (state or {}).get("data") or {}
+        home = data.get("home_info") or {}
+        chara = data.get("chara_info") or {}
+        flags = {
+            "race_entry_restriction": home.get("race_entry_restriction"),
+            "shortened_race_state": home.get("shortened_race_state"),
+            "is_short_race": chara.get("is_short_race"),
+        }
+        srs = home.get("shortened_race_state")
+        if srs is not None:
+            try:
+                if not int(srs or 0):
+                    return 0, flags
+            except Exception:
+                pass
+        return 1, flags
+
+    def _route_info(self, chara):
+        """The scenario's route + its scripted route/finale race program_ids
+        (chara_info.route_id + route_race_id_array) — read-only finale/soft-lock
+        context the runner historically ignored."""
+        chara = chara or {}
+        ids = []
+        for x in (chara.get("route_race_id_array") or []):
+            try:
+                ids.append(int(x))
+            except (TypeError, ValueError):
+                continue
+        return {
+            "route_id": int(chara.get("route_id") or 0),
+            "route_race_ids": ids,
+            "route_race_count": len(ids),
+        }
+
+    def _update_route_info(self, state):
+        """Stash the live route info on the status so it is surfaced (snapshot/UI)
+        and available for soft-lock diagnostics."""
+        chara = ((state or {}).get("data") or {}).get("chara_info")
+        if not isinstance(chara, dict):
+            return
+        info = self._route_info(chara)
+        if info["route_race_count"] or info["route_id"]:
+            with self.lock:
+                self.status["route_info"] = info
 
     def _recover_blocked_state(self, client, strategy, state):
         data = state.get("data") or {}
@@ -2026,6 +2168,42 @@ class CareerRunner:
             "bot_item_use_attempt": list(self.item_manager.last_use_attempt),
             "bot_item_use_result": dict(self.item_manager.last_use_result),
         })
+
+    def _reemit_item_use_debug(self, state):
+        """v2.1 (#8): the turn-debug record is written at turn START -- before items
+        are used this turn -- so its item-use rows showed the PREVIOUS turn's usage
+        (a 1-turn lag). Re-emit ONLY the item-use fields after item handling runs;
+        merge_turn() overwrites them on the same turn record. state=None keeps the
+        decision-time base fields (stats/energy/coins) intact.
+
+        On a RACE turn the meaningful items are the PRE-RACE ones (cleat hammers /
+        glow sticks) consumed in handle_pre_race -- surface those (mirrors the live
+        panel's is_race branch) instead of the empty decision-phase selection, so the
+        per-turn record actually SHOWS the hammer firing on G1s/climax races.
+        Detection: handle_pre_race stamps item_manager._pre_race_ran_turn with the
+        turn it ran on; if that equals this turn, pre-race items own this turn."""
+        try:
+            chara = ((state or {}).get("data") or {}).get("chara_info") or {}
+            turn = int(chara.get("turn") or 0)
+            mgr = self.item_manager
+            pre_race_this_turn = int(getattr(mgr, "_pre_race_ran_turn", -1)) == turn
+            if pre_race_this_turn:
+                selected = list(getattr(mgr, "last_pre_race_use_selected", None) or [])
+                attempt = list(getattr(mgr, "last_pre_race_use_attempt", None) or [])
+                result = dict(getattr(mgr, "last_pre_race_use_result", None) or {})
+            else:
+                selected = list(mgr.last_use_selected)
+                attempt = list(mgr.last_use_attempt)
+                result = dict(mgr.last_use_result)
+            self._debug("turn", None, {
+                "turn": turn,
+                "decision_item_use_rows": list(mgr.last_use_options),
+                "bot_item_use_selected": selected,
+                "bot_item_use_attempt": attempt,
+                "bot_item_use_result": result,
+            })
+        except Exception:
+            pass
 
     def _debug_skill_options(self, state, preset):
         data = state.get("data") or {}
@@ -2281,9 +2459,6 @@ class CareerRunner:
             payload = {"event_id": event.get("event_id"), "chara_id": event.get("chara_id", 0), "choice_number": choice, "current_turn": turn}
             if choice is None:
                 payload = {"event_id": event.get("event_id"), "_event": event, "_current_turn": turn}
-            # v7.6.2: snapshot chara_info before the choice so we can record the
-            # event's outcome natively from the bot's own API traffic.
-            before_chara = (data.get("chara_info") or {}) if self.native_event_capture else None
             try:
                 current = self._event(client, strategy, payload)
             except Exception as exc:
@@ -2291,8 +2466,6 @@ class CareerRunner:
                     self._log("event_drain_recover", turn, str(exc))
                     return self._recover_with_backoff(client, strategy, exc)
                 raise
-            if self.native_event_capture and choice is not None:
-                self._capture_event_outcome(event, choice, before_chara, current)
 
         data = current.get("data") or {}
         events = data.get("unchecked_event_array") or []
@@ -2304,46 +2477,6 @@ class CareerRunner:
             )
             return self._fresh_career_state(client, strategy, drain_events=False)
         return current
-
-    def _capture_event_outcome(self, event, choice_index, before_chara, after_state):
-        """v7.6.2: record an event outcome from the bot's own API traffic.
-
-        Native alternative to the external Frida dumper — diffs chara_info
-        before/after the choice and writes it to the event-outcome KB, keyed by
-        story_id. Must never break a run, so all failures are swallowed.
-        """
-        try:
-            story_id = str((event or {}).get("story_id") or "").strip()
-            if not story_id:
-                return
-            after_chara = ((after_state or {}).get("data") or {}).get("chara_info") or {}
-            if not before_chara or not after_chara:
-                return
-            # Resolve the 1-based select_index of the chosen option (the KB keys
-            # outcomes by select_index, not the 0-based choice index).
-            choices = ((event.get("event_contents_info") or {}).get("choice_array") or [])
-            select_index = None
-            if isinstance(choice_index, int) and 0 <= choice_index < len(choices):
-                select_index = (choices[choice_index] or {}).get("select_index")
-            if select_index is None:
-                select_index = (choice_index or 0) + 1
-            event_name = (
-                ((event.get("event_contents_info") or {}).get("title") if isinstance(event.get("event_contents_info"), dict) else "")
-                or event.get("title")
-                or event.get("event_title")
-                or event.get("name")
-                or ""
-            )
-            event_kb.record_observation(
-                self.base_dir,
-                story_id=story_id,
-                select_index=select_index,
-                before=before_chara,
-                after=after_chara,
-                event_name=event_name,
-            )
-        except Exception:
-            pass
 
     def _non_retryable_path(self):
         return runtime_output_root(self.base_dir) / "non_retryable_races.json"
@@ -2373,6 +2506,24 @@ class CareerRunner:
         self._non_retryable_set = ids
         return ids
 
+    def _continue_error_code(self, err_str):
+        """Classify a race-continue exception. Returns ``(code, learn)``.
+
+        ``2507`` = the account-level FREE-continue pool is momentarily empty
+        (transient; refreshes on a daily timer) -- NOT a per-race property, so it is
+        never learned/persisted (learning it permanently banned demonstrably-
+        retryable races and killed the whole clock feature -- see clock-retry
+        forensics 2026-06-28). ``205`` = the game genuinely refuses to continue THIS
+        race -- learned so future careers skip the doomed attempt. Anything else is
+        not a continue-availability signal.
+        """
+        s = str(err_str or "")
+        if "2507" in s:
+            return "2507", False
+        if "205" in s:
+            return "205", True
+        return "", False
+
     def _mark_non_retryable(self, program_id, error_code=""):
         try:
             pid = int(program_id or 0)
@@ -2394,53 +2545,26 @@ class CareerRunner:
             pass
 
     def _free_continue_count(self, home_info):
-        """Usable free race continues.
+        """Usable free race continues = the LIVE remaining free-continue balance.
 
-        v1.5 fix: the game exposes the standing free-continue pool in
-        ``free_continue_num`` (with a ``free_continue_time`` refresh stamp), NOT
-        ``available_free_continue_num`` -- which is 0 on the Trackblazer races
-        that don't grant a per-race free continue.  Reading only the latter made
-        Icarus believe it had zero free retries and fall back to PAID clocks,
-        which those races reject (error 205) -- so 3 free continues sat unused
-        all run.  Use whichever field reports more.
+        CORRECTED 2026-06-28 (clock-retry forensics). ``available_free_continue_num``
+        (AFCN) is the live grantable balance; ``free_continue_num`` is a CONSTANT
+        daily cap (pinned at 3, never decrements). The earlier v1.5 code returned
+        ``max(AFCN, cap)``, so it always reported 3 even when the pool was empty,
+        which forced ``continue_type=1`` (free) on every retry. Once AFCN hit 0 the
+        server rejected every free continue with 2507 and the bot NEVER fell back to
+        spending a standard clock (``continue_type=2``). Across 227 real retry events
+        every 2507 occurred at AFCN==0 (213/213) and every success at AFCN>=1, so AFCN
+        is authoritative. Read it directly; when it is 0 the caller correctly switches
+        to a standard/paid clock instead of burning a doomed free continue.
         """
         if not isinstance(home_info, dict):
             return 0
         try:
-            a = int(home_info.get("available_free_continue_num", 0) or 0)
+            return max(0, int(home_info.get("available_free_continue_num", 0) or 0))
         except Exception:
-            a = 0
-        try:
-            b = int(home_info.get("free_continue_num", 0) or 0)
-        except Exception:
-            b = 0
-        return max(a, b)
+            return 0
 
-    def _get_clocks_left(self, root, max_clocks=5):
-        data = root.get("data") or {}
-
-        home_info = data.get("home_info")
-        if isinstance(home_info, dict) and "available_continue_num" in home_info:
-            std = int(home_info.get("available_continue_num", 0))
-            free = self._free_continue_count(home_info)
-            continue_type = 1 if free > 0 else 2
-            return {
-                "source": "data.home_info.available_continue_num",
-                "clocks_left": std + free,
-                "continue_type": continue_type,
-            }
-
-        race_start_info = data.get("race_start_info")
-        if isinstance(race_start_info, dict) and "continue_num" in race_start_info:
-            used = int(race_start_info["continue_num"])
-            return {
-                "source": "data.race_start_info.continue_num",
-                "clocks_used": used,
-                "clocks_left": max_clocks - used,
-                "continue_type": 2,
-            }
-
-        return {"source": "unknown", "clocks_left": 0, "continue_type": 2}
 
     def _race_program_summary(self, program_id, rank=None, turn=None):
         program_id = int(program_id or 0)
@@ -2961,7 +3085,7 @@ class CareerRunner:
 
         return finish_order + 1
 
-    def _running_style_for_race(self, preset, program_id, turn):
+    def _running_style_for_race(self, preset, program_id, turn, chara=None):
         bucket = None
         if self.race_planner and program_id:
             try:
@@ -2969,7 +3093,57 @@ class CareerRunner:
             except Exception:
                 bucket = None
         style = resolve_running_style_for_race(preset, bucket, turn, default=None)
-        return int(style or 0)
+        base = int(style or 0)
+        # v2.1: per-race style override applies ONLY when a concrete base style
+        # (1-4) is configured. If the base resolves to "auto" (0) the bot does not
+        # manage style at all, so a one-shot override would leak (there is no
+        # reset call to revert it on the next race). With a concrete base, the
+        # override is naturally one-shot: the next race re-resolves the base and
+        # change_running_style re-pushes it.
+        if base in (1, 2, 3, 4):
+            override = self._per_race_style_override(preset, program_id, chara)
+            if override in (1, 2, 3, 4):
+                return override
+        return base
+
+    def _per_race_style_override(self, preset, program_id, chara):
+        """v2.1: per-race running-style override. Returns a concrete style id
+        (1-4) to use for THIS race only, or None. Matches by FULL race name
+        (case-insensitive) -- race program_ids have multiple variants but the
+        name is stable; an optional ``program_id`` field is also honored. The
+        override may be gated on the trainee's stamina (``stamina_below``).
+        Stateless, so it reverts automatically on the next race. Works in manual
+        and smart modes (this hook runs for every race)."""
+        try:
+            rules = ((preset or {}).get("mant_config") or {}).get("per_race_style_overrides") or []
+            if not rules or not self.race_planner or not program_id:
+                return None
+            info = self.race_planner._program_info(program_id) or {}
+            name = str(info.get("name") or "").strip().lower()
+            stamina = int((chara or {}).get("stamina") or 0)
+            for rule in rules:
+                if not isinstance(rule, dict):
+                    continue
+                match = str(rule.get("match") or "").strip().lower()
+                name_ok = bool(match) and bool(name) and match == name
+                try:
+                    pid = rule.get("program_id")
+                    pid_ok = pid not in (None, "") and int(pid) == int(program_id)
+                except Exception:
+                    pid_ok = False
+                if not (name_ok or pid_ok):
+                    continue
+                thr = rule.get("stamina_below")
+                if thr not in (None, ""):
+                    # Threshold given but no live stamina -> cannot evaluate; skip.
+                    if not chara or stamina >= int(thr):
+                        continue
+                style = normalize_running_style(rule.get("style"), default=None)
+                if style in (1, 2, 3, 4):
+                    return int(style)
+            return None
+        except Exception:
+            return None
 
     def _style_adaptation_enabled(self, preset):
         # The style-adaptation system is removed from the live race path by
@@ -3052,29 +3226,54 @@ class CareerRunner:
                 and int(program_id or 0) in self._load_non_retryable()):
             policy["disabled_reason"] = "race_known_non_retryable"
             return policy
+        # v2.1: a runtime "max retries per race" navbar value (>=0) overrides the
+        # preset; -1 (sentinel) = not set -> fall back to preset, then default 5.
+        # 0 = no retries on this race.
         try:
-            max_retries = int(cfg.get("max_retries_per_race") if cfg.get("max_retries_per_race") is not None else 5)
+            rt_override = int(getattr(self, "max_retries_per_race", -1))
         except Exception:
-            max_retries = 5
+            rt_override = -1
+        if rt_override >= 0:
+            max_retries = rt_override
+        else:
+            try:
+                max_retries = int(cfg.get("max_retries_per_race") if cfg.get("max_retries_per_race") is not None else 5)
+            except Exception:
+                max_retries = 5
         policy["max_retries"] = max(0, max_retries)
-        if int(attempts or 0) >= max(0, max_retries):
+        # A mandatory-race loss ends the career, so its paid-clock rescue (below)
+        # must not be silently killed by max_retries_per_race=0 ("no OPTIONAL
+        # retries"). Mandatory has its own opt-out: disable_mandatory_race_clocks.
+        # For max_retries>=1, mandatory races still respect the cap (v6.7.12).
+        mandatory_rescue_live = bool(is_mandatory) and not cfg.get("disable_mandatory_race_clocks", False)
+        if int(attempts or 0) >= max(0, max_retries) and not (mandatory_rescue_live and max_retries == 0):
             policy["disabled_reason"] = "max_retries_reached"
             return policy
-        allowed = cfg.get("retry_race_grades") or ["G1"]   # android-style: G1 only (after debut)
+        # v2.1 (user spec): only spend clocks/retries on the DEBUT race, G1s, and
+        # the finale Climax races. This gate now applies to mandatory races too --
+        # a mandatory race outside these grades is NOT retried (eligibility gates
+        # everything, incl. mandatory). Widen via mant_config.retry_race_grades.
+        allowed = cfg.get("retry_race_grades") or ["G1", "CLIMAX"]
         if isinstance(allowed, str):
             allowed = [part.strip() for part in allowed.split(",") if part.strip()]
         allowed_set = {str(item).upper() for item in allowed}
         policy["allowed_grades"] = sorted(allowed_set)
-        # User spec: the Debut/Maiden race is ALWAYS retried on a loss, bypassing
-        # the grade filter; every other non-mandatory race must be in the allowed
-        # grades (default G1-only). Mandatory races also bypass the filter.
         is_debut = False
         try:
             is_debut = bool(self._is_debut_race(program_id, turn))
         except Exception:
             is_debut = False
         policy["is_debut"] = is_debut
-        if not is_debut and allowed_set and policy["grade"] and policy["grade"] not in allowed_set and not is_mandatory:
+        # v2.1: navbar "use clocks on ONLY G1/Debut" -> when ON, only the Debut
+        # race, G1s and the CLIMAX finale may retry; everything else (incl.
+        # grade-unknown extra races and non-G1 mandatory rescues) is blocked,
+        # overriding the extra-race/mandatory branches below. When OFF, the normal
+        # (broader) behaviour applies.
+        if bool(getattr(self, "clocks_g1_debut_only", False)) and not (
+                is_debut or policy["grade"] in {"G1", "CLIMAX"}):
+            policy["disabled_reason"] = "clocks_g1_debut_only"
+            return policy
+        if not is_debut and allowed_set and policy["grade"] and policy["grade"] not in allowed_set:
             policy["disabled_reason"] = "grade_not_allowed"
             return policy
         # v6.7.12: mandatory-race paid-clock rescue.  A mandatory race
@@ -3127,9 +3326,28 @@ class CareerRunner:
     def _race(self, client, state, preset, payload):
         if int((preset or {}).get("scenario_id") or (preset or {}).get("scenario") or 4) == 4:
             self.item_manager.recover_after_use_error = False
-            state, used = self.item_manager.handle_pre_race(client, state, preset, payload, self.status, self.race_planner)
+            # v2.1 R5: thread the CURRENT race's 1-indexed position in its
+            # consecutive-race chain into the pre-race item handler.  The strategy
+            # keeps the chain counter (_recent_race_chain_count = number of races
+            # immediately preceding this turn); position = preceding + 1
+            # (1 = first race of a new chain).  Used by the pre-race energy rule
+            # to decide whether a 0-energy top-up is worth an item.
+            _chain_position = 1
+            _strategy = payload.get("_strategy") if isinstance(payload, dict) else None
+            if _strategy is not None and hasattr(_strategy, "_recent_race_chain_count"):
+                try:
+                    _data = (state or {}).get("data") or {}
+                    _turn = int(((state or {}).get("data") or {}).get("chara_info") or {}).get("turn") or 0
+                    _preceding = int(_strategy._recent_race_chain_count(_data, _turn) or 0)
+                    _chain_position = _preceding + 1
+                except Exception:
+                    _chain_position = 1
+            state, used = self.item_manager.handle_pre_race(
+                client, state, preset, payload, self.status, self.race_planner,
+                consecutive_race_position=_chain_position)
             for event in self.item_manager.use_attempt_events:
                 self._debug("items_use_attempt", state, {
+                    "phase": event.get("phase") or "pre_race",
                     "selected": event.get("selected") or [],
                     "attempt": event.get("attempt") or [],
                     "payload": event.get("payload") or [],
@@ -3143,6 +3361,8 @@ class CareerRunner:
                 with self.lock:
                     self.status["items_used"] += used
                     self._log_locked("items_use", payload["current_turn"], f"pre-race {used}")
+            # v2.1 (#8): refresh the turn-debug item-use rows after pre-race item use.
+            self._reemit_item_use_debug(state)
 
         program_id = payload.get("program_id")
         current_turn = payload["current_turn"]
@@ -3152,7 +3372,10 @@ class CareerRunner:
         # rescue even when burn_clocks is off for optional races.
         is_mandatory_race = bool(payload.get("_forced_race"))
 
-        base_running_style = self._running_style_for_race(preset, program_id, current_turn)
+        base_running_style = self._running_style_for_race(
+            preset, program_id, current_turn,
+            chara=((state or {}).get("data") or {}).get("chara_info") or {},
+        )
         style_decision = {}
         running_style = base_running_style
         if self._style_adaptation_enabled(preset):
@@ -3277,10 +3500,12 @@ class CareerRunner:
             except Exception as exc:
                 self._log("change_running_style_failed", current_turn, str(exc))
 
-        is_short = 1
+        is_short, race_flags = self._race_short_mode(state)
         try:
             res = client.race_start(is_short=is_short, current_turn=current_turn)
-            self._log("race_start", current_turn, f"short {is_short}")
+            self._log("race_start", current_turn,
+                      f"short {is_short} (skip_state={race_flags.get('shortened_race_state')}, "
+                      f"entry_restrict={race_flags.get('race_entry_restriction')})")
         except Exception as exc:
             if self._is_recoverable_error(exc):
                 self._log("race_start_recover", current_turn, str(exc))
@@ -3416,20 +3641,28 @@ class CareerRunner:
                 # client already retries it internally, so a 208 that
                 # bubbles up here is also terminal for this attempt.
                 err_str = str(e)
-                if "205" in err_str or "2507" in err_str:
-                    code = "2507" if "2507" in err_str else "205"
-                    # v1.5: remember this race rejects continues so future
-                    # careers skip the attempt entirely (the policy early-out).
-                    if (preset or {}).get("mant_config", {}).get("enable_non_retryable_learning", True) is not False:
+                code, learn = self._continue_error_code(err_str)
+                if code:
+                    # 2507 = free-continue pool momentarily empty (transient) -> do
+                    # NOT learn it; a genuine 205 (game refuses THIS race) is learned
+                    # so future careers skip the doomed attempt.
+                    if learn and (preset or {}).get("mant_config", {}).get("enable_non_retryable_learning", True) is not False:
                         self._mark_non_retryable(program_id, code)
                     retry_row.update({"error": err_str, "success": False,
                                       "continue_unavailable": True})
                     retry_events.append(retry_row)
-                    self._log(
-                        "race_continue_unavailable", current_turn,
-                        f"server rejected continue ({code}) -- this race does not "
-                        "support retries; recorded as non-retryable, will skip next time",
-                    )
+                    if code == "2507":
+                        self._log(
+                            "race_continue_unavailable", current_turn,
+                            "free-continue pool empty (2507, transient) -- not learned; "
+                            "out of free continues this attempt",
+                        )
+                    else:
+                        self._log(
+                            "race_continue_unavailable", current_turn,
+                            f"server rejected continue ({code}) -- this race does not "
+                            "support retries; recorded as non-retryable, will skip next time",
+                        )
                     break
                 retry_row.update({"error": err_str, "success": False})
                 retry_events.append(retry_row)
@@ -3698,7 +3931,16 @@ class CareerRunner:
             with self.lock:
                 self.status["skills_bought"] += bought
                 self.status["last_action"] = f"skills {bought}"
-                self._log_locked("skills", (state.get("data") or {}).get("chara_info", {}).get("turn", 0), bought)
+                _cur_turn = int(((state.get("data") or {}).get("chara_info") or {}).get("turn") or 0)
+                self._log_locked("skills", _cur_turn, bought)
+                # Attach the bought skill NAMES to this turn's action row so the v3
+                # monitor can show "skill bought <name>" events. _buy_skills runs
+                # right after _record_action, so history[-1] is this turn's action.
+                _names = [str((it or {}).get("name") or "").strip() for it in (self.skill_buyer.last_selected or [])]
+                _names = [n for n in _names if n]
+                _hist = self.status.get("action_history") or []
+                if _names and _hist and int(_hist[-1].get("turn") or 0) == _cur_turn:
+                    _hist[-1]["skills"] = list(dict.fromkeys(list(_hist[-1].get("skills") or []) + _names))
         return state
 
 
@@ -3751,6 +3993,7 @@ class CareerRunner:
             })
         for event in self.item_manager.use_attempt_events:
             self._debug("items_use_attempt", state, {
+                "phase": event.get("phase") or "decision",
                 "selected": event.get("selected") or [],
                 "attempt": event.get("attempt") or [],
                 "payload": event.get("payload") or [],
@@ -3772,23 +4015,11 @@ class CareerRunner:
                     self._log_locked("items_buy", turn, bought)
                 if used:
                     self._log_locked("items_use", turn, used)
+        # v2.1 (#8): refresh the turn-debug item-use rows now that use_items has run
+        # for THIS turn (kills the 1-turn lag).
+        self._reemit_item_use_debug(state)
         return state
 
-    def _merge_state(self, old_state, new_state):
-        if not old_state:
-            return new_state
-        merged = dict(old_state)
-        merged["data"] = dict(old_state.get("data") or {})
-        for k, v in (new_state.get("data") or {}).items():
-            if isinstance(v, dict) and k in merged["data"] and isinstance(merged["data"][k], dict):
-                merged_sub = dict(merged["data"][k])
-                for sub_k, sub_v in v.items():
-                    if sub_v is not None:
-                        merged_sub[sub_k] = sub_v
-                merged["data"][k] = merged_sub
-            else:
-                merged["data"][k] = v
-        return merged
 
     def _command_from_decision(self, state, decision):
         payload = decision.payload or {}
@@ -3804,227 +4035,5 @@ class CareerRunner:
                 return cmd
         return payload
 
-    def _apply_authoritative_scorer_override(self, state, decision):
-        """v6.3: when the active character profile is in ``authoritative``
-        mode, replace the strategy engine's chosen training command with
-        the v6.1 scorer's top pick.
 
-        Hint mode (the default) is unaffected -- only profiles that have
-        been explicitly promoted via ``training_scorer_mode: "authoritative"``
-        in their JSON file (or per-scenario override) trigger the override.
-
-        v6.7.5: this is now called at the actual execution point so the
-        mutation reaches ``_record_action`` and ``exec_command``.  We also
-        clear ``last_scorer_override`` for the current turn at the start
-        of the call so that turns where the override does NOT fire don't
-        inherit a stale entry from an earlier turn.
-
-        The override is conservative:
-          - only runs when decision.action == ``"command"`` AND the chosen
-            command is a training (command_type == 1)
-          - requires the scorer to find a positive-scoring pick
-          - requires the new pick to differ from the strategy's pick by a
-            non-trivial margin (>= 10% of the runner-up score) to avoid
-            chasing noise
-          - records the override into status so the dashboard can show
-            what was swapped and why
-        """
-        try:
-            payload = decision.payload or {}
-            current_turn = int(payload.get("current_turn") or 0)
-            # Clear any stale override entry from a previous turn before
-            # deciding whether this turn produces a new one.
-            with self.lock:
-                prev = self.status.get("last_scorer_override") or {}
-                if prev and int(prev.get("turn") or 0) != current_turn:
-                    self.status["last_scorer_override"] = None
-            if int(payload.get("command_type") or 0) != 1:
-                return  # not a training command -- nothing to override
-
-            data = state.get("data") or {}
-            chara = data.get("chara_info") or {}
-            home = data.get("home_info") or {}
-            if not home.get("command_info_array"):
-                return
-
-            from career_bot import character_profiles, training_scorer
-
-            profile = character_profiles.resolve_profile(
-                card_id=chara.get("card_id") or 0,
-                chara_id=chara.get("chara_id") or 0,
-                scenario_id=int(self.status.get("scenario_id") or 4),
-                base_dir=self.base_dir,
-                preset_name=str((self.status.get("preset_name") or "")),
-                chara_info=chara,
-            )
-            if profile.training_scorer_mode != "authoritative":
-                return
-
-            cfg = profile.training_scorer_config()
-            cfg.goal_lookahead = bool(getattr(self, "goal_lookahead", False))
-            cfg = training_scorer.adapt_stamina_targets(
-                cfg, chara, enabled=bool(getattr(profile, "adapt_targets_to_inheritance", False)),
-                turn=int(chara.get("turn") or 0))
-            scores = training_scorer.score_trainings(home, chara, config=cfg)
-            if not scores or scores[0].score <= 0:
-                return  # scorer didn't find anything positive
-
-            scorer_pick = scores[0]
-            strategy_id = int(payload.get("command_id") or 0)
-            if scorer_pick.command_id == strategy_id:
-                return  # already agree
-
-            # Margin gate: require the new pick to beat the strategy's pick
-            # by at least 10% of the runner-up score in our own ranking.
-            # Without this gate any +1 difference could cause flapping.
-            # v6.7.9: the multiplier (default 0.10) and absolute floor
-            # (default 1.0) are now configurable via the profile's
-            # training_scorer_overrides so users in authoritative mode
-            # can tune how aggressively the override fires.
-            ts_overrides = (profile.training_scorer_overrides or {})
-            margin_pct = float(ts_overrides.get("override_margin_pct", 0.10))
-            margin_floor = float(ts_overrides.get("override_margin_floor", 1.0))
-            strategy_score = next(
-                (s.score for s in scores if s.command_id == strategy_id),
-                0.0,
-            )
-            margin = scorer_pick.score - strategy_score
-            min_margin = max(margin_floor, scores[-1].score * margin_pct if len(scores) > 1 else margin_floor)
-            if margin < min_margin:
-                # v6.7.9: record the BLOCKED override so the dashboard
-                # reasoning can explain why the scorer's disagreement
-                # didn't translate into a swap.  Without this, users in
-                # authoritative mode saw "scorer would have picked X"
-                # with no explanation that the margin gate killed the
-                # override.
-                with self.lock:
-                    self.status["last_scorer_override_blocked"] = {
-                        "turn": int(chara.get("turn") or 0),
-                        "from_command_id": strategy_id,
-                        "from_stat": (next((s.stat_name for s in scores if s.command_id == strategy_id), "") or "").lower(),
-                        "to_command_id": int(scorer_pick.command_id),
-                        "to_stat": scorer_pick.stat_name.lower(),
-                        "margin": round(margin, 4),
-                        "min_margin": round(min_margin, 4),
-                        "reason": "margin_below_threshold",
-                    }
-                return
-
-            # Override the decision payload's command_id.  command_type
-            # stays 1 (still a training command).  command_group_id is
-            # left untouched -- the scorer picks within the same train
-            # category space.
-            original_id = strategy_id
-            payload["command_id"] = int(scorer_pick.command_id)
-            decision.payload = payload
-            new_reason = (
-                (decision.reason or "")
-                + f" | v6.3 scorer override: {original_id} -> {scorer_pick.command_id} "
-                f"({scorer_pick.stat_name}, margin {margin:.2f})"
-            )
-            decision.reason = new_reason.strip(" |")
-
-            with self.lock:
-                self.status["last_scorer_override"] = {
-                    "turn": int(chara.get("turn") or 0),
-                    "profile_id": profile.profile_id,
-                    "from_command_id": original_id,
-                    "to_command_id": scorer_pick.command_id,
-                    "to_stat": scorer_pick.stat_name,
-                    "scorer_top_score": round(scorer_pick.score, 4),
-                    "strategy_pick_score": round(strategy_score, 4),
-                    "margin": round(margin, 4),
-                }
-        except Exception:
-            # Authoritative override is best-effort.  Any failure must
-            # leave the strategy engine's decision unmodified.
-            pass
-
-    def _track_turn_scores(self, state):
-        data = state.get("data") or {}
-        chara = data.get("chara_info") or {}
-        turn = int(chara.get("turn") or 0)
-        home = data.get("home_info") or {}
-        commands = home.get("command_info_array") or []
-        max_score = 0
-        has_training = False
-        for cmd in commands:
-            if int(cmd.get("command_type") or 0) == 1:
-                has_training = True
-                score = self.item_manager._command_stat_gain(cmd)
-                if score > max_score:
-                    max_score = score
-        if has_training:
-            with self.lock:
-                dh = self.status.setdefault("date_history", [])
-                sh = self.status.setdefault("score_history", [])
-                if not dh or dh[-1] != turn:
-                    dh.append(turn)
-                    sh.append(max_score)
-                    if len(dh) > 48:
-                        dh.pop(0)
-                        sh.pop(0)
-
-        # v6.1: publish Android-equivalent training scores as a HINT.
-        # v6.2: resolve the active character profile so the scorer uses
-        # per-character stat priorities, distance-specific targets, and the
-        # right scenario-tuned weights instead of one-size-fits-all defaults.
-        # The strategy engine still makes the authoritative decision in
-        # profiles whose ``training_scorer_mode`` is ``"hint"`` (the default
-        # for fresh profiles); flipping a profile to ``"authoritative"``
-        # promotes its scorer to drive the decision -- the wire-in for that
-        # path lives in the strategy engine, this hint stays read-only.
-        if has_training:
-            try:
-                from career_bot import training_scorer  # local import to avoid cycles
-                from career_bot import character_profiles
-                card_id = chara.get("card_id") or 0
-                chara_id = chara.get("chara_id") or 0
-                scenario_id = int(self.status.get("scenario_id") or 0)
-                preset_name = self.status.get("preset_name") or ""
-                profile = character_profiles.resolve_profile(
-                    card_id=card_id,
-                    chara_id=chara_id,
-                    scenario_id=scenario_id,
-                    base_dir=self.base_dir,
-                    preset_name=preset_name,
-                    chara_info=chara,
-                )
-                cfg = profile.training_scorer_config()
-                cfg.goal_lookahead = bool(getattr(self, "goal_lookahead", False))
-                cfg = training_scorer.adapt_stamina_targets(
-                    cfg, chara, enabled=bool(getattr(profile, "adapt_targets_to_inheritance", False)),
-                    turn=int(chara.get("turn") or 0))
-                scores = training_scorer.score_trainings(home, chara, config=cfg)
-                hint = {
-                    "turn": turn,
-                    "scorer_version": "v6.2",
-                    "authoritative": profile.training_scorer_mode == "authoritative",
-                    "mode": profile.training_scorer_mode,
-                    "profile_id": profile.profile_id,
-                    "profile_display_name": profile.display_name,
-                    "matched_via": profile.matched_via,
-                    "best_command_id": scores[0].command_id if scores else 0,
-                    "best_stat": scores[0].stat_name if scores else "",
-                    "best_score": round(scores[0].score, 4) if scores else 0.0,
-                    "rankings": [s.to_dict() for s in scores],
-                }
-                with self.lock:
-                    self.status["training_scorer_hint"] = hint
-                    self.status["active_character_profile"] = profile.to_dict()
-                    history = self.status.setdefault("training_scorer_history", [])
-                    if not history or history[-1].get("turn") != turn:
-                        history.append({
-                            "turn": turn,
-                            "best_command_id": hint["best_command_id"],
-                            "best_stat": hint["best_stat"],
-                            "best_score": hint["best_score"],
-                            "profile_id": profile.profile_id,
-                        })
-                        if len(history) > 78:  # one full career
-                            history.pop(0)
-            except Exception:
-                # The hint is best-effort.  A scorer or profile-resolution
-                # crash must not break the live decision loop.
-                pass
 

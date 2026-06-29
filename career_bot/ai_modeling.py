@@ -1,4 +1,4 @@
-"""Bayesian primitives for the SweepyCL AI advisor.
+"""Bayesian primitives for the Pre Icarus AI advisor.
 
 The original advisor used point-estimate win rates with a magic-number penalty
 (``adjustment -= 8.0`` when ``starts >= 3 and win_rate < 0.5``).  That gives
@@ -36,7 +36,7 @@ __all__ = [
 class BetaPosterior:
     """Beta(alpha, beta) posterior over a Bernoulli rate.
 
-    Conventions used throughout SweepyCL:
+    Conventions used throughout Pre Icarus:
       - ``alpha`` accumulates "successes" (race wins, positive event outcomes)
       - ``beta``  accumulates "failures" (race non-wins, negative outcomes)
       - The prior is supplied at construction via ``from_prior`` and acts as

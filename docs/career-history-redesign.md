@@ -2,7 +2,7 @@
 
 ## Purpose
 
-SweepyModv5.8 replaces the old session-only Career History table with a desktop-first, two-level modal that shows completed careers as rich summary cards and opens a full detail view for each run.
+Pre Icarus v5.8 replaces the old session-only Career History table with a desktop-first, two-level modal that shows completed careers as rich summary cards and opens a full detail view for each run.
 
 ## Main History Modal
 

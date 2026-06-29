@@ -11721,6 +11721,242 @@
       "hint_skill_count": 10
     },
     {
+      "support_card_id": 10081,
+      "name": "Tsurumaru Tsuyoshi",
+      "rarity": 1,
+      "command_id": 103,
+      "command_label": "power",
+      "support_card_type": 1,
+      "skill_set_id": 9081073,
+      "outing_max": 0,
+      "effect_table_id": 10081,
+      "unique_effect_id": 0,
+      "effect_values_by_level": {
+        "0": {
+          "friendship_bonus": 5,
+          "mood_effect": 10,
+          "guts_bonus": -1,
+          "initial_friendship_gauge": -1,
+          "hint_levels": -1,
+          "hint_frequency": -1,
+          "specialty_priority": -1
+        },
+        "5": {
+          "friendship_bonus": 5,
+          "mood_effect": 10,
+          "guts_bonus": -1,
+          "initial_friendship_gauge": 10,
+          "hint_levels": 1,
+          "hint_frequency": 5,
+          "specialty_priority": 5
+        },
+        "10": {
+          "friendship_bonus": 5,
+          "mood_effect": 10,
+          "guts_bonus": -1,
+          "initial_friendship_gauge": 10,
+          "hint_levels": 1,
+          "hint_frequency": 5,
+          "specialty_priority": 5
+        },
+        "15": {
+          "friendship_bonus": 10,
+          "mood_effect": 10,
+          "guts_bonus": -1,
+          "initial_friendship_gauge": 15,
+          "hint_levels": 1,
+          "hint_frequency": 20,
+          "specialty_priority": 20
+        },
+        "20": {
+          "friendship_bonus": 10,
+          "mood_effect": 25,
+          "guts_bonus": -1,
+          "initial_friendship_gauge": 15,
+          "hint_levels": 1,
+          "hint_frequency": 20,
+          "specialty_priority": 20
+        },
+        "25": {
+          "friendship_bonus": 10,
+          "mood_effect": 25,
+          "guts_bonus": -1,
+          "initial_friendship_gauge": 15,
+          "hint_levels": 1,
+          "hint_frequency": 20,
+          "specialty_priority": 20
+        },
+        "30": {
+          "friendship_bonus": 10,
+          "mood_effect": 25,
+          "guts_bonus": -1,
+          "initial_friendship_gauge": 15,
+          "hint_levels": 1,
+          "hint_frequency": 20,
+          "specialty_priority": 20
+        },
+        "35": {
+          "friendship_bonus": 15,
+          "mood_effect": 25,
+          "guts_bonus": -1,
+          "initial_friendship_gauge": 20,
+          "hint_levels": 2,
+          "hint_frequency": 30,
+          "specialty_priority": 35
+        },
+        "40": {
+          "friendship_bonus": 15,
+          "mood_effect": 35,
+          "guts_bonus": 1,
+          "initial_friendship_gauge": 20,
+          "hint_levels": 2,
+          "hint_frequency": 30,
+          "specialty_priority": 35
+        },
+        "45": {
+          "friendship_bonus": 15,
+          "mood_effect": 35,
+          "guts_bonus": 1,
+          "initial_friendship_gauge": 20,
+          "hint_levels": 2,
+          "hint_frequency": 30,
+          "specialty_priority": 35
+        },
+        "50": {
+          "friendship_bonus": 15,
+          "mood_effect": 35,
+          "guts_bonus": 1,
+          "initial_friendship_gauge": 20,
+          "hint_levels": 2,
+          "hint_frequency": 30,
+          "specialty_priority": 35
+        }
+      },
+      "effect_rows": [
+        {
+          "type": 1,
+          "label": "friendship_bonus",
+          "values": {
+            "0": 5,
+            "5": 5,
+            "10": 5,
+            "15": 10,
+            "20": 10,
+            "25": 10,
+            "30": 10,
+            "35": 15,
+            "40": 15,
+            "45": 15,
+            "50": 15
+          }
+        },
+        {
+          "type": 2,
+          "label": "mood_effect",
+          "values": {
+            "0": 10,
+            "5": 10,
+            "10": 10,
+            "15": 10,
+            "20": 25,
+            "25": 25,
+            "30": 25,
+            "35": 25,
+            "40": 35,
+            "45": 35,
+            "50": 35
+          }
+        },
+        {
+          "type": 6,
+          "label": "guts_bonus",
+          "values": {
+            "0": -1,
+            "5": -1,
+            "10": -1,
+            "15": -1,
+            "20": -1,
+            "25": -1,
+            "30": -1,
+            "35": -1,
+            "40": 1,
+            "45": 1,
+            "50": 1
+          }
+        },
+        {
+          "type": 14,
+          "label": "initial_friendship_gauge",
+          "values": {
+            "0": -1,
+            "5": 10,
+            "10": 10,
+            "15": 15,
+            "20": 15,
+            "25": 15,
+            "30": 15,
+            "35": 20,
+            "40": 20,
+            "45": 20,
+            "50": 20
+          }
+        },
+        {
+          "type": 17,
+          "label": "hint_levels",
+          "values": {
+            "0": -1,
+            "5": 1,
+            "10": 1,
+            "15": 1,
+            "20": 1,
+            "25": 1,
+            "30": 1,
+            "35": 2,
+            "40": 2,
+            "45": 2,
+            "50": 2
+          }
+        },
+        {
+          "type": 18,
+          "label": "hint_frequency",
+          "values": {
+            "0": -1,
+            "5": 5,
+            "10": 5,
+            "15": 20,
+            "20": 20,
+            "25": 20,
+            "30": 20,
+            "35": 30,
+            "40": 30,
+            "45": 30,
+            "50": 30
+          }
+        },
+        {
+          "type": 19,
+          "label": "specialty_priority",
+          "values": {
+            "0": -1,
+            "5": 5,
+            "10": 5,
+            "15": 20,
+            "20": 20,
+            "25": 20,
+            "30": 20,
+            "35": 35,
+            "40": 35,
+            "45": 35,
+            "50": 35
+          }
+        }
+      ],
+      "unique_effects": [],
+      "hint_skill_count": 8
+    },
+    {
       "support_card_id": 10016,
       "name": "Winning Ticket",
       "rarity": 1,
@@ -20242,6 +20478,294 @@
               "type": 15,
               "label": "race_bonus",
               "value": 5,
+              "value_1": 0,
+              "value_2": 0,
+              "value_3": 0,
+              "value_4": 0
+            }
+          ]
+        }
+      ],
+      "hint_skill_count": 7
+    },
+    {
+      "support_card_id": 20033,
+      "name": "El Condor Pasa",
+      "rarity": 2,
+      "command_id": 101,
+      "command_label": "speed",
+      "support_card_type": 1,
+      "skill_set_id": 9081014,
+      "outing_max": 0,
+      "effect_table_id": 20033,
+      "unique_effect_id": 20033,
+      "effect_values_by_level": {
+        "0": {
+          "friendship_bonus": 10,
+          "mood_effect": -1,
+          "power_bonus": -1,
+          "training_effectiveness": -1,
+          "initial_friendship_gauge": -1,
+          "race_bonus": 1,
+          "fan_bonus": 1,
+          "specialty_priority": 5
+        },
+        "5": {
+          "friendship_bonus": 10,
+          "mood_effect": -1,
+          "power_bonus": -1,
+          "training_effectiveness": -1,
+          "initial_friendship_gauge": -1,
+          "race_bonus": 1,
+          "fan_bonus": 1,
+          "specialty_priority": 5
+        },
+        "10": {
+          "friendship_bonus": 10,
+          "mood_effect": 10,
+          "power_bonus": -1,
+          "training_effectiveness": -1,
+          "initial_friendship_gauge": 10,
+          "race_bonus": 1,
+          "fan_bonus": 1,
+          "specialty_priority": 5
+        },
+        "15": {
+          "friendship_bonus": 10,
+          "mood_effect": 10,
+          "power_bonus": -1,
+          "training_effectiveness": -1,
+          "initial_friendship_gauge": 10,
+          "race_bonus": 1,
+          "fan_bonus": 1,
+          "specialty_priority": 5
+        },
+        "20": {
+          "friendship_bonus": 15,
+          "mood_effect": 20,
+          "power_bonus": -1,
+          "training_effectiveness": -1,
+          "initial_friendship_gauge": 15,
+          "race_bonus": 1,
+          "fan_bonus": 1,
+          "specialty_priority": 5
+        },
+        "25": {
+          "friendship_bonus": 15,
+          "mood_effect": 20,
+          "power_bonus": -1,
+          "training_effectiveness": -1,
+          "initial_friendship_gauge": 15,
+          "race_bonus": 5,
+          "fan_bonus": 15,
+          "specialty_priority": 35
+        },
+        "30": {
+          "friendship_bonus": 15,
+          "mood_effect": 20,
+          "power_bonus": -1,
+          "training_effectiveness": 1,
+          "initial_friendship_gauge": 15,
+          "race_bonus": 5,
+          "fan_bonus": 15,
+          "specialty_priority": 35
+        },
+        "35": {
+          "friendship_bonus": 15,
+          "mood_effect": 20,
+          "power_bonus": -1,
+          "training_effectiveness": 1,
+          "initial_friendship_gauge": 15,
+          "race_bonus": 5,
+          "fan_bonus": 15,
+          "specialty_priority": 35
+        },
+        "40": {
+          "friendship_bonus": 20,
+          "mood_effect": 30,
+          "power_bonus": -1,
+          "training_effectiveness": 5,
+          "initial_friendship_gauge": 20,
+          "race_bonus": 5,
+          "fan_bonus": 15,
+          "specialty_priority": 35
+        },
+        "45": {
+          "friendship_bonus": 20,
+          "mood_effect": 30,
+          "power_bonus": 1,
+          "training_effectiveness": 5,
+          "initial_friendship_gauge": 20,
+          "race_bonus": 10,
+          "fan_bonus": 20,
+          "specialty_priority": 50
+        },
+        "50": {
+          "friendship_bonus": 20,
+          "mood_effect": 30,
+          "power_bonus": 1,
+          "training_effectiveness": 5,
+          "initial_friendship_gauge": 20,
+          "race_bonus": 10,
+          "fan_bonus": 20,
+          "specialty_priority": 50
+        }
+      },
+      "effect_rows": [
+        {
+          "type": 1,
+          "label": "friendship_bonus",
+          "values": {
+            "0": 10,
+            "5": 10,
+            "10": 10,
+            "15": 10,
+            "20": 15,
+            "25": 15,
+            "30": 15,
+            "35": 15,
+            "40": 20,
+            "45": 20,
+            "50": 20
+          }
+        },
+        {
+          "type": 2,
+          "label": "mood_effect",
+          "values": {
+            "0": -1,
+            "5": -1,
+            "10": 10,
+            "15": 10,
+            "20": 20,
+            "25": 20,
+            "30": 20,
+            "35": 20,
+            "40": 30,
+            "45": 30,
+            "50": 30
+          }
+        },
+        {
+          "type": 5,
+          "label": "power_bonus",
+          "values": {
+            "0": -1,
+            "5": -1,
+            "10": -1,
+            "15": -1,
+            "20": -1,
+            "25": -1,
+            "30": -1,
+            "35": -1,
+            "40": -1,
+            "45": 1,
+            "50": 1
+          }
+        },
+        {
+          "type": 8,
+          "label": "training_effectiveness",
+          "values": {
+            "0": -1,
+            "5": -1,
+            "10": -1,
+            "15": -1,
+            "20": -1,
+            "25": -1,
+            "30": 1,
+            "35": 1,
+            "40": 5,
+            "45": 5,
+            "50": 5
+          }
+        },
+        {
+          "type": 14,
+          "label": "initial_friendship_gauge",
+          "values": {
+            "0": -1,
+            "5": -1,
+            "10": 10,
+            "15": 10,
+            "20": 15,
+            "25": 15,
+            "30": 15,
+            "35": 15,
+            "40": 20,
+            "45": 20,
+            "50": 20
+          }
+        },
+        {
+          "type": 15,
+          "label": "race_bonus",
+          "values": {
+            "0": 1,
+            "5": 1,
+            "10": 1,
+            "15": 1,
+            "20": 1,
+            "25": 5,
+            "30": 5,
+            "35": 5,
+            "40": 5,
+            "45": 10,
+            "50": 10
+          }
+        },
+        {
+          "type": 16,
+          "label": "fan_bonus",
+          "values": {
+            "0": 1,
+            "5": 1,
+            "10": 1,
+            "15": 1,
+            "20": 1,
+            "25": 15,
+            "30": 15,
+            "35": 15,
+            "40": 15,
+            "45": 20,
+            "50": 20
+          }
+        },
+        {
+          "type": 19,
+          "label": "specialty_priority",
+          "values": {
+            "0": 5,
+            "5": 5,
+            "10": 5,
+            "15": 5,
+            "20": 5,
+            "25": 35,
+            "30": 35,
+            "35": 35,
+            "40": 35,
+            "45": 50,
+            "50": 50
+          }
+        }
+      ],
+      "unique_effects": [
+        {
+          "level": 25,
+          "effects": [
+            {
+              "type": 3,
+              "label": "speed_bonus",
+              "value": 1,
+              "value_1": 0,
+              "value_2": 0,
+              "value_3": 0,
+              "value_4": 0
+            },
+            {
+              "type": 19,
+              "label": "specialty_priority",
+              "value": 20,
               "value_1": 0,
               "value_2": 0,
               "value_3": 0,
@@ -33903,6 +34427,341 @@
         }
       ],
       "hint_skill_count": 9
+    },
+    {
+      "support_card_id": 30067,
+      "name": "Heirs to the Throne",
+      "rarity": 3,
+      "command_id": 0,
+      "command_label": "friend",
+      "support_card_type": 3,
+      "skill_set_id": 9081017,
+      "outing_max": 2,
+      "effect_table_id": 30067,
+      "unique_effect_id": 30067,
+      "effect_values_by_level": {
+        "0": {
+          "friendship_bonus": 10,
+          "speed_bonus": -1,
+          "training_effectiveness": -1,
+          "initial_speed": -1,
+          "initial_friendship_gauge": 10,
+          "race_bonus": -1,
+          "fan_bonus": -1,
+          "event_recovery": -1,
+          "event_effectiveness": -1,
+          "wit_friendship_recovery": -1
+        },
+        "5": {
+          "friendship_bonus": 10,
+          "speed_bonus": -1,
+          "training_effectiveness": -1,
+          "initial_speed": -1,
+          "initial_friendship_gauge": 10,
+          "race_bonus": -1,
+          "fan_bonus": -1,
+          "event_recovery": -1,
+          "event_effectiveness": -1,
+          "wit_friendship_recovery": -1
+        },
+        "10": {
+          "friendship_bonus": 10,
+          "speed_bonus": -1,
+          "training_effectiveness": -1,
+          "initial_speed": -1,
+          "initial_friendship_gauge": 10,
+          "race_bonus": -1,
+          "fan_bonus": -1,
+          "event_recovery": -1,
+          "event_effectiveness": -1,
+          "wit_friendship_recovery": -1
+        },
+        "15": {
+          "friendship_bonus": 10,
+          "speed_bonus": -1,
+          "training_effectiveness": 1,
+          "initial_speed": 10,
+          "initial_friendship_gauge": 10,
+          "race_bonus": -1,
+          "fan_bonus": -1,
+          "event_recovery": 10,
+          "event_effectiveness": 10,
+          "wit_friendship_recovery": 1
+        },
+        "20": {
+          "friendship_bonus": 10,
+          "speed_bonus": -1,
+          "training_effectiveness": 1,
+          "initial_speed": 10,
+          "initial_friendship_gauge": 10,
+          "race_bonus": -1,
+          "fan_bonus": -1,
+          "event_recovery": 10,
+          "event_effectiveness": 10,
+          "wit_friendship_recovery": 1
+        },
+        "25": {
+          "friendship_bonus": 10,
+          "speed_bonus": -1,
+          "training_effectiveness": 5,
+          "initial_speed": 15,
+          "initial_friendship_gauge": 10,
+          "race_bonus": -1,
+          "fan_bonus": -1,
+          "event_recovery": 20,
+          "event_effectiveness": 15,
+          "wit_friendship_recovery": 1
+        },
+        "30": {
+          "friendship_bonus": 25,
+          "speed_bonus": -1,
+          "training_effectiveness": 5,
+          "initial_speed": 15,
+          "initial_friendship_gauge": 25,
+          "race_bonus": -1,
+          "fan_bonus": -1,
+          "event_recovery": 20,
+          "event_effectiveness": 15,
+          "wit_friendship_recovery": 1
+        },
+        "35": {
+          "friendship_bonus": 25,
+          "speed_bonus": 1,
+          "training_effectiveness": 5,
+          "initial_speed": 15,
+          "initial_friendship_gauge": 25,
+          "race_bonus": -1,
+          "fan_bonus": -1,
+          "event_recovery": 20,
+          "event_effectiveness": 15,
+          "wit_friendship_recovery": 1
+        },
+        "40": {
+          "friendship_bonus": 25,
+          "speed_bonus": 1,
+          "training_effectiveness": 5,
+          "initial_speed": 15,
+          "initial_friendship_gauge": 25,
+          "race_bonus": -1,
+          "fan_bonus": -1,
+          "event_recovery": 20,
+          "event_effectiveness": 15,
+          "wit_friendship_recovery": 1
+        },
+        "45": {
+          "friendship_bonus": 25,
+          "speed_bonus": 1,
+          "training_effectiveness": 5,
+          "initial_speed": 20,
+          "initial_friendship_gauge": 25,
+          "race_bonus": 5,
+          "fan_bonus": 10,
+          "event_recovery": 30,
+          "event_effectiveness": 20,
+          "wit_friendship_recovery": 2
+        },
+        "50": {
+          "friendship_bonus": 35,
+          "speed_bonus": 1,
+          "training_effectiveness": 5,
+          "initial_speed": 20,
+          "initial_friendship_gauge": 35,
+          "race_bonus": 10,
+          "fan_bonus": 15,
+          "event_recovery": 30,
+          "event_effectiveness": 20,
+          "wit_friendship_recovery": 2
+        }
+      },
+      "effect_rows": [
+        {
+          "type": 1,
+          "label": "friendship_bonus",
+          "values": {
+            "0": 10,
+            "5": 10,
+            "10": 10,
+            "15": 10,
+            "20": 10,
+            "25": 10,
+            "30": 25,
+            "35": 25,
+            "40": 25,
+            "45": 25,
+            "50": 35
+          }
+        },
+        {
+          "type": 3,
+          "label": "speed_bonus",
+          "values": {
+            "0": -1,
+            "5": -1,
+            "10": -1,
+            "15": -1,
+            "20": -1,
+            "25": -1,
+            "30": -1,
+            "35": 1,
+            "40": 1,
+            "45": 1,
+            "50": 1
+          }
+        },
+        {
+          "type": 8,
+          "label": "training_effectiveness",
+          "values": {
+            "0": -1,
+            "5": -1,
+            "10": -1,
+            "15": 1,
+            "20": 1,
+            "25": 5,
+            "30": 5,
+            "35": 5,
+            "40": 5,
+            "45": 5,
+            "50": 5
+          }
+        },
+        {
+          "type": 9,
+          "label": "initial_speed",
+          "values": {
+            "0": -1,
+            "5": -1,
+            "10": -1,
+            "15": 10,
+            "20": 10,
+            "25": 15,
+            "30": 15,
+            "35": 15,
+            "40": 15,
+            "45": 20,
+            "50": 20
+          }
+        },
+        {
+          "type": 14,
+          "label": "initial_friendship_gauge",
+          "values": {
+            "0": 10,
+            "5": 10,
+            "10": 10,
+            "15": 10,
+            "20": 10,
+            "25": 10,
+            "30": 25,
+            "35": 25,
+            "40": 25,
+            "45": 25,
+            "50": 35
+          }
+        },
+        {
+          "type": 15,
+          "label": "race_bonus",
+          "values": {
+            "0": -1,
+            "5": -1,
+            "10": -1,
+            "15": -1,
+            "20": -1,
+            "25": -1,
+            "30": -1,
+            "35": -1,
+            "40": -1,
+            "45": 5,
+            "50": 10
+          }
+        },
+        {
+          "type": 16,
+          "label": "fan_bonus",
+          "values": {
+            "0": -1,
+            "5": -1,
+            "10": -1,
+            "15": -1,
+            "20": -1,
+            "25": -1,
+            "30": -1,
+            "35": -1,
+            "40": -1,
+            "45": 10,
+            "50": 15
+          }
+        },
+        {
+          "type": 25,
+          "label": "event_recovery",
+          "values": {
+            "0": -1,
+            "5": -1,
+            "10": -1,
+            "15": 10,
+            "20": 10,
+            "25": 20,
+            "30": 20,
+            "35": 20,
+            "40": 20,
+            "45": 30,
+            "50": 30
+          }
+        },
+        {
+          "type": 26,
+          "label": "event_effectiveness",
+          "values": {
+            "0": -1,
+            "5": -1,
+            "10": -1,
+            "15": 10,
+            "20": 10,
+            "25": 15,
+            "30": 15,
+            "35": 15,
+            "40": 15,
+            "45": 20,
+            "50": 20
+          }
+        },
+        {
+          "type": 31,
+          "label": "wit_friendship_recovery",
+          "values": {
+            "0": -1,
+            "5": -1,
+            "10": -1,
+            "15": 1,
+            "20": 1,
+            "25": 1,
+            "30": 1,
+            "35": 1,
+            "40": 1,
+            "45": 2,
+            "50": 2
+          }
+        }
+      ],
+      "unique_effects": [
+        {
+          "level": 30,
+          "effects": [
+            {
+              "type": 101,
+              "label": "effect_101",
+              "value": 80,
+              "value_1": 30,
+              "value_2": 2,
+              "value_3": 0,
+              "value_4": 0
+            }
+          ]
+        }
+      ],
+      "hint_skill_count": 0
     },
     {
       "support_card_id": 30036,
@@ -51627,6 +52486,378 @@
         }
       ],
       "hint_skill_count": 10
+    },
+    {
+      "support_card_id": 30105,
+      "name": "Special Week",
+      "rarity": 3,
+      "command_id": 103,
+      "command_label": "power",
+      "support_card_type": 1,
+      "skill_set_id": 9081001,
+      "outing_max": 0,
+      "effect_table_id": 30105,
+      "unique_effect_id": 30105,
+      "effect_values_by_level": {
+        "0": {
+          "friendship_bonus": 10,
+          "mood_effect": -1,
+          "guts_bonus": -1,
+          "training_effectiveness": -1,
+          "initial_power": 10,
+          "initial_friendship_gauge": 10,
+          "race_bonus": -1,
+          "fan_bonus": -1,
+          "hint_levels": -1,
+          "hint_frequency": -1,
+          "specialty_priority": -1
+        },
+        "5": {
+          "friendship_bonus": 10,
+          "mood_effect": -1,
+          "guts_bonus": -1,
+          "training_effectiveness": -1,
+          "initial_power": 10,
+          "initial_friendship_gauge": 10,
+          "race_bonus": -1,
+          "fan_bonus": -1,
+          "hint_levels": -1,
+          "hint_frequency": -1,
+          "specialty_priority": -1
+        },
+        "10": {
+          "friendship_bonus": 10,
+          "mood_effect": -1,
+          "guts_bonus": -1,
+          "training_effectiveness": -1,
+          "initial_power": 10,
+          "initial_friendship_gauge": 10,
+          "race_bonus": -1,
+          "fan_bonus": -1,
+          "hint_levels": -1,
+          "hint_frequency": -1,
+          "specialty_priority": -1
+        },
+        "15": {
+          "friendship_bonus": 10,
+          "mood_effect": -1,
+          "guts_bonus": -1,
+          "training_effectiveness": 1,
+          "initial_power": 10,
+          "initial_friendship_gauge": 10,
+          "race_bonus": 1,
+          "fan_bonus": 1,
+          "hint_levels": 1,
+          "hint_frequency": 5,
+          "specialty_priority": 5
+        },
+        "20": {
+          "friendship_bonus": 10,
+          "mood_effect": -1,
+          "guts_bonus": -1,
+          "training_effectiveness": 1,
+          "initial_power": 10,
+          "initial_friendship_gauge": 10,
+          "race_bonus": 1,
+          "fan_bonus": 1,
+          "hint_levels": 1,
+          "hint_frequency": 5,
+          "specialty_priority": 5
+        },
+        "25": {
+          "friendship_bonus": 20,
+          "mood_effect": -1,
+          "guts_bonus": -1,
+          "training_effectiveness": 5,
+          "initial_power": 10,
+          "initial_friendship_gauge": 10,
+          "race_bonus": 1,
+          "fan_bonus": 5,
+          "hint_levels": 1,
+          "hint_frequency": 20,
+          "specialty_priority": 20
+        },
+        "30": {
+          "friendship_bonus": 20,
+          "mood_effect": -1,
+          "guts_bonus": -1,
+          "training_effectiveness": 5,
+          "initial_power": 25,
+          "initial_friendship_gauge": 25,
+          "race_bonus": 1,
+          "fan_bonus": 5,
+          "hint_levels": 1,
+          "hint_frequency": 20,
+          "specialty_priority": 20
+        },
+        "35": {
+          "friendship_bonus": 20,
+          "mood_effect": -1,
+          "guts_bonus": 1,
+          "training_effectiveness": 5,
+          "initial_power": 25,
+          "initial_friendship_gauge": 25,
+          "race_bonus": 1,
+          "fan_bonus": 5,
+          "hint_levels": 1,
+          "hint_frequency": 20,
+          "specialty_priority": 20
+        },
+        "40": {
+          "friendship_bonus": 20,
+          "mood_effect": -1,
+          "guts_bonus": 1,
+          "training_effectiveness": 5,
+          "initial_power": 25,
+          "initial_friendship_gauge": 25,
+          "race_bonus": 1,
+          "fan_bonus": 5,
+          "hint_levels": 1,
+          "hint_frequency": 20,
+          "specialty_priority": 20
+        },
+        "45": {
+          "friendship_bonus": 25,
+          "mood_effect": 15,
+          "guts_bonus": 1,
+          "training_effectiveness": 5,
+          "initial_power": 25,
+          "initial_friendship_gauge": 25,
+          "race_bonus": 5,
+          "fan_bonus": 10,
+          "hint_levels": 2,
+          "hint_frequency": 30,
+          "specialty_priority": 35
+        },
+        "50": {
+          "friendship_bonus": 25,
+          "mood_effect": 30,
+          "guts_bonus": 1,
+          "training_effectiveness": 5,
+          "initial_power": 35,
+          "initial_friendship_gauge": 30,
+          "race_bonus": 5,
+          "fan_bonus": 10,
+          "hint_levels": 2,
+          "hint_frequency": 30,
+          "specialty_priority": 35
+        }
+      },
+      "effect_rows": [
+        {
+          "type": 1,
+          "label": "friendship_bonus",
+          "values": {
+            "0": 10,
+            "5": 10,
+            "10": 10,
+            "15": 10,
+            "20": 10,
+            "25": 20,
+            "30": 20,
+            "35": 20,
+            "40": 20,
+            "45": 25,
+            "50": 25
+          }
+        },
+        {
+          "type": 2,
+          "label": "mood_effect",
+          "values": {
+            "0": -1,
+            "5": -1,
+            "10": -1,
+            "15": -1,
+            "20": -1,
+            "25": -1,
+            "30": -1,
+            "35": -1,
+            "40": -1,
+            "45": 15,
+            "50": 30
+          }
+        },
+        {
+          "type": 6,
+          "label": "guts_bonus",
+          "values": {
+            "0": -1,
+            "5": -1,
+            "10": -1,
+            "15": -1,
+            "20": -1,
+            "25": -1,
+            "30": -1,
+            "35": 1,
+            "40": 1,
+            "45": 1,
+            "50": 1
+          }
+        },
+        {
+          "type": 8,
+          "label": "training_effectiveness",
+          "values": {
+            "0": -1,
+            "5": -1,
+            "10": -1,
+            "15": 1,
+            "20": 1,
+            "25": 5,
+            "30": 5,
+            "35": 5,
+            "40": 5,
+            "45": 5,
+            "50": 5
+          }
+        },
+        {
+          "type": 11,
+          "label": "initial_power",
+          "values": {
+            "0": 10,
+            "5": 10,
+            "10": 10,
+            "15": 10,
+            "20": 10,
+            "25": 10,
+            "30": 25,
+            "35": 25,
+            "40": 25,
+            "45": 25,
+            "50": 35
+          }
+        },
+        {
+          "type": 14,
+          "label": "initial_friendship_gauge",
+          "values": {
+            "0": 10,
+            "5": 10,
+            "10": 10,
+            "15": 10,
+            "20": 10,
+            "25": 10,
+            "30": 25,
+            "35": 25,
+            "40": 25,
+            "45": 25,
+            "50": 30
+          }
+        },
+        {
+          "type": 15,
+          "label": "race_bonus",
+          "values": {
+            "0": -1,
+            "5": -1,
+            "10": -1,
+            "15": 1,
+            "20": 1,
+            "25": 1,
+            "30": 1,
+            "35": 1,
+            "40": 1,
+            "45": 5,
+            "50": 5
+          }
+        },
+        {
+          "type": 16,
+          "label": "fan_bonus",
+          "values": {
+            "0": -1,
+            "5": -1,
+            "10": -1,
+            "15": 1,
+            "20": 1,
+            "25": 5,
+            "30": 5,
+            "35": 5,
+            "40": 5,
+            "45": 10,
+            "50": 10
+          }
+        },
+        {
+          "type": 17,
+          "label": "hint_levels",
+          "values": {
+            "0": -1,
+            "5": -1,
+            "10": -1,
+            "15": 1,
+            "20": 1,
+            "25": 1,
+            "30": 1,
+            "35": 1,
+            "40": 1,
+            "45": 2,
+            "50": 2
+          }
+        },
+        {
+          "type": 18,
+          "label": "hint_frequency",
+          "values": {
+            "0": -1,
+            "5": -1,
+            "10": -1,
+            "15": 5,
+            "20": 5,
+            "25": 20,
+            "30": 20,
+            "35": 20,
+            "40": 20,
+            "45": 30,
+            "50": 30
+          }
+        },
+        {
+          "type": 19,
+          "label": "specialty_priority",
+          "values": {
+            "0": -1,
+            "5": -1,
+            "10": -1,
+            "15": 5,
+            "20": 5,
+            "25": 20,
+            "30": 20,
+            "35": 20,
+            "40": 20,
+            "45": 35,
+            "50": 35
+          }
+        }
+      ],
+      "unique_effects": [
+        {
+          "level": 40,
+          "effects": [
+            {
+              "type": 5,
+              "label": "power_bonus",
+              "value": 1,
+              "value_1": 0,
+              "value_2": 0,
+              "value_3": 0,
+              "value_4": 0
+            },
+            {
+              "type": 14,
+              "label": "initial_friendship_gauge",
+              "value": 15,
+              "value_1": 0,
+              "value_2": 0,
+              "value_3": 0,
+              "value_4": 0
+            }
+          ]
+        }
+      ],
+      "hint_skill_count": 9
     },
     {
       "support_card_id": 30060,

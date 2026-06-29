@@ -2,11 +2,11 @@
 
 ## Purpose
 
-SweepyModv5.11 tightens the SweepyModv5.10 TP Restore and Career History changes against the authoritative `master.mdb` schema. The goal is to avoid guessing item IDs, race fan rewards, major-win labels, and career-rank thresholds when those values are available in master data.
+Pre Icarus v5.11 tightens the Pre Icarus v5.10 TP Restore and Career History changes against the authoritative `master.mdb` schema. The goal is to avoid guessing item IDs, race fan rewards, major-win labels, and career-rank thresholds when those values are available in master data.
 
 ## Toughness 30 item detection
 
-`master.mdb` stores generic item names in `text_data` category `23`, where `text_data.index` equals `item_data.id`. SweepyMod now resolves Toughness 30 through the exact item row:
+`master.mdb` stores generic item names in `text_data` category `23`, where `text_data.index` equals `item_data.id`. Pre Icarus now resolves Toughness 30 through the exact item row:
 
 ```sql
 SELECT i.id

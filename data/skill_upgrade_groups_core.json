@@ -1976,6 +1976,25 @@
     "has_unique": true
   },
   {
+    "group_id": 12001,
+    "skills": [
+      {
+        "skill_id": 120011,
+        "name": "Dreams Donned with Pride!",
+        "rarity": 5,
+        "grade_value": 340,
+        "cost": 0,
+        "skill_category": 5,
+        "skill_category_label": "unique_active",
+        "icon_id": 20013
+      }
+    ],
+    "base_skill_id": 120011,
+    "max_rarity": 5,
+    "has_gold": false,
+    "has_unique": true
+  },
+  {
     "group_id": 20001,
     "skills": [
       {
@@ -5287,11 +5306,21 @@
         "skill_category": 4,
         "skill_category_label": "position_corner",
         "icon_id": 20011
+      },
+      {
+        "skill_id": 201113,
+        "name": "Refraction Arc",
+        "rarity": 2,
+        "grade_value": 508,
+        "cost": 150,
+        "skill_category": 4,
+        "skill_category_label": "position_corner",
+        "icon_id": 20012
       }
     ],
     "base_skill_id": 201112,
-    "max_rarity": 1,
-    "has_gold": false,
+    "max_rarity": 2,
+    "has_gold": true,
     "has_unique": false
   },
   {
@@ -7887,6 +7916,44 @@
     "has_unique": false
   },
   {
+    "group_id": 30013,
+    "skills": [
+      {
+        "skill_id": 300131,
+        "name": "Ruler of Japan",
+        "rarity": 5,
+        "grade_value": 340,
+        "cost": 0,
+        "skill_category": 5,
+        "skill_category_label": "unique_active",
+        "icon_id": 20013
+      }
+    ],
+    "base_skill_id": 300131,
+    "max_rarity": 5,
+    "has_gold": false,
+    "has_unique": true
+  },
+  {
+    "group_id": 30014,
+    "skills": [
+      {
+        "skill_id": 300141,
+        "name": "Indomitable",
+        "rarity": 5,
+        "grade_value": 340,
+        "cost": 0,
+        "skill_category": 5,
+        "skill_category_label": "unique_active",
+        "icon_id": 20013
+      }
+    ],
+    "base_skill_id": 300141,
+    "max_rarity": 5,
+    "has_gold": false,
+    "has_unique": true
+  },
+  {
     "group_id": 90001,
     "skills": [
       {
@@ -9540,6 +9607,25 @@
     "has_unique": false
   },
   {
+    "group_id": 92001,
+    "skills": [
+      {
+        "skill_id": 920011,
+        "name": "Dreams Donned with Pride!",
+        "rarity": 1,
+        "grade_value": 180,
+        "cost": 200,
+        "skill_category": 5,
+        "skill_category_label": "unique_active",
+        "icon_id": 20011
+      }
+    ],
+    "base_skill_id": 920011,
+    "max_rarity": 1,
+    "has_gold": false,
+    "has_unique": false
+  },
+  {
     "group_id": 100001,
     "skills": [
       {
@@ -9583,6 +9669,63 @@
       }
     ],
     "base_skill_id": 1100011,
+    "max_rarity": 1,
+    "has_gold": false,
+    "has_unique": false
+  },
+  {
+    "group_id": 120001,
+    "skills": [
+      {
+        "skill_id": 1200011,
+        "name": "Medium Race Enthusiast",
+        "rarity": 1,
+        "grade_value": 508,
+        "cost": 0,
+        "skill_category": 0,
+        "skill_category_label": "green",
+        "icon_id": 10051
+      }
+    ],
+    "base_skill_id": 1200011,
+    "max_rarity": 1,
+    "has_gold": false,
+    "has_unique": false
+  },
+  {
+    "group_id": 120002,
+    "skills": [
+      {
+        "skill_id": 1200021,
+        "name": "Long Race Enthusiast",
+        "rarity": 1,
+        "grade_value": 508,
+        "cost": 0,
+        "skill_category": 0,
+        "skill_category_label": "green",
+        "icon_id": 10021
+      }
+    ],
+    "base_skill_id": 1200021,
+    "max_rarity": 1,
+    "has_gold": false,
+    "has_unique": false
+  },
+  {
+    "group_id": 120003,
+    "skills": [
+      {
+        "skill_id": 1200031,
+        "name": "Mile Race Enthusiast",
+        "rarity": 1,
+        "grade_value": 508,
+        "cost": 0,
+        "skill_category": 0,
+        "skill_category_label": "green",
+        "icon_id": 10031
+      }
+    ],
+    "base_skill_id": 1200031,
     "max_rarity": 1,
     "has_gold": false,
     "has_unique": false

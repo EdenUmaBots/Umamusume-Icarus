@@ -1,6 +1,6 @@
 # HTTP Gateway Recovery v5.20
 
-SweepyModv5.20 treats temporary HTTP gateway/server failures as recoverable during career automation.
+Pre Icarus v5.20 treats temporary HTTP gateway/server failures as recoverable during career automation.
 
 ## Fixed
 

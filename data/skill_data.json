@@ -1383,6 +1383,19 @@
     "icon_id": 20043,
     "skill_category": 5
   },
+  "120011": {
+    "name": "Dreams Donned with Pride!",
+    "rarity": 5,
+    "group_id": 12001,
+    "grade_value": 340,
+    "need_skill_point": 0,
+    "disable_singlemode": 1,
+    "tags": [
+      401
+    ],
+    "icon_id": 20013,
+    "skill_category": 5
+  },
   "200011": {
     "name": "Right-Handed ◎",
     "rarity": 1,
@@ -4586,6 +4599,20 @@
     "icon_id": 20011,
     "skill_category": 4
   },
+  "201113": {
+    "name": "Refraction Arc",
+    "rarity": 2,
+    "group_id": 20111,
+    "grade_value": 508,
+    "need_skill_point": 150,
+    "disable_singlemode": 1,
+    "tags": [
+      203,
+      401
+    ],
+    "icon_id": 20012,
+    "skill_category": 4
+  },
   "201121": {
     "name": "Clairvoyance",
     "rarity": 2,
@@ -7051,6 +7078,32 @@
     "icon_id": 10022,
     "skill_category": 0
   },
+  "300131": {
+    "name": "Ruler of Japan",
+    "rarity": 5,
+    "group_id": 30013,
+    "grade_value": 340,
+    "need_skill_point": 0,
+    "disable_singlemode": 1,
+    "tags": [
+      401
+    ],
+    "icon_id": 20013,
+    "skill_category": 5
+  },
+  "300141": {
+    "name": "Indomitable",
+    "rarity": 5,
+    "group_id": 30014,
+    "grade_value": 340,
+    "need_skill_point": 0,
+    "disable_singlemode": 1,
+    "tags": [
+      401
+    ],
+    "icon_id": 20013,
+    "skill_category": 5
+  },
   "900011": {
     "name": "Shooting Star",
     "rarity": 1,
@@ -8208,6 +8261,19 @@
     "icon_id": 20041,
     "skill_category": 5
   },
+  "920011": {
+    "name": "Dreams Donned with Pride!",
+    "rarity": 1,
+    "group_id": 92001,
+    "grade_value": 180,
+    "need_skill_point": 200,
+    "disable_singlemode": 1,
+    "tags": [
+      401
+    ],
+    "icon_id": 20011,
+    "skill_category": 5
+  },
   "1000011": {
     "name": "Carnival Bonus",
     "rarity": 1,
@@ -8248,5 +8314,50 @@
     ],
     "icon_id": 20064,
     "skill_category": 1
+  },
+  "1200011": {
+    "name": "Medium Race Enthusiast",
+    "rarity": 1,
+    "group_id": 120001,
+    "grade_value": 508,
+    "need_skill_point": 0,
+    "disable_singlemode": 1,
+    "tags": [
+      203,
+      405,
+      501
+    ],
+    "icon_id": 10051,
+    "skill_category": 0
+  },
+  "1200021": {
+    "name": "Long Race Enthusiast",
+    "rarity": 1,
+    "group_id": 120002,
+    "grade_value": 508,
+    "need_skill_point": 0,
+    "disable_singlemode": 1,
+    "tags": [
+      204,
+      402,
+      501
+    ],
+    "icon_id": 10021,
+    "skill_category": 0
+  },
+  "1200031": {
+    "name": "Mile Race Enthusiast",
+    "rarity": 1,
+    "group_id": 120003,
+    "grade_value": 508,
+    "need_skill_point": 0,
+    "disable_singlemode": 1,
+    "tags": [
+      202,
+      403,
+      501
+    ],
+    "icon_id": 10031,
+    "skill_category": 0
   }
 }

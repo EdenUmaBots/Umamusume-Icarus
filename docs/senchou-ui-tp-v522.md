@@ -1,6 +1,6 @@
-# SweepyModv5.22 Senchou-Saru Improvements
+# Pre Icarus v5.22 Senchou-Saru Improvements
 
-SweepyModv5.22 ports the useful parts of the uploaded Senchou-Saru Umabot while preserving SweepyMod's newer Trackblazer systems.
+Pre Icarus v5.22 ports the useful parts of the uploaded Senchou-Saru Umabot while preserving Pre Icarus's newer Trackblazer systems.
 
 ## TP Restore Fix
 

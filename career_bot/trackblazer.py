@@ -171,6 +171,37 @@ def _slug(value):
     return re.sub(r"[^a-z0-9]+", "", str(value or "").lower())
 
 
+def _canon_race_name(value):
+    """Canonical key for a race name that is order-independent for the
+    ``X (Y)`` / ``Y (X)`` alias pattern.
+
+    v2.0 fix: the candidate pool (data/trackblazer/races.json) names the Derby
+    "Japanese Derby (Tokyo Yushun)" while race_map.json and the epithet matchers
+    use "Tokyo Yushun (Japanese Derby)". Exact string/slug matching dropped the
+    Derby from the pool and from every colt-crown matcher, so forcing the Triple
+    Crown became infeasible and the solver substituted the filly/Tenno-Autumn
+    sets. Sorting the base + parenthetical halves makes both orderings collapse to
+    one key, while genuinely different parentheticals (Tenno Sho (Spring) vs
+    (Autumn)) stay distinct."""
+    s = " ".join(str(value or "").strip().split())
+    if not s:
+        return ""
+    m = re.match(r"^(.*?)\s*\(([^)]*)\)\s*$", s)
+    if m:
+        parts = sorted(p.strip().lower() for p in (m.group(1), m.group(2)) if p.strip())
+        return _slug("|".join(parts))
+    return _slug(s)
+
+
+def _name_eq(a, b):
+    return _canon_race_name(a) == _canon_race_name(b)
+
+
+def _name_in(name, names):
+    target = _canon_race_name(name)
+    return any(target == _canon_race_name(n) for n in (names or []))
+
+
 def cache_dir(base_dir):
     path = Path(base_dir) / "data" / "trackblazer"
     path.mkdir(parents=True, exist_ok=True)
@@ -363,7 +394,7 @@ def _build_program_name_index(base_dir):
         row = dict(info)
         row["program_id"] = pid
         row["turn"] = int(meta.get("turn") or 0)
-        idx.setdefault(_slug(name), []).append(row)
+        idx.setdefault(_canon_race_name(name), []).append(row)
     return idx
 
 
@@ -498,7 +529,7 @@ def _candidate_rows(base_dir, aptitudes=None, fan_bonus=0, include_op=False, flo
             continue
         if not _race_ok(race, aptitudes, floor=floor):
             continue
-        matches = name_index.get(_slug(race.get("name"))) or []
+        matches = name_index.get(_canon_race_name(race.get("name"))) or []
         for match in matches:
             program_id = int(match["program_id"])
             meta = official.get(program_id) or {}
@@ -794,7 +825,7 @@ def _annotate_epithet_hits(base_dir, rows, target_epithets=None, forced_epithets
 # SmartRaceSolver-inspired structured epithet helpers (v5.30)
 # ---------------------------------------------------------------------------
 # The structured epithet database ships matchers such as
-# winRace, winAnyOf, winCount, epithetAll). SweepyCL's older Trackblazer
+# winRace, winAnyOf, winCount, epithetAll). Pre Icarus's older Trackblazer
 # cache only had free-text condition strings, so forced epithets could be
 # treated as weak per-race bonuses instead of real schedule goals. These
 # helpers keep the solver local/offline and evaluate epithets against the
@@ -925,12 +956,11 @@ def _race_may_progress_matcher(row, matcher):
     name = str(row.get("name") or "")
     klass = _row_class_year(row)
     if typ == "winRace":
-        return name == matcher.get("name") and (not matcher.get("atClass") or str(matcher.get("atClass")).lower() == klass.lower())
+        return _name_eq(name, matcher.get("name")) and (not matcher.get("atClass") or str(matcher.get("atClass")).lower() == klass.lower())
     if typ == "winRaceTimes":
-        return name == matcher.get("name")
+        return _name_eq(name, matcher.get("name"))
     if typ in {"winAnyOf", "winAtLeast"}:
-        names = set(matcher.get("names") or [])
-        return name in names and (not matcher.get("atClass") or str(matcher.get("atClass")).lower() == klass.lower())
+        return _name_in(name, matcher.get("names") or []) and (not matcher.get("atClass") or str(matcher.get("atClass")).lower() == klass.lower())
     if typ == "winCount":
         return _race_matches_structured_filter(row, matcher.get("filter") or {})
     return False
@@ -948,20 +978,20 @@ def _matcher_completed(matcher, history, completed_epithets):
     if typ == "winRace":
         wanted = matcher.get("name")
         at_class = matcher.get("atClass")
-        return any(row.get("name") == wanted and (not at_class or str(at_class).lower() == _row_class_year(row).lower()) for row in history)
+        return any(_name_eq(row.get("name"), wanted) and (not at_class or str(at_class).lower() == _row_class_year(row).lower()) for row in history)
     if typ == "winRaceTimes":
         wanted = matcher.get("name")
         times = max(1, int(matcher.get("times") or 1))
-        return sum(1 for row in history if row.get("name") == wanted) >= times
+        return sum(1 for row in history if _name_eq(row.get("name"), wanted)) >= times
     if typ == "winAnyOf":
-        names = set(matcher.get("names") or [])
+        names = matcher.get("names") or []
         count = max(1, int(matcher.get("count") or 1))
         at_class = matcher.get("atClass")
-        return sum(1 for row in history if row.get("name") in names and (not at_class or str(at_class).lower() == _row_class_year(row).lower())) >= count
+        return sum(1 for row in history if _name_in(row.get("name"), names) and (not at_class or str(at_class).lower() == _row_class_year(row).lower())) >= count
     if typ == "winAtLeast":
-        names = set(matcher.get("names") or [])
+        names = matcher.get("names") or []
         count = max(1, int(matcher.get("count") or 1))
-        return len({row.get("name") for row in history if row.get("name") in names}) >= count
+        return len({_canon_race_name(row.get("name")) for row in history if _name_in(row.get("name"), names)}) >= count
     if typ == "winCount":
         count = max(1, int(matcher.get("count") or 1))
         flt = matcher.get("filter") or {}
@@ -1667,7 +1697,7 @@ def _smart_beam_schedule(
     """Dependency-free desktop port of the heuristic backend.
 
     The implementation tries MILP first and then falls back to beam
-    search. SweepyCL keeps this self-contained and dependency-free by using
+    search. Pre Icarus keeps this self-contained and dependency-free by using
     the beam backend directly. It plans the full 72-turn race-vs-train space,
     honors manual locks, applies consecutive and summer penalties, and scores
     candidate races with trainee aptitudes.

@@ -1,7 +1,7 @@
 """Shared Umamusume running-style helpers.
 
 The game expects numeric running-style ids in the race-entry payload.  A few
-older SweepyCL surfaces used labels or zero-based UI positions, which can make
+older Pre Icarus surfaces used labels or zero-based UI positions, which can make
 "Pace Chaser" accidentally become "Late Surger".  Keep all style conversion in
 this tiny module so race entry and skill buying use the same source of truth.
 """

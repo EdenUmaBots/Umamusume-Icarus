@@ -2,7 +2,7 @@
 
 ## Purpose
 
-SweepyModv5.15 adds the P3 master-data pass for parent/spark scoring helpers, Career History polish, and official event reward/display labels.
+Pre Icarus v5.15 adds the P3 master-data pass for parent/spark scoring helpers, Career History polish, and official event reward/display labels.
 
 ## Generated files
 
@@ -35,13 +35,13 @@ Generated from:
 - `single_mode_event_conclusion`
 - `text_data` categories 177, 178, 179, 180, 181, and 182
 
-This file provides display labels for event reward/debug traces. It does not replace runtime event payloads or curated `event_outcomes.json`; it adds official labels when display IDs are present.
+This file provides display labels for event reward/debug traces. It does not replace runtime event payloads; it adds official labels when display IDs are present.
 
 ## Runtime integration
 
 - `main.py` loads `succession_scoring_core.json` and adds `initial_points` to spark rows in Career History.
 - `main.py` loads `career_progression_core.json` and emits `career_grade`, `career_grade_id`, and `career_grade_requirements` in Career History rows.
-- `career_bot/events.py` loads `event_reward_display_core.json` even if `event_outcomes.json` is absent and adds official labels to event-choice trace reasons.
+- `career_bot/events.py` loads `event_reward_display_core.json` and adds official labels to event-choice trace reasons.
 - `career_bot/runner.py` no longer prints the simulated API 214 race-entry error during tests; recovery remains logged structurally.
 
 ## Notes

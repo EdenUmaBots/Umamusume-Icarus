@@ -1,0 +1,2328 @@
+{
+ "_meta": {
+  "source": "community Uma Musume Skills Spreadsheet (alldata tab)",
+  "sheet_id": "1oB3eTvKqREtJDWJL0q80O_VjBcpOmRl5xE0z5fZKgFY",
+  "rank_order": "essential>best>good>situational>excess>useless = ⍟ ◎ ◯ ▲ △ ✕",
+  "ranks": {
+   "tt": "Rank (Team Trials)",
+   "cm": "Rank (PvP / Champions Meeting)"
+  },
+  "count": 289,
+  "matched_game_skills": 289,
+  "placeholder_rows_expanded": 24
+ },
+ "tiers": {
+  "frontrunnercorners": {
+   "name": "Front Runner Corners",
+   "tt": "◎",
+   "cm": "⍟",
+   "score_per_sp": 3.8462,
+   "base_cost": "130.0",
+   "matched": true
+  },
+  "pacechasercorners": {
+   "name": "Pace Chaser Corners",
+   "tt": "◎",
+   "cm": "⍟",
+   "score_per_sp": 3.8462,
+   "base_cost": "130.0",
+   "matched": true
+  },
+  "latesurgercorners": {
+   "name": "Late Surger Corners",
+   "tt": "◎",
+   "cm": "⍟",
+   "score_per_sp": 3.8462,
+   "base_cost": "130.0",
+   "matched": true
+  },
+  "endclosercorners": {
+   "name": "End Closer Corners",
+   "tt": "◎",
+   "cm": "⍟",
+   "score_per_sp": 3.8462,
+   "base_cost": "130.0",
+   "matched": true
+  },
+  "frontrunnerstraightaways": {
+   "name": "Front Runner Straightaways",
+   "tt": "◎",
+   "cm": "⍟",
+   "score_per_sp": 3.8462,
+   "base_cost": "130.0",
+   "matched": true
+  },
+  "pacechaserstraightaways": {
+   "name": "Pace Chaser Straightaways",
+   "tt": "◎",
+   "cm": "⍟",
+   "score_per_sp": 3.8462,
+   "base_cost": "130.0",
+   "matched": true
+  },
+  "latesurgerstraightaways": {
+   "name": "Late Surger Straightaways",
+   "tt": "◎",
+   "cm": "⍟",
+   "score_per_sp": 3.8462,
+   "base_cost": "130.0",
+   "matched": true
+  },
+  "endcloserstraightaways": {
+   "name": "End Closer Straightaways",
+   "tt": "◎",
+   "cm": "⍟",
+   "score_per_sp": 3.8462,
+   "base_cost": "130.0",
+   "matched": true
+  },
+  "sprintcorners": {
+   "name": "Sprint Corners",
+   "tt": "◎",
+   "cm": "⍟",
+   "score_per_sp": 5.0,
+   "base_cost": "100.0",
+   "matched": true
+  },
+  "milecorners": {
+   "name": "Mile Corners",
+   "tt": "◎",
+   "cm": "⍟",
+   "score_per_sp": 5.0,
+   "base_cost": "100.0",
+   "matched": true
+  },
+  "mediumcorners": {
+   "name": "Medium Corners",
+   "tt": "◎",
+   "cm": "⍟",
+   "score_per_sp": 5.0,
+   "base_cost": "100.0",
+   "matched": true
+  },
+  "longcorners": {
+   "name": "Long Corners",
+   "tt": "◎",
+   "cm": "⍟",
+   "score_per_sp": 5.0,
+   "base_cost": "100.0",
+   "matched": true
+  },
+  "sprintstraightaways": {
+   "name": "Sprint Straightaways",
+   "tt": "◎",
+   "cm": "⍟",
+   "score_per_sp": 5.0,
+   "base_cost": "100.0",
+   "matched": true
+  },
+  "milestraightaways": {
+   "name": "Mile Straightaways",
+   "tt": "◎",
+   "cm": "⍟",
+   "score_per_sp": 5.0,
+   "base_cost": "100.0",
+   "matched": true
+  },
+  "mediumstraightaways": {
+   "name": "Medium Straightaways",
+   "tt": "◎",
+   "cm": "⍟",
+   "score_per_sp": 5.0,
+   "base_cost": "100.0",
+   "matched": true
+  },
+  "longstraightaways": {
+   "name": "Long Straightaways",
+   "tt": "◎",
+   "cm": "⍟",
+   "score_per_sp": 5.0,
+   "base_cost": "100.0",
+   "matched": true
+  },
+  "corneradept": {
+   "name": "Corner Adept",
+   "tt": "△",
+   "cm": "△",
+   "score_per_sp": 2.7778,
+   "base_cost": "180.0",
+   "matched": true
+  },
+  "professorofcurvature": {
+   "name": "Professor of Curvature",
+   "tt": "◯",
+   "cm": "◯",
+   "score_per_sp": 3.3333,
+   "base_cost": "180+180",
+   "matched": true
+  },
+  "straightawayadept": {
+   "name": "Straightaway Adept",
+   "tt": "△",
+   "cm": "△",
+   "score_per_sp": 2.9412,
+   "base_cost": "170.0",
+   "matched": true
+  },
+  "beelineburst": {
+   "name": "Beeline Burst",
+   "tt": "◯",
+   "cm": "◯",
+   "score_per_sp": 3.5294,
+   "base_cost": "170+170",
+   "matched": true
+  },
+  "rampup": {
+   "name": "Ramp Up",
+   "tt": "△",
+   "cm": "△",
+   "score_per_sp": 2.9412,
+   "base_cost": "170.0",
+   "matched": true
+  },
+  "itson": {
+   "name": "It's On!",
+   "tt": "◯",
+   "cm": "◯",
+   "score_per_sp": 3.5294,
+   "base_cost": "170+170",
+   "matched": true
+  },
+  "homestretchhaste": {
+   "name": "Homestretch Haste",
+   "tt": "△",
+   "cm": "△",
+   "score_per_sp": 2.9412,
+   "base_cost": "170.0",
+   "matched": true
+  },
+  "inbodyandmind": {
+   "name": "In Body and Mind",
+   "tt": "◯",
+   "cm": "◯",
+   "score_per_sp": 3.5294,
+   "base_cost": "170+170",
+   "matched": true
+  },
+  "umastan": {
+   "name": "Uma Stan",
+   "tt": "◎",
+   "cm": "◎",
+   "score_per_sp": 3.125,
+   "base_cost": "160.0",
+   "matched": true
+  },
+  "superstan": {
+   "name": "Super Stan",
+   "tt": "◎",
+   "cm": "◎",
+   "score_per_sp": 3.75,
+   "base_cost": "160+160",
+   "matched": true
+  },
+  "tailheldhigh": {
+   "name": "Tail Held High",
+   "tt": "◎",
+   "cm": "◎",
+   "score_per_sp": 5.0,
+   "base_cost": "100.0",
+   "matched": true
+  },
+  "slipstream": {
+   "name": "Slipstream",
+   "tt": "◎",
+   "cm": "◎",
+   "score_per_sp": 3.125,
+   "base_cost": "160.0",
+   "matched": true
+  },
+  "playtimesover": {
+   "name": "Playtime's Over!",
+   "tt": "◎",
+   "cm": "◎",
+   "score_per_sp": 3.125,
+   "base_cost": "160.0",
+   "matched": true
+  },
+  "ignitedspiritspd": {
+   "name": "Ignited Spirit SPD",
+   "tt": "△",
+   "cm": "△",
+   "score_per_sp": 2.5,
+   "base_cost": "200.0",
+   "matched": true
+  },
+  "burningspiritspd": {
+   "name": "Burning Spirit SPD",
+   "tt": "△",
+   "cm": "△",
+   "score_per_sp": 3.0,
+   "base_cost": "200+200",
+   "matched": true
+  },
+  "ignitedspiritguts": {
+   "name": "Ignited Spirit GUTS",
+   "tt": "◯",
+   "cm": "◎",
+   "score_per_sp": 2.5,
+   "base_cost": "200.0",
+   "matched": true
+  },
+  "burningspiritguts": {
+   "name": "Burning Spirit GUTS",
+   "tt": "◎",
+   "cm": "◎",
+   "score_per_sp": 3.0,
+   "base_cost": "200+200",
+   "matched": true
+  },
+  "riskybusiness": {
+   "name": "Risky Business",
+   "tt": "✕",
+   "cm": "✕",
+   "score_per_sp": 4.1667,
+   "base_cost": "120.0",
+   "matched": true
+  },
+  "fastpaced": {
+   "name": "Fast-Paced",
+   "tt": "◎",
+   "cm": "◎",
+   "score_per_sp": 2.7778,
+   "base_cost": "180.0",
+   "matched": true
+  },
+  "escapeartist": {
+   "name": "Escape Artist",
+   "tt": "◎",
+   "cm": "◎",
+   "score_per_sp": 3.3333,
+   "base_cost": "180+180",
+   "matched": true
+  },
+  "leaderspride": {
+   "name": "Leader's Pride",
+   "tt": "△",
+   "cm": "◎",
+   "score_per_sp": 2.7778,
+   "base_cost": "180.0",
+   "matched": true
+  },
+  "preparedtopass": {
+   "name": "Prepared to Pass",
+   "tt": "△",
+   "cm": "△",
+   "score_per_sp": 2.7778,
+   "base_cost": "180.0",
+   "matched": true
+  },
+  "speedstar": {
+   "name": "Speed Star",
+   "tt": "△",
+   "cm": "△",
+   "score_per_sp": 3.3333,
+   "base_cost": "180+180",
+   "matched": true
+  },
+  "positionpilfer": {
+   "name": "Position Pilfer",
+   "tt": "◯",
+   "cm": "◯",
+   "score_per_sp": 2.7778,
+   "base_cost": "180.0",
+   "matched": true
+  },
+  "fastfurious": {
+   "name": "Fast & Furious",
+   "tt": "◯",
+   "cm": "◎",
+   "score_per_sp": 3.3333,
+   "base_cost": "180+180",
+   "matched": true
+  },
+  "outerswell": {
+   "name": "Outer Swell",
+   "tt": "◯",
+   "cm": "◎",
+   "score_per_sp": 2.7778,
+   "base_cost": "180.0",
+   "matched": true
+  },
+  "risingdragon": {
+   "name": "Rising Dragon",
+   "tt": "◯",
+   "cm": "◎",
+   "score_per_sp": 3.3333,
+   "base_cost": "180+180",
+   "matched": true
+  },
+  "1500000cc": {
+   "name": "1,500,000 CC",
+   "tt": "◎",
+   "cm": "◎",
+   "score_per_sp": 4.1667,
+   "base_cost": "120.0",
+   "matched": true
+  },
+  "15000000cc": {
+   "name": "15,000,000 CC",
+   "tt": "◎",
+   "cm": "◎",
+   "score_per_sp": 5.0,
+   "base_cost": "120+120",
+   "matched": true
+  },
+  "masterfulgambit": {
+   "name": "Masterful Gambit",
+   "tt": "✕",
+   "cm": "✕",
+   "score_per_sp": 2.7778,
+   "base_cost": "180.0",
+   "matched": true
+  },
+  "sturmunddrang": {
+   "name": "Sturm und Drang",
+   "tt": "✕",
+   "cm": "✕",
+   "score_per_sp": 3.3333,
+   "base_cost": "180+180",
+   "matched": true
+  },
+  "earlystart": {
+   "name": "Early Start",
+   "tt": "△",
+   "cm": "△",
+   "score_per_sp": 2.7778,
+   "base_cost": "180.0",
+   "matched": true
+  },
+  "gapcloser": {
+   "name": "Gap Closer",
+   "tt": "▲",
+   "cm": "▲",
+   "score_per_sp": 3.125,
+   "base_cost": "160.0",
+   "matched": true
+  },
+  "blindingflash": {
+   "name": "Blinding Flash",
+   "tt": "▲",
+   "cm": "▲",
+   "score_per_sp": 3.75,
+   "base_cost": "160+160",
+   "matched": true
+  },
+  "hugelead": {
+   "name": "Huge Lead",
+   "tt": "✕",
+   "cm": "✕",
+   "score_per_sp": 2.9412,
+   "base_cost": "170.0",
+   "matched": true
+  },
+  "staggeringlead": {
+   "name": "Staggering Lead",
+   "tt": "✕",
+   "cm": "✕",
+   "score_per_sp": 3.5294,
+   "base_cost": "170+170",
+   "matched": true
+  },
+  "productiveplan": {
+   "name": "Productive Plan",
+   "tt": "◯",
+   "cm": "✕",
+   "score_per_sp": 3.125,
+   "base_cost": "160.0",
+   "matched": true
+  },
+  "milemaven": {
+   "name": "Mile Maven",
+   "tt": "◎",
+   "cm": "✕",
+   "score_per_sp": 3.75,
+   "base_cost": "160+160",
+   "matched": true
+  },
+  "shiftinggears": {
+   "name": "Shifting Gears",
+   "tt": "◯",
+   "cm": "✕",
+   "score_per_sp": 3.125,
+   "base_cost": "160.0",
+   "matched": true
+  },
+  "changinggears": {
+   "name": "Changing Gears",
+   "tt": "◯",
+   "cm": "✕",
+   "score_per_sp": 3.75,
+   "base_cost": "160+160",
+   "matched": true
+  },
+  "unyieldingspirit": {
+   "name": "Unyielding Spirit",
+   "tt": "◎",
+   "cm": "✕",
+   "score_per_sp": 4.1667,
+   "base_cost": "120.0",
+   "matched": true
+  },
+  "bigsisterly": {
+   "name": "Big-Sisterly",
+   "tt": "◎",
+   "cm": "✕",
+   "score_per_sp": 5.0,
+   "base_cost": "120+120",
+   "matched": true
+  },
+  "uptempo": {
+   "name": "Up-Tempo",
+   "tt": "◯",
+   "cm": "✕",
+   "score_per_sp": 3.125,
+   "base_cost": "160.0",
+   "matched": true
+  },
+  "killertunes": {
+   "name": "Killer Tunes",
+   "tt": "◯",
+   "cm": "✕",
+   "score_per_sp": 3.75,
+   "base_cost": "160+160",
+   "matched": true
+  },
+  "steadfast": {
+   "name": "Steadfast",
+   "tt": "△",
+   "cm": "✕",
+   "score_per_sp": 3.125,
+   "base_cost": "160.0",
+   "matched": true
+  },
+  "unyielding": {
+   "name": "Unyielding",
+   "tt": "△",
+   "cm": "✕",
+   "score_per_sp": 3.75,
+   "base_cost": "160+160",
+   "matched": true
+  },
+  "allivegot": {
+   "name": "All I've Got",
+   "tt": "△",
+   "cm": "✕",
+   "score_per_sp": 3.125,
+   "base_cost": "160.0",
+   "matched": true
+  },
+  "comewhatmay": {
+   "name": "Come What May",
+   "tt": "△",
+   "cm": "✕",
+   "score_per_sp": 3.75,
+   "base_cost": "160+160",
+   "matched": true
+  },
+  "insidescoop": {
+   "name": "Inside Scoop",
+   "tt": "△",
+   "cm": "✕",
+   "score_per_sp": 3.125,
+   "base_cost": "160.0",
+   "matched": true
+  },
+  "innateexperience": {
+   "name": "Innate Experience",
+   "tt": "△",
+   "cm": "✕",
+   "score_per_sp": 3.75,
+   "base_cost": "160+160",
+   "matched": true
+  },
+  "keepingthelead": {
+   "name": "Keeping the Lead",
+   "tt": "△",
+   "cm": "△",
+   "score_per_sp": 3.125,
+   "base_cost": "160.0",
+   "matched": true
+  },
+  "vanguardspirit": {
+   "name": "Vanguard Spirit",
+   "tt": "△",
+   "cm": "△",
+   "score_per_sp": 3.75,
+   "base_cost": "160+160",
+   "matched": true
+  },
+  "pressure": {
+   "name": "Pressure",
+   "tt": "△",
+   "cm": "✕",
+   "score_per_sp": 3.125,
+   "base_cost": "160.0",
+   "matched": true
+  },
+  "overwhelmingpressure": {
+   "name": "Overwhelming Pressure",
+   "tt": "△",
+   "cm": "✕",
+   "score_per_sp": 3.75,
+   "base_cost": "160+160",
+   "matched": true
+  },
+  "toppick": {
+   "name": "Top Pick",
+   "tt": "△",
+   "cm": "✕",
+   "score_per_sp": 2.7778,
+   "base_cost": "180.0",
+   "matched": true
+  },
+  "trendinginthecharts": {
+   "name": "Trending in the Charts!",
+   "tt": "△",
+   "cm": "✕",
+   "score_per_sp": 3.3333,
+   "base_cost": "180+180",
+   "matched": true
+  },
+  "certainvictory": {
+   "name": "Certain Victory",
+   "tt": "△",
+   "cm": "◎",
+   "score_per_sp": 2.5,
+   "base_cost": "200.0",
+   "matched": true
+  },
+  "legacyofthestrong": {
+   "name": "Legacy of the Strong",
+   "tt": "△",
+   "cm": "△",
+   "score_per_sp": null,
+   "base_cost": "",
+   "matched": true
+  },
+  "shootingstar": {
+   "name": "Shooting Star",
+   "tt": "△",
+   "cm": "◯",
+   "score_per_sp": null,
+   "base_cost": "",
+   "matched": true
+  },
+  "theviewfromtheleadismine": {
+   "name": "The View from the Lead is Mine!",
+   "tt": "△",
+   "cm": "△",
+   "score_per_sp": null,
+   "base_cost": "",
+   "matched": true
+  },
+  "skyhighteiostep": {
+   "name": "Sky-High Teio Step",
+   "tt": "△",
+   "cm": "◎",
+   "score_per_sp": null,
+   "base_cost": "",
+   "matched": true
+  },
+  "triumphantpulse": {
+   "name": "Triumphant Pulse",
+   "tt": "△",
+   "cm": "◎",
+   "score_per_sp": null,
+   "base_cost": "",
+   "matched": true
+  },
+  "anchorsaweigh": {
+   "name": "Anchors Aweigh!",
+   "tt": "△",
+   "cm": "✕",
+   "score_per_sp": null,
+   "base_cost": "",
+   "matched": true
+  },
+  "cutanddrive": {
+   "name": "Cut and Drive!",
+   "tt": "✕",
+   "cm": "✕",
+   "score_per_sp": null,
+   "base_cost": "",
+   "matched": true
+  },
+  "resplendentredace": {
+   "name": "Resplendent Red Ace",
+   "tt": "△",
+   "cm": "▲",
+   "score_per_sp": null,
+   "base_cost": "",
+   "matched": true
+  },
+  "wheretheresawilltheresaway": {
+   "name": "Where There's a Will, There's a Way",
+   "tt": "△",
+   "cm": "△",
+   "score_per_sp": null,
+   "base_cost": "",
+   "matched": true
+  },
+  "thedutyofdignitycalls": {
+   "name": "The Duty of Dignity Calls",
+   "tt": "△",
+   "cm": "◯",
+   "score_per_sp": null,
+   "base_cost": "",
+   "matched": true
+  },
+  "victoriaporplancha": {
+   "name": "Victoria por plancha",
+   "tt": "△",
+   "cm": "◎",
+   "score_per_sp": null,
+   "base_cost": "",
+   "matched": true
+  },
+  "thisdanceisforvittoria": {
+   "name": "This Dance Is for Vittoria!",
+   "tt": "△",
+   "cm": "◯",
+   "score_per_sp": null,
+   "base_cost": "",
+   "matched": true
+  },
+  "beholdthineemperorsdivinemight": {
+   "name": "Behold Thine Emperor's Divine Might",
+   "tt": "△",
+   "cm": "◎",
+   "score_per_sp": null,
+   "base_cost": "",
+   "matched": true
+  },
+  "blazingpride": {
+   "name": "Blazing Pride",
+   "tt": "△",
+   "cm": "◯",
+   "score_per_sp": null,
+   "base_cost": "",
+   "matched": true
+  },
+  "winqed": {
+   "name": "∴win Q.E.D.",
+   "tt": "△",
+   "cm": "◯",
+   "score_per_sp": null,
+   "base_cost": "",
+   "matched": true
+  },
+  "flashylanding": {
+   "name": "FlashyLanding",
+   "tt": "△",
+   "cm": "◯",
+   "score_per_sp": null,
+   "base_cost": "",
+   "matched": true
+  },
+  "g001stf": {
+   "name": "G00 1st. F∞;",
+   "tt": "✕",
+   "cm": "△",
+   "score_per_sp": null,
+   "base_cost": "",
+   "matched": true
+  },
+  "bluerosecloser": {
+   "name": "Blue Rose Closer",
+   "tt": "△",
+   "cm": "△",
+   "score_per_sp": null,
+   "base_cost": "",
+   "matched": true
+  },
+  "ourtickettowin": {
+   "name": "Our Ticket to Win!",
+   "tt": "△",
+   "cm": "△",
+   "score_per_sp": null,
+   "base_cost": "",
+   "matched": true
+  },
+  "geniusxbakushinvictory": {
+   "name": "Genius x Bakushin = Victory",
+   "tt": "✕",
+   "cm": "△",
+   "score_per_sp": null,
+   "base_cost": "",
+   "matched": true
+  },
+  "iseevictoryinmyfuture": {
+   "name": "I See Victory in My Future!",
+   "tt": "✕",
+   "cm": "✕",
+   "score_per_sp": null,
+   "base_cost": "",
+   "matched": true
+  },
+  "justalittlefarther": {
+   "name": "Just a Little Farther!",
+   "tt": "△",
+   "cm": "✕",
+   "score_per_sp": null,
+   "base_cost": "",
+   "matched": true
+  },
+  "pridefulking": {
+   "name": "Prideful King",
+   "tt": "✕",
+   "cm": "✕",
+   "score_per_sp": null,
+   "base_cost": "",
+   "matched": true
+  },
+  "lookatcurren": {
+   "name": "#LookatCurren",
+   "tt": "△",
+   "cm": "△",
+   "score_per_sp": null,
+   "base_cost": "",
+   "matched": true
+  },
+  "nemesis": {
+   "name": "Nemesis",
+   "tt": "△",
+   "cm": "◯",
+   "score_per_sp": null,
+   "base_cost": "",
+   "matched": true
+  },
+  "sparklystardom": {
+   "name": "SPARKLYSTARDOM",
+   "tt": "△",
+   "cm": "▲",
+   "score_per_sp": null,
+   "base_cost": "",
+   "matched": true
+  },
+  "shadowbreak": {
+   "name": "Shadow Break",
+   "tt": "△",
+   "cm": "◯",
+   "score_per_sp": null,
+   "base_cost": "",
+   "matched": true
+  },
+  "eternalmoments": {
+   "name": "Eternal Moments",
+   "tt": "△",
+   "cm": "△",
+   "score_per_sp": null,
+   "base_cost": "",
+   "matched": true
+  },
+  "flowerymaneuver": {
+   "name": "FloweryManeuver",
+   "tt": "△",
+   "cm": "▲",
+   "score_per_sp": null,
+   "base_cost": "",
+   "matched": true
+  },
+  "youandmeoneonone": {
+   "name": "You and Me! One-on-One!",
+   "tt": "△",
+   "cm": "△",
+   "score_per_sp": null,
+   "base_cost": "",
+   "matched": true
+  },
+  "lightsofvaudeville": {
+   "name": "Lights of Vaudeville",
+   "tt": "△",
+   "cm": "◯",
+   "score_per_sp": null,
+   "base_cost": "",
+   "matched": true
+  },
+  "akissforcourage": {
+   "name": "A Kiss for Courage",
+   "tt": "△",
+   "cm": "△",
+   "score_per_sp": null,
+   "base_cost": "",
+   "matched": true
+  },
+  "inevergoofup": {
+   "name": "I Never Goof Up!",
+   "tt": "△",
+   "cm": "◯",
+   "score_per_sp": null,
+   "base_cost": "",
+   "matched": true
+  },
+  "schwarzesschwert": {
+   "name": "Schwarzes Schwert",
+   "tt": "✕",
+   "cm": "△",
+   "score_per_sp": null,
+   "base_cost": "",
+   "matched": true
+  },
+  "bountifulharvest": {
+   "name": "Bountiful Harvest",
+   "tt": "△",
+   "cm": "△",
+   "score_per_sp": null,
+   "base_cost": "",
+   "matched": true
+  },
+  "yummyspeed": {
+   "name": "YUMMYSPEED!",
+   "tt": "△",
+   "cm": "✕",
+   "score_per_sp": null,
+   "base_cost": "",
+   "matched": true
+  },
+  "omgthefinalsprint": {
+   "name": "OMG! (ﾟ∀ﾟ) The Final Sprint!",
+   "tt": "△",
+   "cm": "△",
+   "score_per_sp": null,
+   "base_cost": "",
+   "matched": true
+  },
+  "givemummyahug": {
+   "name": "Give Mummy a Hug ♡",
+   "tt": "△",
+   "cm": "◯",
+   "score_per_sp": null,
+   "base_cost": "",
+   "matched": true
+  },
+  "aprincessmustseizevictory": {
+   "name": "A Princess Must Seize Victory!",
+   "tt": "✕",
+   "cm": "✕",
+   "score_per_sp": null,
+   "base_cost": "",
+   "matched": true
+  },
+  "chasingafteryou": {
+   "name": "Chasing After You",
+   "tt": "△",
+   "cm": "△",
+   "score_per_sp": null,
+   "base_cost": "",
+   "matched": true
+  },
+  "dancingintheleaves": {
+   "name": "Dancing in the Leaves",
+   "tt": "✕",
+   "cm": "✕",
+   "score_per_sp": null,
+   "base_cost": "",
+   "matched": true
+  },
+  "arrowswhistleshadowsdisperse": {
+   "name": "Arrows Whistle, Shadows Disperse",
+   "tt": "△",
+   "cm": "◯",
+   "score_per_sp": null,
+   "base_cost": "",
+   "matched": true
+  },
+  "poppolish": {
+   "name": "Pop & Polish",
+   "tt": "△",
+   "cm": "◯",
+   "score_per_sp": null,
+   "base_cost": "",
+   "matched": true
+  },
+  "presentsfromx": {
+   "name": "Presents from X",
+   "tt": "△",
+   "cm": "△",
+   "score_per_sp": null,
+   "base_cost": "",
+   "matched": true
+  },
+  "festivemiracle": {
+   "name": "Festive Miracle",
+   "tt": "△",
+   "cm": "◯",
+   "score_per_sp": null,
+   "base_cost": "",
+   "matched": true
+  },
+  "fairytale": {
+   "name": "Fairy Tale",
+   "tt": "△",
+   "cm": "△",
+   "score_per_sp": null,
+   "base_cost": "",
+   "matched": true
+  },
+  "cornerrecovery": {
+   "name": "Corner Recovery",
+   "tt": "◎",
+   "cm": "◎",
+   "score_per_sp": 2.9412,
+   "base_cost": "170.0",
+   "matched": true
+  },
+  "swingingmaestro": {
+   "name": "Swinging Maestro",
+   "tt": "◎",
+   "cm": "◎",
+   "score_per_sp": 3.5294,
+   "base_cost": "170+170",
+   "matched": true
+  },
+  "straightawayrecovery": {
+   "name": "Straightaway Recovery",
+   "tt": "△",
+   "cm": "△",
+   "score_per_sp": 2.9412,
+   "base_cost": "170.0",
+   "matched": true
+  },
+  "breathoffreshair": {
+   "name": "Breath of Fresh Air",
+   "tt": "△",
+   "cm": "△",
+   "score_per_sp": 3.5294,
+   "base_cost": "170+170",
+   "matched": true
+  },
+  "laylow": {
+   "name": "Lay Low",
+   "tt": "△",
+   "cm": "✕",
+   "score_per_sp": 3.125,
+   "base_cost": "160.0",
+   "matched": true
+  },
+  "ironwill": {
+   "name": "Iron Will",
+   "tt": "△",
+   "cm": "✕",
+   "score_per_sp": 3.75,
+   "base_cost": "160+160",
+   "matched": true
+  },
+  "pacestrategy": {
+   "name": "Pace Strategy",
+   "tt": "△",
+   "cm": "✕",
+   "score_per_sp": 2.9412,
+   "base_cost": "170.0",
+   "matched": true
+  },
+  "indomitable": {
+   "name": "Indomitable",
+   "tt": "△",
+   "cm": "✕",
+   "score_per_sp": 3.5294,
+   "base_cost": "170+170",
+   "matched": true
+  },
+  "calminacrowd": {
+   "name": "Calm in a Crowd",
+   "tt": "✕",
+   "cm": "✕",
+   "score_per_sp": 2.9412,
+   "base_cost": "170.0",
+   "matched": true
+  },
+  "unruffled": {
+   "name": "Unruffled",
+   "tt": "✕",
+   "cm": "✕",
+   "score_per_sp": 3.5294,
+   "base_cost": "170+170",
+   "matched": true
+  },
+  "triple7s": {
+   "name": "Triple 7s",
+   "tt": "△",
+   "cm": "▲",
+   "score_per_sp": 3.125,
+   "base_cost": "160.0",
+   "matched": true
+  },
+  "shakeitout": {
+   "name": "Shake It Out",
+   "tt": "△",
+   "cm": "✕",
+   "score_per_sp": 5.0,
+   "base_cost": "100.0",
+   "matched": true
+  },
+  "ignitedspiritsta": {
+   "name": "Ignited Spirit STA",
+   "tt": "△",
+   "cm": "△",
+   "score_per_sp": 2.5,
+   "base_cost": "200.0",
+   "matched": true
+  },
+  "burningspiritsta": {
+   "name": "Burning Spirit STA",
+   "tt": "△",
+   "cm": "△",
+   "score_per_sp": 3.0,
+   "base_cost": "200+200",
+   "matched": true
+  },
+  "moxie": {
+   "name": "Moxie",
+   "tt": "△",
+   "cm": "◯",
+   "score_per_sp": 2.7778,
+   "base_cost": "180.0",
+   "matched": true
+  },
+  "restless": {
+   "name": "Restless",
+   "tt": "△",
+   "cm": "△",
+   "score_per_sp": 3.3333,
+   "base_cost": "180+180",
+   "matched": true
+  },
+  "staminatospare": {
+   "name": "Stamina to Spare",
+   "tt": "△",
+   "cm": "◯",
+   "score_per_sp": 2.7778,
+   "base_cost": "180.0",
+   "matched": true
+  },
+  "calmandcollected": {
+   "name": "Calm and Collected",
+   "tt": "△",
+   "cm": "◎",
+   "score_per_sp": 3.3333,
+   "base_cost": "180+180",
+   "matched": true
+  },
+  "preferredposition": {
+   "name": "Preferred Position",
+   "tt": "◎",
+   "cm": "◯",
+   "score_per_sp": 2.7778,
+   "base_cost": "180.0",
+   "matched": true
+  },
+  "raceplanner": {
+   "name": "Race Planner",
+   "tt": "◎",
+   "cm": "◎",
+   "score_per_sp": 3.3333,
+   "base_cost": "180+180",
+   "matched": true
+  },
+  "hydrate": {
+   "name": "Hydrate",
+   "tt": "◎",
+   "cm": "◯",
+   "score_per_sp": 2.7778,
+   "base_cost": "180.0",
+   "matched": true
+  },
+  "gourmand": {
+   "name": "Gourmand",
+   "tt": "◎",
+   "cm": "◎",
+   "score_per_sp": 3.3333,
+   "base_cost": "180+180",
+   "matched": true
+  },
+  "asmallbreather": {
+   "name": "A Small Breather",
+   "tt": "△",
+   "cm": "✕",
+   "score_per_sp": 2.7778,
+   "base_cost": "180.0",
+   "matched": true
+  },
+  "relax": {
+   "name": "Relax",
+   "tt": "△",
+   "cm": "✕",
+   "score_per_sp": 3.3333,
+   "base_cost": "180+180",
+   "matched": true
+  },
+  "bestill": {
+   "name": "Be Still",
+   "tt": "△",
+   "cm": "◯",
+   "score_per_sp": 2.7778,
+   "base_cost": "180.0",
+   "matched": true
+  },
+  "lieinwait": {
+   "name": "Lie in Wait",
+   "tt": "△",
+   "cm": "◎",
+   "score_per_sp": 3.3333,
+   "base_cost": "180+180",
+   "matched": true
+  },
+  "standingby": {
+   "name": "Standing By",
+   "tt": "△",
+   "cm": "✕",
+   "score_per_sp": 2.7778,
+   "base_cost": "180.0",
+   "matched": true
+  },
+  "sleepinglion": {
+   "name": "Sleeping Lion",
+   "tt": "△",
+   "cm": "✕",
+   "score_per_sp": 3.3333,
+   "base_cost": "180+180",
+   "matched": true
+  },
+  "afterschoolstroll": {
+   "name": "After-School Stroll",
+   "tt": "△",
+   "cm": "✕",
+   "score_per_sp": 2.9412,
+   "base_cost": "170.0",
+   "matched": true
+  },
+  "gohomespecialist": {
+   "name": "Go-Home Specialist",
+   "tt": "△",
+   "cm": "✕",
+   "score_per_sp": 3.5294,
+   "base_cost": "170+170",
+   "matched": true
+  },
+  "levelheaded": {
+   "name": "Levelheaded",
+   "tt": "△",
+   "cm": "△",
+   "score_per_sp": 2.7778,
+   "base_cost": "180.0",
+   "matched": true
+  },
+  "waitandsee": {
+   "name": "Wait-and-See",
+   "tt": "▲",
+   "cm": "✕",
+   "score_per_sp": 3.125,
+   "base_cost": "160.0",
+   "matched": true
+  },
+  "watchfuleye": {
+   "name": "Watchful Eye",
+   "tt": "▲",
+   "cm": "✕",
+   "score_per_sp": 3.125,
+   "base_cost": "160.0",
+   "matched": true
+  },
+  "keeneye": {
+   "name": "Keen Eye",
+   "tt": "▲",
+   "cm": "✕",
+   "score_per_sp": 3.75,
+   "base_cost": "160+160",
+   "matched": true
+  },
+  "rosyoutlook": {
+   "name": "Rosy Outlook",
+   "tt": "△",
+   "cm": "✕",
+   "score_per_sp": 3.125,
+   "base_cost": "160.0",
+   "matched": true
+  },
+  "trackblazer": {
+   "name": "Trackblazer",
+   "tt": "△",
+   "cm": "✕",
+   "score_per_sp": 3.75,
+   "base_cost": "160+160",
+   "matched": true
+  },
+  "softstep": {
+   "name": "Soft Step",
+   "tt": "△",
+   "cm": "✕",
+   "score_per_sp": 3.125,
+   "base_cost": "160.0",
+   "matched": true
+  },
+  "miraculousstep": {
+   "name": "Miraculous Step",
+   "tt": "△",
+   "cm": "✕",
+   "score_per_sp": 3.75,
+   "base_cost": "160+160",
+   "matched": true
+  },
+  "deepbreaths": {
+   "name": "Deep Breaths",
+   "tt": "△",
+   "cm": "△",
+   "score_per_sp": 3.125,
+   "base_cost": "160.0",
+   "matched": true
+  },
+  "cooldown": {
+   "name": "Cooldown",
+   "tt": "△",
+   "cm": "△",
+   "score_per_sp": 3.75,
+   "base_cost": "160+160",
+   "matched": true
+  },
+  "extratank": {
+   "name": "Extra Tank",
+   "tt": "△",
+   "cm": "△",
+   "score_per_sp": 3.125,
+   "base_cost": "160.0",
+   "matched": true
+  },
+  "adrenalinerush": {
+   "name": "Adrenaline Rush",
+   "tt": "△",
+   "cm": "△",
+   "score_per_sp": 3.75,
+   "base_cost": "160+160",
+   "matched": true
+  },
+  "passingpro": {
+   "name": "Passing Pro",
+   "tt": "△",
+   "cm": "△",
+   "score_per_sp": 3.125,
+   "base_cost": "160.0",
+   "matched": true
+  },
+  "uma2": {
+   "name": "U=ma2",
+   "tt": "△",
+   "cm": "✕",
+   "score_per_sp": 2.5,
+   "base_cost": "200.0",
+   "matched": true
+  },
+  "pureheart": {
+   "name": "Pure Heart",
+   "tt": "△",
+   "cm": "△",
+   "score_per_sp": null,
+   "base_cost": "",
+   "matched": true
+  },
+  "superduperclimax": {
+   "name": "Super-Duper Climax",
+   "tt": "△",
+   "cm": "✕",
+   "score_per_sp": null,
+   "base_cost": "",
+   "matched": true
+  },
+  "superiorheal": {
+   "name": "Superior Heal",
+   "tt": "△",
+   "cm": "△",
+   "score_per_sp": null,
+   "base_cost": "",
+   "matched": true
+  },
+  "dazzlndiver": {
+   "name": "Dazzl'n ♪ Diver",
+   "tt": "△",
+   "cm": "✕",
+   "score_per_sp": null,
+   "base_cost": "",
+   "matched": true
+  },
+  "everyrosehasitsfangs": {
+   "name": "Every Rose Has Its Fangs",
+   "tt": "△",
+   "cm": "✕",
+   "score_per_sp": null,
+   "base_cost": "",
+   "matched": true
+  },
+  "corneracceleration": {
+   "name": "Corner Acceleration",
+   "tt": "△",
+   "cm": "✕",
+   "score_per_sp": 2.7778,
+   "base_cost": "180.0",
+   "matched": true
+  },
+  "cornerconnoisseur": {
+   "name": "Corner Connoisseur",
+   "tt": "△",
+   "cm": "✕",
+   "score_per_sp": 3.3333,
+   "base_cost": "180+180",
+   "matched": true
+  },
+  "straightawayacceleration": {
+   "name": "Straightaway Acceleration",
+   "tt": "△",
+   "cm": "✕",
+   "score_per_sp": 2.9412,
+   "base_cost": "170.0",
+   "matched": true
+  },
+  "rushinggale": {
+   "name": "Rushing Gale!",
+   "tt": "△",
+   "cm": "✕",
+   "score_per_sp": 3.5294,
+   "base_cost": "170+170",
+   "matched": true
+  },
+  "nimblenavigator": {
+   "name": "Nimble Navigator",
+   "tt": "◯",
+   "cm": "◎",
+   "score_per_sp": 3.3333,
+   "base_cost": "150.0",
+   "matched": true
+  },
+  "nostoppingme": {
+   "name": "No Stopping Me!",
+   "tt": "◯",
+   "cm": "◎",
+   "score_per_sp": 4.0,
+   "base_cost": "150+150",
+   "matched": true
+  },
+  "highlander": {
+   "name": "Highlander",
+   "tt": "△",
+   "cm": "◎",
+   "score_per_sp": 3.125,
+   "base_cost": "160.0",
+   "matched": true
+  },
+  "groundwork": {
+   "name": "Groundwork",
+   "tt": "△",
+   "cm": "▲",
+   "score_per_sp": 5.0,
+   "base_cost": "100.0",
+   "matched": true
+  },
+  "ignitedspiritpwr": {
+   "name": "Ignited Spirit PWR",
+   "tt": "◎",
+   "cm": "◎",
+   "score_per_sp": 2.5,
+   "base_cost": "200.0",
+   "matched": true
+  },
+  "burningspiritpwr": {
+   "name": "Burning Spirit PWR",
+   "tt": "◎",
+   "cm": "◎",
+   "score_per_sp": 3.0,
+   "base_cost": "200+200",
+   "matched": true
+  },
+  "earlylead": {
+   "name": "Early Lead",
+   "tt": "◎",
+   "cm": "⍟",
+   "score_per_sp": 4.1667,
+   "base_cost": "120.0",
+   "matched": true
+  },
+  "takingthelead": {
+   "name": "Taking the Lead",
+   "tt": "◎",
+   "cm": "⍟",
+   "score_per_sp": 5.0,
+   "base_cost": "120+120",
+   "matched": true
+  },
+  "finalpush": {
+   "name": "Final Push",
+   "tt": "△",
+   "cm": "✕",
+   "score_per_sp": 2.7778,
+   "base_cost": "180.0",
+   "matched": true
+  },
+  "unrestrained": {
+   "name": "Unrestrained",
+   "tt": "△",
+   "cm": "✕",
+   "score_per_sp": 3.3333,
+   "base_cost": "180+180",
+   "matched": true
+  },
+  "secondwind": {
+   "name": "Second Wind",
+   "tt": "✕",
+   "cm": "✕",
+   "score_per_sp": 2.7778,
+   "base_cost": "180.0",
+   "matched": true
+  },
+  "shrewdstep": {
+   "name": "Shrewd Step",
+   "tt": "△",
+   "cm": "✕",
+   "score_per_sp": 4.1667,
+   "base_cost": "120.0",
+   "matched": true
+  },
+  "technician": {
+   "name": "Technician",
+   "tt": "△",
+   "cm": "✕",
+   "score_per_sp": 5.0,
+   "base_cost": "120+120",
+   "matched": true
+  },
+  "straightdescent": {
+   "name": "Straight Descent",
+   "tt": "△",
+   "cm": "⍟",
+   "score_per_sp": 4.1667,
+   "base_cost": "120.0",
+   "matched": true
+  },
+  "determineddescent": {
+   "name": "Determined Descent",
+   "tt": "△",
+   "cm": "⍟",
+   "score_per_sp": 5.0,
+   "base_cost": "120+120",
+   "matched": true
+  },
+  "tacticaltweak": {
+   "name": "Tactical Tweak",
+   "tt": "△",
+   "cm": "✕",
+   "score_per_sp": 4.1667,
+   "base_cost": "120.0",
+   "matched": true
+  },
+  "shatterproof": {
+   "name": "Shatterproof",
+   "tt": "△",
+   "cm": "✕",
+   "score_per_sp": 5.0,
+   "base_cost": "120+120",
+   "matched": true
+  },
+  "headon": {
+   "name": "Head-On",
+   "tt": "◯",
+   "cm": "⍟",
+   "score_per_sp": 2.7778,
+   "base_cost": "180.0",
+   "matched": true
+  },
+  "slicksurge": {
+   "name": "Slick Surge",
+   "tt": "◯",
+   "cm": "⍟",
+   "score_per_sp": 2.7778,
+   "base_cost": "180.0",
+   "matched": true
+  },
+  "onyourleft": {
+   "name": "On Your Left!",
+   "tt": "◯",
+   "cm": "⍟",
+   "score_per_sp": 3.3333,
+   "base_cost": "180+180",
+   "matched": true
+  },
+  "fighter": {
+   "name": "Fighter",
+   "tt": "△",
+   "cm": "✕",
+   "score_per_sp": 4.1667,
+   "base_cost": "120.0",
+   "matched": true
+  },
+  "hardworker": {
+   "name": "Hard Worker",
+   "tt": "△",
+   "cm": "✕",
+   "score_per_sp": 5.0,
+   "base_cost": "120+120",
+   "matched": true
+  },
+  "straightawayspurt": {
+   "name": "Straightaway Spurt",
+   "tt": "△",
+   "cm": "⍟",
+   "score_per_sp": 2.7778,
+   "base_cost": "180.0",
+   "matched": true
+  },
+  "encroachingshadow": {
+   "name": "Encroaching Shadow",
+   "tt": "△",
+   "cm": "⍟",
+   "score_per_sp": 3.3333,
+   "base_cost": "180+180",
+   "matched": true
+  },
+  "sprintinggear": {
+   "name": "Sprinting Gear",
+   "tt": "△",
+   "cm": "✕",
+   "score_per_sp": 3.125,
+   "base_cost": "160.0",
+   "matched": true
+  },
+  "turbosprint": {
+   "name": "Turbo Sprint",
+   "tt": "△",
+   "cm": "✕",
+   "score_per_sp": 3.75,
+   "base_cost": "160+160",
+   "matched": true
+  },
+  "countermeasure": {
+   "name": "Countermeasure",
+   "tt": "△",
+   "cm": "✕",
+   "score_per_sp": 3.125,
+   "base_cost": "160.0",
+   "matched": true
+  },
+  "planx": {
+   "name": "Plan X",
+   "tt": "△",
+   "cm": "✕",
+   "score_per_sp": 3.75,
+   "base_cost": "160+160",
+   "matched": true
+  },
+  "updrafters": {
+   "name": "Updrafters",
+   "tt": "◯",
+   "cm": "✕",
+   "score_per_sp": 3.125,
+   "base_cost": "160.0",
+   "matched": true
+  },
+  "furiousfeat": {
+   "name": "Furious Feat",
+   "tt": "◯",
+   "cm": "✕",
+   "score_per_sp": 3.75,
+   "base_cost": "160+160",
+   "matched": true
+  },
+  "acceleration": {
+   "name": "Acceleration",
+   "tt": "△",
+   "cm": "✕",
+   "score_per_sp": 3.125,
+   "base_cost": "160.0",
+   "matched": true
+  },
+  "steponthegas": {
+   "name": "Step on the Gas!",
+   "tt": "△",
+   "cm": "✕",
+   "score_per_sp": 3.75,
+   "base_cost": "160+160",
+   "matched": true
+  },
+  "redshiftlp1211m": {
+   "name": "Red Shift/LP1211-M",
+   "tt": "▲",
+   "cm": "✕",
+   "score_per_sp": 2.5,
+   "base_cost": "200.0",
+   "matched": true
+  },
+  "shootingforvictory": {
+   "name": "Shooting for Victory!",
+   "tt": "▲",
+   "cm": "◎",
+   "score_per_sp": null,
+   "base_cost": "",
+   "matched": true
+  },
+  "letspumpsomeiron": {
+   "name": "Let's Pump Some Iron!",
+   "tt": "▲",
+   "cm": "◎",
+   "score_per_sp": null,
+   "base_cost": "",
+   "matched": true
+  },
+  "anglingandscheming": {
+   "name": "Angling and Scheming",
+   "tt": "▲",
+   "cm": "◎",
+   "score_per_sp": null,
+   "base_cost": "",
+   "matched": true
+  },
+  "condorsfury": {
+   "name": "Condor's Fury",
+   "tt": "▲",
+   "cm": "✕",
+   "score_per_sp": null,
+   "base_cost": "",
+   "matched": true
+  },
+  "keepitreal": {
+   "name": "KEEP IT REAL.",
+   "tt": "△",
+   "cm": "✕",
+   "score_per_sp": null,
+   "base_cost": "",
+   "matched": true
+  },
+  "movingpastandbeyond": {
+   "name": "Moving Past, and Beyond",
+   "tt": "△",
+   "cm": "✕",
+   "score_per_sp": null,
+   "base_cost": "",
+   "matched": true
+  },
+  "prudentpositioning": {
+   "name": "Prudent Positioning",
+   "tt": "△",
+   "cm": "▲",
+   "score_per_sp": 4.1667,
+   "base_cost": "120.0",
+   "matched": true
+  },
+  "centerstage": {
+   "name": "Center Stage",
+   "tt": "△",
+   "cm": "✕",
+   "score_per_sp": 5.0,
+   "base_cost": "120+120",
+   "matched": true
+  },
+  "gowiththeflow": {
+   "name": "Go with the Flow",
+   "tt": "△",
+   "cm": "✕",
+   "score_per_sp": 4.1667,
+   "base_cost": "120.0",
+   "matched": true
+  },
+  "lanelegerdemain": {
+   "name": "Lane Legerdemain",
+   "tt": "△",
+   "cm": "✕",
+   "score_per_sp": 5.0,
+   "base_cost": "120+120",
+   "matched": true
+  },
+  "ignitedspiritwit": {
+   "name": "Ignited Spirit WIT",
+   "tt": "△",
+   "cm": "▲",
+   "score_per_sp": 2.5,
+   "base_cost": "200.0",
+   "matched": true
+  },
+  "burningspiritwit": {
+   "name": "Burning Spirit WIT",
+   "tt": "△",
+   "cm": "✕",
+   "score_per_sp": 3.0,
+   "base_cost": "200+200",
+   "matched": true
+  },
+  "dodgingdanger": {
+   "name": "Dodging Danger",
+   "tt": "△",
+   "cm": "⍟",
+   "score_per_sp": 4.5455,
+   "base_cost": "110.0",
+   "matched": true
+  },
+  "sixthsense": {
+   "name": "Sixth Sense",
+   "tt": "△",
+   "cm": "✕",
+   "score_per_sp": 5.4545,
+   "base_cost": "110+110",
+   "matched": true
+  },
+  "meticulousmeasures": {
+   "name": "Meticulous Measures",
+   "tt": "△",
+   "cm": "✕",
+   "score_per_sp": 3.5714,
+   "base_cost": "140.0",
+   "matched": true
+  },
+  "perfectprep": {
+   "name": "Perfect Prep!",
+   "tt": "△",
+   "cm": "✕",
+   "score_per_sp": 4.2857,
+   "base_cost": "140+140",
+   "matched": true
+  },
+  "thunderboltstep": {
+   "name": "Thunderbolt Step",
+   "tt": "△",
+   "cm": "✕",
+   "score_per_sp": 3.5714,
+   "base_cost": "140.0",
+   "matched": true
+  },
+  "lightningstep": {
+   "name": "Lightning Step",
+   "tt": "△",
+   "cm": "✕",
+   "score_per_sp": 4.2857,
+   "base_cost": "140+140",
+   "matched": true
+  },
+  "forwardmarch": {
+   "name": "Forward, March!",
+   "tt": "△",
+   "cm": "✕",
+   "score_per_sp": 3.5714,
+   "base_cost": "140.0",
+   "matched": true
+  },
+  "leadthecharge": {
+   "name": "Lead the Charge!",
+   "tt": "△",
+   "cm": "✕",
+   "score_per_sp": 4.2857,
+   "base_cost": "140+140",
+   "matched": true
+  },
+  "focus": {
+   "name": "Focus",
+   "tt": "◎",
+   "cm": "▲",
+   "score_per_sp": 3.5714,
+   "base_cost": "140.0",
+   "matched": true
+  },
+  "concentration": {
+   "name": "Concentration",
+   "tt": "◎",
+   "cm": "▲",
+   "score_per_sp": 4.2857,
+   "base_cost": "140+140",
+   "matched": true
+  },
+  "studious": {
+   "name": "Studious",
+   "tt": "△",
+   "cm": "✕",
+   "score_per_sp": 4.1667,
+   "base_cost": "120.0",
+   "matched": true
+  },
+  "thebiggerpicture": {
+   "name": "The Bigger Picture",
+   "tt": "△",
+   "cm": "✕",
+   "score_per_sp": 5.0,
+   "base_cost": "120+120",
+   "matched": true
+  },
+  "icanseerightthroughyou": {
+   "name": "I Can See Right Through You",
+   "tt": "△",
+   "cm": "✕",
+   "score_per_sp": 4.5455,
+   "base_cost": "110.0",
+   "matched": true
+  },
+  "thecoastisclear": {
+   "name": "The Coast Is Clear!",
+   "tt": "△",
+   "cm": "✕",
+   "score_per_sp": 5.4545,
+   "base_cost": "110+110",
+   "matched": true
+  },
+  "strategist": {
+   "name": "Strategist",
+   "tt": "△",
+   "cm": "✕",
+   "score_per_sp": 4.5455,
+   "base_cost": "110.0",
+   "matched": true
+  },
+  "crusader": {
+   "name": "Crusader",
+   "tt": "△",
+   "cm": "✕",
+   "score_per_sp": 5.4545,
+   "base_cost": "110+110",
+   "matched": true
+  },
+  "hawkeye": {
+   "name": "Hawkeye",
+   "tt": "△",
+   "cm": "✕",
+   "score_per_sp": 4.5455,
+   "base_cost": "110.0",
+   "matched": true
+  },
+  "clairvoyance": {
+   "name": "Clairvoyance",
+   "tt": "△",
+   "cm": "✕",
+   "score_per_sp": 5.4545,
+   "base_cost": "110+110",
+   "matched": true
+  },
+  "runaway": {
+   "name": "Runaway",
+   "tt": "▲",
+   "cm": "▲",
+   "score_per_sp": 6.0,
+   "base_cost": "200.0",
+   "matched": true
+  },
+  "hesitantfrontrunners": {
+   "name": "Hesitant Front Runners",
+   "tt": "◎",
+   "cm": "◎",
+   "score_per_sp": 3.8462,
+   "base_cost": "130.0",
+   "matched": true
+  },
+  "hesitantpacechasers": {
+   "name": "Hesitant Pace Chasers",
+   "tt": "◎",
+   "cm": "◎",
+   "score_per_sp": 3.8462,
+   "base_cost": "130.0",
+   "matched": true
+  },
+  "hesitantlatesurgers": {
+   "name": "Hesitant Late Surgers",
+   "tt": "◎",
+   "cm": "◎",
+   "score_per_sp": 3.8462,
+   "base_cost": "130.0",
+   "matched": true
+  },
+  "hesitantendclosers": {
+   "name": "Hesitant End Closers",
+   "tt": "◎",
+   "cm": "◎",
+   "score_per_sp": 3.8462,
+   "base_cost": "130.0",
+   "matched": true
+  },
+  "frenziedfrontrunners": {
+   "name": "Frenzied Front Runners",
+   "tt": "◯",
+   "cm": "◎",
+   "score_per_sp": 3.8462,
+   "base_cost": "130.0",
+   "matched": true
+  },
+  "frenziedpacechasers": {
+   "name": "Frenzied Pace Chasers",
+   "tt": "◯",
+   "cm": "◎",
+   "score_per_sp": 3.8462,
+   "base_cost": "130.0",
+   "matched": true
+  },
+  "frenziedlatesurgers": {
+   "name": "Frenzied Late Surgers",
+   "tt": "◯",
+   "cm": "◎",
+   "score_per_sp": 3.8462,
+   "base_cost": "130.0",
+   "matched": true
+  },
+  "frenziedendclosers": {
+   "name": "Frenzied End Closers",
+   "tt": "◯",
+   "cm": "◎",
+   "score_per_sp": 3.8462,
+   "base_cost": "130.0",
+   "matched": true
+  },
+  "subduedfrontrunners": {
+   "name": "Subdued Front Runners",
+   "tt": "◎",
+   "cm": "◎",
+   "score_per_sp": 3.8462,
+   "base_cost": "130.0",
+   "matched": true
+  },
+  "subduedpacechasers": {
+   "name": "Subdued Pace Chasers",
+   "tt": "◎",
+   "cm": "◎",
+   "score_per_sp": 3.8462,
+   "base_cost": "130.0",
+   "matched": true
+  },
+  "subduedlatesurgers": {
+   "name": "Subdued Late Surgers",
+   "tt": "◎",
+   "cm": "◎",
+   "score_per_sp": 3.8462,
+   "base_cost": "130.0",
+   "matched": true
+  },
+  "subduedendclosers": {
+   "name": "Subdued End Closers",
+   "tt": "◎",
+   "cm": "◎",
+   "score_per_sp": 3.8462,
+   "base_cost": "130.0",
+   "matched": true
+  },
+  "trickfront": {
+   "name": "Trick (Front)",
+   "tt": "◎",
+   "cm": "◎",
+   "score_per_sp": 3.5714,
+   "base_cost": "140.0",
+   "matched": true
+  },
+  "tantalizingtrick": {
+   "name": "Tantalizing Trick",
+   "tt": "◎",
+   "cm": "◎",
+   "score_per_sp": 4.2857,
+   "base_cost": "140+140",
+   "matched": true
+  },
+  "trickrear": {
+   "name": "Trick (Rear)",
+   "tt": "◎",
+   "cm": "◎",
+   "score_per_sp": 3.5714,
+   "base_cost": "140.0",
+   "matched": true
+  },
+  "restart": {
+   "name": "Restart",
+   "tt": "✕",
+   "cm": "✕",
+   "score_per_sp": 3.8462,
+   "base_cost": "130.0",
+   "matched": true
+  },
+  "disorient": {
+   "name": "Disorient",
+   "tt": "△",
+   "cm": "△",
+   "score_per_sp": 4.5455,
+   "base_cost": "110.0",
+   "matched": true
+  },
+  "dazzlingdisorientation": {
+   "name": "Dazzling Disorientation",
+   "tt": "△",
+   "cm": "△",
+   "score_per_sp": 5.4545,
+   "base_cost": "110+110",
+   "matched": true
+  },
+  "sharpgaze": {
+   "name": "Sharp Gaze",
+   "tt": "◎",
+   "cm": "◎",
+   "score_per_sp": 2.7778,
+   "base_cost": "180.0",
+   "matched": true
+  },
+  "allseeingeyes": {
+   "name": "All-Seeing Eyes",
+   "tt": "◎",
+   "cm": "◎",
+   "score_per_sp": 3.3333,
+   "base_cost": "180+180",
+   "matched": true
+  },
+  "intensegaze": {
+   "name": "Intense Gaze",
+   "tt": "△",
+   "cm": "◯",
+   "score_per_sp": 2.7778,
+   "base_cost": "180.0",
+   "matched": true
+  },
+  "intimidate": {
+   "name": "Intimidate",
+   "tt": "△",
+   "cm": "✕",
+   "score_per_sp": 2.9412,
+   "base_cost": "170.0",
+   "matched": true
+  },
+  "adoredbyall": {
+   "name": "Adored by All",
+   "tt": "△",
+   "cm": "✕",
+   "score_per_sp": 3.5294,
+   "base_cost": "170+170",
+   "matched": true
+  },
+  "stoprightthere": {
+   "name": "Stop Right There!",
+   "tt": "✕",
+   "cm": "✕",
+   "score_per_sp": 2.9412,
+   "base_cost": "170.0",
+   "matched": true
+  },
+  "speedeater": {
+   "name": "Speed Eater",
+   "tt": "△",
+   "cm": "✕",
+   "score_per_sp": 3.125,
+   "base_cost": "160.0",
+   "matched": true
+  },
+  "openinggambit": {
+   "name": "Opening Gambit",
+   "tt": "✕",
+   "cm": "✕",
+   "score_per_sp": 3.125,
+   "base_cost": "160.0",
+   "matched": true
+  },
+  "battleformation": {
+   "name": "Battle Formation",
+   "tt": "✕",
+   "cm": "✕",
+   "score_per_sp": 3.75,
+   "base_cost": "160+160",
+   "matched": true
+  },
+  "tether": {
+   "name": "Tether",
+   "tt": "◎",
+   "cm": "✕",
+   "score_per_sp": 3.125,
+   "base_cost": "160.0",
+   "matched": true
+  },
+  "dominator": {
+   "name": "Dominator",
+   "tt": "◎",
+   "cm": "✕",
+   "score_per_sp": 3.75,
+   "base_cost": "160+160",
+   "matched": true
+  },
+  "murmur": {
+   "name": "Murmur",
+   "tt": "◎",
+   "cm": "✕",
+   "score_per_sp": 3.125,
+   "base_cost": "160.0",
+   "matched": true
+  },
+  "mystifyingmurmur": {
+   "name": "Mystifying Murmur",
+   "tt": "◎",
+   "cm": "✕",
+   "score_per_sp": 3.75,
+   "base_cost": "160+160",
+   "matched": true
+  },
+  "staminaeater": {
+   "name": "Stamina Eater",
+   "tt": "◯",
+   "cm": "◎",
+   "score_per_sp": 3.125,
+   "base_cost": "160.0",
+   "matched": true
+  },
+  "staminasiphon": {
+   "name": "Stamina Siphon",
+   "tt": "◎",
+   "cm": "◎",
+   "score_per_sp": 3.75,
+   "base_cost": "160+160",
+   "matched": true
+  },
+  "smokescreen": {
+   "name": "Smoke Screen",
+   "tt": "△",
+   "cm": "△",
+   "score_per_sp": 4.5455,
+   "base_cost": "110.0",
+   "matched": true
+  },
+  "illusionist": {
+   "name": "Illusionist",
+   "tt": "△",
+   "cm": "△",
+   "score_per_sp": 5.4545,
+   "base_cost": "110+110",
+   "matched": true
+  },
+  "fallfrenzy": {
+   "name": "Fall Frenzy",
+   "tt": "✕",
+   "cm": "✕",
+   "score_per_sp": 3.6364,
+   "base_cost": "90+110+130",
+   "matched": true
+  },
+  "outerpostproficiency": {
+   "name": "Outer Post Proficiency",
+   "tt": "✕",
+   "cm": "✕",
+   "score_per_sp": 5.5556,
+   "base_cost": "90.0",
+   "matched": true
+  },
+  "maverick": {
+   "name": "Maverick",
+   "tt": "✕",
+   "cm": "✕",
+   "score_per_sp": 5.5556,
+   "base_cost": "90.0",
+   "matched": true
+  },
+  "longshot": {
+   "name": "Long Shot",
+   "tt": "✕",
+   "cm": "✕",
+   "score_per_sp": 5.5556,
+   "base_cost": "90.0",
+   "matched": true
+  },
+  "sympathy": {
+   "name": "Sympathy",
+   "tt": "✕",
+   "cm": "▲",
+   "score_per_sp": 7.1429,
+   "base_cost": "70.0",
+   "matched": true
+  },
+  "lonewolf": {
+   "name": "Lone Wolf",
+   "tt": "◎",
+   "cm": "◎",
+   "score_per_sp": 7.1429,
+   "base_cost": "70.0",
+   "matched": true
+  },
+  "yodoinvicta": {
+   "name": "Yodo Invicta",
+   "tt": "✕",
+   "cm": "✕",
+   "score_per_sp": 3.6364,
+   "base_cost": "90+110+130",
+   "matched": true
+  },
+  "standarddistance": {
+   "name": "Standard Distance",
+   "tt": "◯",
+   "cm": "◎",
+   "score_per_sp": 5.5556,
+   "base_cost": "90.0",
+   "matched": true
+  },
+  "nonstandarddistance": {
+   "name": "Non-Standard Distance",
+   "tt": "◯",
+   "cm": "◎",
+   "score_per_sp": 5.5556,
+   "base_cost": "90.0",
+   "matched": true
+  },
+  "competitivespirit": {
+   "name": "Competitive Spirit",
+   "tt": "✕",
+   "cm": "✕",
+   "score_per_sp": 5.5556,
+   "base_cost": "90.0",
+   "matched": true
+  },
+  "targetinsight": {
+   "name": "Target in Sight",
+   "tt": "✕",
+   "cm": "✕",
+   "score_per_sp": 5.5556,
+   "base_cost": "90.0",
+   "matched": true
+  },
+  "innerpostproficiency": {
+   "name": "Inner Post Proficiency",
+   "tt": "✕",
+   "cm": "✕",
+   "score_per_sp": 5.5556,
+   "base_cost": "90.0",
+   "matched": true
+  },
+  "frontrunnersavvy": {
+   "name": "Front Runner Savvy",
+   "tt": "◎",
+   "cm": "◯",
+   "score_per_sp": 4.5455,
+   "base_cost": "110.0",
+   "matched": true
+  },
+  "pacechasersavvy": {
+   "name": "Pace Chaser Savvy",
+   "tt": "◎",
+   "cm": "◯",
+   "score_per_sp": 4.5455,
+   "base_cost": "110.0",
+   "matched": true
+  },
+  "latesurgersavvy": {
+   "name": "Late Surger Savvy",
+   "tt": "◎",
+   "cm": "◯",
+   "score_per_sp": 4.5455,
+   "base_cost": "110.0",
+   "matched": true
+  },
+  "endclosersavvy": {
+   "name": "End Closer Savvy",
+   "tt": "◎",
+   "cm": "◯",
+   "score_per_sp": 4.5455,
+   "base_cost": "110.0",
+   "matched": true
+  },
+  "luckyseven": {
+   "name": "Lucky Seven",
+   "tt": "✕",
+   "cm": "✕",
+   "score_per_sp": 4.5455,
+   "base_cost": "110.0",
+   "matched": true
+  },
+  "superluckyseven": {
+   "name": "Super Lucky Seven",
+   "tt": "✕",
+   "cm": "✕",
+   "score_per_sp": 5.4545,
+   "base_cost": "110+110",
+   "matched": true
+  }
+ }
+}

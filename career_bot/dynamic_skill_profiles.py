@@ -221,8 +221,3 @@ def score_skill(
             reasons.append("trackblazer_schedule:+30")
 
     return {"skill": name, "score": score, "color": color, "reasons": reasons}
-
-
-def rank_skills(skills: list[dict[str, Any] | str], profile: dict[str, Any], preset: dict[str, Any] | None = None) -> list[dict[str, Any]]:
-    ranked = [score_skill(skill, profile, preset=preset) for skill in skills]
-    return sorted(ranked, key=lambda row: row["score"], reverse=True)

@@ -1,6 +1,6 @@
-# SweepyModv5.24 reverted UI selective keep
+# Pre Icarus v5.24 reverted UI selective keep
 
-This build uses the SweepyModv5.22 UI as the base and keeps only three v5.24 enhancements:
+This build uses the Pre Icarus v5.22 UI as the base and keeps only three v5.24 enhancements:
 
 1. Persisted theme selector: Neon Cockpit / Clean Dark via `localStorage`.
 2. Turn-by-turn Decision Reasoning feed, populated from action history plus `/api/career/decision-trace/latest?limit=160`.

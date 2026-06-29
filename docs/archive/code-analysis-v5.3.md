@@ -1,10 +1,10 @@
-# Code Analysis Report for SweepyModv5.3
+# Code Analysis Report for Pre Icarus v5.3
 
 ## Scope
 
 This review covered the frontend dashboard/settings UI, Trackblazer solver status plumbing, race runner recovery paths, and the existing test suite. The focus was on issues that can cause incorrect behavior, crashes, misleading diagnostics, or hard-to-debug dead paths.
 
-## Findings Fixed in SweepyModv5.3
+## Findings Fixed in Pre Icarus v5.3
 
 ### 1. Diagnostics reported legacy Node bridge status instead of the actual Smart Race Solver backend
 
@@ -17,7 +17,7 @@ This review covered the frontend dashboard/settings UI, Trackblazer solver statu
 
 - **File:** `career_bot/runner.py`
 - **Severity:** Crash / robustness
-- **Problem:** SweepyModv5.2 recovered from API 214 during post-race event draining, but `race_entry` still only handled 205/208, and initial `race_start` was not wrapped at all. A 214 in either path could still crash the runner.
+- **Problem:** Pre Icarus v5.2 recovered from API 214 during post-race event draining, but `race_entry` still only handled 205/208, and initial `race_start` was not wrapped at all. A 214 in either path could still crash the runner.
 - **Fix:** Added recoverable-error handling for `race_entry` and initial `race_start`, using the existing backoff and fresh career-state recovery flow.
 
 ### 3. Resume race-progress recovery did not use the central recoverable-error policy
@@ -36,7 +36,7 @@ This review covered the frontend dashboard/settings UI, Trackblazer solver statu
 
 ## Remaining Issues Not Fixed Yet
 
-> Follow-up: the actionable items in this section were addressed in `SweepyModv5.4`; see `docs/code-analysis-v5.4.md`.
+> Follow-up: the actionable items in this section were addressed in `Pre Icarus v5.4`; see `docs/code-analysis-v5.4.md`.
 
 
 ### 1. `_drain_events()` silently returns after 20 unresolved events

@@ -1,26 +1,13 @@
 {
   "display_name": "Daiwa Scarlet",
   "_comment": "Mile/Medium specialist (Mile=A, Medium=A, Long=B, Sprint=F per Android DB). Closest in profile to Oguri Cap but with weaker Long aptitude, so the Long-distance stamina floor stays a touch lower. Speed/Power/Wit priority matching the Mile-runner template.",
-  "training_scorer_mode": "hint",
-
-  "training_scorer_overrides": {
-    "stat_priority": ["speed", "power", "wit", "stamina", "guts"],
-    "event_stat_priority": ["speed", "power", "stamina", "wit", "guts"],
-    "summer_stat_priority": ["speed", "power", "stamina", "wit", "guts"],
-    "rainbow_bonus_enabled": true,
-    "stat_targets": {
-      "sprint": {"speed": 1100, "stamina": 400, "power": 1000, "guts": 400, "wit": 1000},
-      "mile":   {"speed": 1200, "stamina": 700, "power": 1100, "guts": 400, "wit": 1000},
-      "medium": {"speed": 1150, "stamina": 850, "power": 1050, "guts": 400, "wit": 1000},
-      "long":   {"speed": 1000, "stamina": 1000, "power": 950, "guts": 450, "wit": 1000}
-    }
-  },
-
   "solver_overrides": {},
   "target_epithets": [],
   "forced_epithets": [],
-  "preferred_distances": ["mile", "medium"],
-
+  "preferred_distances": [
+    "mile",
+    "medium"
+  ],
   "scenarios": {
     "4": {
       "_comment": "Trackblazer. Stamina floor at 425 (Long=B so she CAN compete in long if needed, but the build prioritizes Mile/Medium). targetOptionalRaceCount 40 like Oguri to push race density up.",

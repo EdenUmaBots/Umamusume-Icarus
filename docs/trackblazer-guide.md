@@ -130,21 +130,9 @@ training and solver overrides. The active profile is matched by
 
 Each profile has:
 
-- `training_scorer_mode` — `hint` (default; strategy decides),
-  `authoritative` (scorer overrides strategy when margin warrants), or
-  `disabled`
-- `training_scorer_overrides.stat_priority` — `[speed, power, wit,
-  stamina, guts]` style ordered list
-- `training_scorer_overrides.stat_targets` — per-distance target stats
 - `solver_overrides` — per-character weight overrides applied UNDER the
   preset's explicit weights
 - `target_epithets` — explicit epithet goals for this trainee
 - `auto_pick_epithets` — when ON, the trainee's signature epithets
   seed `target_epithets`. Default OFF since v6.7.6 (the solver picks
   high-value races organically).
-
-**Authoritative mode tuning** (v6.7.9): set
-`override_margin_pct` (default 0.10) and `override_margin_floor`
-(default 1.0) in `training_scorer_overrides` to control how
-aggressively the override fires. Set both to 0 for full authority;
-set to 15.0 / 0.5 to suppress most swaps.

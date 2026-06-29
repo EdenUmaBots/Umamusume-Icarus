@@ -1,4 +1,4 @@
-"""Calibration tools for SweepyCL's AI advisor.
+"""Calibration tools for Pre Icarus's AI advisor.
 
 A predictor that says "70% chance of winning" should actually win ~70% of the
 time across many predictions in that bin.  The original advisor returned

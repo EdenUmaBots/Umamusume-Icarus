@@ -19,7 +19,7 @@ The runner treats these errors as recoverable:
 
 ## Result code 214 behavior
 
-Result code 214 can appear after a race or event check and may then repeat on other endpoints such as `read_info/index` or `user/recovery_trainer_point`. In SweepyModv5.2, result code 214 is handled as a recoverable session/state desync.
+Result code 214 can appear after a race or event check and may then repeat on other endpoints such as `read_info/index` or `user/recovery_trainer_point`. In Pre Icarus v5.2, result code 214 is handled as a recoverable session/state desync.
 
 When 214 is seen during a career run, the runner now:
 

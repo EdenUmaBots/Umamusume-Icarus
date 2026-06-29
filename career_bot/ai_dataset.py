@@ -1,4 +1,4 @@
-"""AI-ready data exports for SweepyCL.
+"""AI-ready data exports for Pre Icarus.
 
 The live runner remains deterministic.  This module converts finished career
 reports into safe, append-only learning datasets that can be consumed by local
@@ -28,7 +28,6 @@ SCHEMA_VERSION = 1
 AI_DATASET_VERSION = "SweepyCL AI Dataset v2"
 DATASET_FILES = {
     "turn_decisions": "turn_decisions.jsonl",
-    "event_outcomes": "event_outcome_rows.jsonl",
     "career_summaries": "career_summaries.jsonl",
     "failed_runs": "failed_runs.jsonl",
     "synthetic_scenarios": "synthetic_scenarios.jsonl",
@@ -189,7 +188,7 @@ def _mapping(value: Any) -> Dict[str, Any]:
 def _race_result_from_api_response(call: Mapping[str, Any], turn_number: int, program_id: Any = None) -> Optional[Dict[str, Any]]:
     """Extract a race result from a logged ``single_mode_free/race_end`` response.
 
-    v5.33 exported AI rows from high-level report fields only, but real SweepyCL
+    v5.33 exported AI rows from high-level report fields only, but real Pre Icarus
     logs often keep the authoritative result inside ``turn.api_calls`` as the
     response body for ``single_mode_free/race_end``.  This parser intentionally
     reads only gameplay fields and does not copy request/session metadata into AI
@@ -432,7 +431,7 @@ def _race_result_for_turn(report: Mapping[str, Any], turn_number: int, program_i
                 out.setdefault("rank", out.get("result_rank"))
                 out.setdefault("source", "turn:events")
                 return out
-    # v5.34: real SweepyCL logs keep the authoritative result in race_end RES.
+    # v5.34: real Pre Icarus logs keep the authoritative result in race_end RES.
     if matching_turn:
         from_api = _race_result_from_api_calls(matching_turn, program_id=program_id)
         if from_api:
@@ -1248,7 +1247,7 @@ def _iter_import_sources_from_zip(source: Path) -> Iterable[Tuple[str, bytes]]:
 
 
 def import_previous_logs(base_dir: Any, source_path: str, rebuild: bool = True, build_version: str = "", import_presets: bool = True) -> Dict[str, Any]:
-    """Import previous SweepyCL career logs into the active runtime profile.
+    """Import previous Pre Icarus career logs into the active runtime profile.
 
     The importer accepts either a previous build folder, a previous ``uma_runtime``
     folder, a ``bot_logs`` folder, or a zip containing those files. Only AI-safe
@@ -1417,7 +1416,7 @@ def dataset_status(base_dir: Any) -> Dict[str, Any]:
 def rebuild_from_career_logs(base_dir: Any, build_version: str = "") -> Dict[str, Any]:
     """Rebuild AI JSONL exports from existing career logs.
 
-    This is useful after upgrading from an older SweepyCL build.  Existing AI
+    This is useful after upgrading from an older Pre Icarus build.  Existing AI
     dataset files are rotated with a timestamp rather than destroyed.
     """
     runtime = runtime_output_root(base_dir)

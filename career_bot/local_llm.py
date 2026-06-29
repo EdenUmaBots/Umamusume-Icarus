@@ -1,4 +1,4 @@
-"""Local LLM adapter for SweepyCLAI.
+"""Local LLM adapter for Pre Icarus AI.
 
 The deterministic runner remains the authority.  This module lets a user run a
 local OpenAI-compatible server (LM Studio, Ollama, llama.cpp, etc.) and use it
@@ -21,7 +21,6 @@ from typing import Any, Callable, Dict, Iterable, List, Mapping, Optional, Tuple
 import requests
 
 from career_bot.ai_dataset import DATASET_FILES, runtime_output_root, safe_float, safe_int
-from career_bot import event_outcomes
 
 LOCAL_LLM_VERSION = "SweepyCL Local LLM v1"
 CONFIG_FILE = "local_llm_config.json"
@@ -455,7 +454,7 @@ def _request_chat(cfg: Mapping[str, Any], messages: List[Mapping[str, str]], *, 
 
 def _system_prompt() -> str:
     return (
-        "You are SweepyCL's local strategy analyst. The deterministic bot is the final authority. "
+        "You are Pre Icarus's local strategy analyst. The deterministic bot is the final authority. "
         "Return strict JSON only. Do not give click instructions, code execution instructions, memory access instructions, or automation commands. "
         "Analyze gameplay decisions, risks, and repeatable rules from the supplied safe turn data."
     )
@@ -604,10 +603,8 @@ def analyze_latest_run(base_dir: Any, *, post_fn: Optional[Callable[..., Any]] =
             "Return JSON only.",
             "Do not recommend direct bot commands or clicks.",
             "Suggest repeatable rules for Shadow Mode, not automatic overrides.",
-            "Use event_outcome_knowledge only as static known-outcome context; do not invent live hidden outcomes.",
         ],
         "summary": _run_summary(list(rows), summaries),
-        "event_outcome_knowledge": event_outcomes.llm_context(base_dir),
         "recent_turns": compact_rows,
     }
     packet = _fit_recent_turns_to_budget(packet)
@@ -654,9 +651,7 @@ def shadow_advice(base_dir: Any, *, post_fn: Optional[Callable[..., Any]] = None
             "Return JSON only.",
             "Use action_preference only as advisory text.",
             "No direct execution instructions.",
-            "Use event_outcome_knowledge only as static known-outcome context; do not invent live hidden outcomes.",
         ],
-        "event_outcome_knowledge": event_outcomes.llm_context(base_dir, limit=5),
         "turns": [_compact_turn(row) for row in rows],
     }
     messages = [

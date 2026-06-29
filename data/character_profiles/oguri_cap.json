@@ -1,61 +1,6 @@
 {
   "display_name": "Oguri Cap",
   "_comment": "Tuned against the Android OguriTB profile's settings (Speed/Power/Wit priority, rainbow bonus on) and the audit findings (Stamina 518 < 550 default long-distance floor was penalizing late-game G1 longs). v6.6 NOTE: targetOptionalRaceCount was REMOVED because the solver only uses it for an after-the-fact diagnostic warning, NOT for actual race-count optimization. The real levers for race density are epithetValue, raceCostPct, and lateSeniorRacePressure -- those are now tuned aggressively. Oguri's auto-picked signature 'Ideal Idol' requires winning Mile Championship + Yasuda Kinen + Arima Kinen, so the solver gets epithetValue=3.0 per hit on those.",
-  "training_scorer_mode": "hint",
-  "training_scorer_overrides": {
-    "stat_priority": [
-      "speed",
-      "power",
-      "stamina",
-      "wit",
-      "guts"
-    ],
-    "event_stat_priority": [
-      "speed",
-      "power",
-      "stamina",
-      "wit",
-      "guts"
-    ],
-    "summer_stat_priority": [
-      "speed",
-      "power",
-      "stamina",
-      "wit",
-      "guts"
-    ],
-    "rainbow_bonus_enabled": true,
-    "stat_targets": {
-      "sprint": {
-        "speed": 1200,
-        "stamina": 400,
-        "power": 1100,
-        "guts": 400,
-        "wit": 1000
-      },
-      "mile": {
-        "speed": 1150,
-        "stamina": 750,
-        "power": 850,
-        "guts": 700,
-        "wit": 1000
-      },
-      "medium": {
-        "speed": 1150,
-        "stamina": 850,
-        "power": 850,
-        "guts": 700,
-        "wit": 1000
-      },
-      "long": {
-        "speed": 1050,
-        "stamina": 1100,
-        "power": 1000,
-        "guts": 400,
-        "wit": 1000
-      }
-    }
-  },
   "solver_overrides": {},
   "target_epithets": [],
   "forced_epithets": [],

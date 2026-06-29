@@ -1,10 +1,10 @@
-# SweepyModv5.33 AI Auto-Training and Learned Scoring
+# Pre Icarus v5.33 AI Auto-Training and Learned Scoring
 
 This build expands the v5.32 AI dataset foundation into a local, automatic training loop.
 
 ## Safety Boundary
 
-The AI layer does not execute game actions. SweepyMod still builds the legal action list and enforces deterministic safety gates. Learned policy assistance is confidence-gated and only adjusts scores for already-legal candidate actions.
+The AI layer does not execute game actions. Pre Icarus still builds the legal action list and enforces deterministic safety gates. Learned policy assistance is confidence-gated and only adjusts scores for already-legal candidate actions.
 
 ## Phase 2: Local Analytics
 
@@ -29,7 +29,7 @@ The Trackblazer Smart Race Solver reads `policy_adjustments.json` and applies re
 
 ## Phase 4: LLM Advisor Preparation
 
-No external LLM is called in this build. Instead, SweepyMod prepares prompts and tuning suggestions for later review:
+No external LLM is called in this build. Instead, Pre Icarus prepares prompts and tuning suggestions for later review:
 
 - `llm_advisor/latest_prompt_pack.jsonl`
 - `llm_advisor/latest_prompt_pack_manifest.json`

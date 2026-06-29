@@ -1,6 +1,6 @@
-# SweepyModv5.41AI Live Smart Replanning
+# Pre Icarus v5.41AI Live Smart Replanning
 
-SweepyModv5.41AI makes the Smart Race Solver a live route system instead of a mostly static pre-run schedule.
+Pre Icarus v5.41AI makes the Smart Race Solver a live route system instead of a mostly static pre-run schedule.
 
 ## What changed
 

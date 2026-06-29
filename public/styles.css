@@ -1965,6 +1965,19 @@ body.dashboard-mode .turn-delay-control {
 .collapsible-body.expanded {
   opacity: 1;
 }
+/* v2.1: Library category tabs. Sections are switched by tab, so their bodies
+   stay open and the per-section collapse chevrons are hidden. */
+.lib-tabs { display: flex; flex-wrap: wrap; gap: 6px; padding: 6px 0 12px; }
+.lib-tab {
+  background: rgba(255,255,255,.06); color: rgba(255,255,255,.72);
+  border: 1px solid rgba(255,255,255,.12); border-radius: 8px;
+  padding: 5px 12px; font-size: .82rem; font-weight: 700; cursor: pointer; letter-spacing: .02em;
+}
+.lib-tab:hover { background: rgba(255,255,255,.12); color: #fff; }
+.lib-tab.is-active { background: var(--accent-secondary); color: #16130c; border-color: var(--accent-secondary); }
+[data-lib-section] .collapsible-body { height: auto !important; opacity: 1 !important; overflow: visible; }
+[data-lib-section] .collapse-chevron { display: none; }
+[data-lib-section] .section-title-toggle { cursor: default; }
 .collapse-chevron.expanded {
   transform: rotate(90deg);
 }
@@ -3208,18 +3221,6 @@ select.form-input,
 .v53-metric-grid div:nth-child(3) strong { color: var(--accent-secondary); }
 .v53-metric-grid div:nth-child(4) strong { color: var(--accent-secondary); }
 .v53-metric-grid div:nth-child(5) strong { color: var(--accent-secondary); }
-/* v7.6.2 — native event-outcome capture toggle row in the Event Outcome KB card */
-.v762-native-capture-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin: 8px 0 4px;
-  font-size: 0.78rem;
-  color: var(--text-muted);
-  cursor: pointer;
-  user-select: none;
-}
-.v762-native-capture-row input { cursor: pointer; }
 .btn,
 .btn-sm,
 .btn-primary {
@@ -3568,6 +3569,21 @@ body.dashboard-mode .v53-cockpit {
   flex-wrap: wrap !important;
   row-gap: 8px !important;
 }
+/* v3 — flanking groups so SETUP sits centered with the other actions on either side. */
+.v516-actions-side {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  gap: 12px !important;
+  flex: 1 1 0 !important;
+  flex-wrap: wrap !important;
+  row-gap: 8px !important;
+}
+.v516-actions-side:first-child { justify-content: flex-end !important; }
+.v516-actions-side:last-child { justify-content: flex-start !important; }
+@media (max-width: 980px) {
+  .v516-actions-side { flex-direction: column !important; width: 100% !important; }
+}
 .v516-top-actions .btn {
   /* v7.2 — was fixed 220px which forced ~1540px of nav even before gaps,
      causing overlap on common 1366×768 / 1440×900 monitors. Now clamped to
@@ -3588,19 +3604,28 @@ body.dashboard-mode .v53-cockpit {
 @media (max-width: 1200px) {
   .v516-top-actions .btn { min-width: clamp(100px, 14vw, 160px) !important; height: 36px !important; font-size: 0.72rem !important; }
 }
-.v515-setup-launch,
-.v516-diagnostics-launch {
+/* v3 — SETUP is the centered, enlarged primary action, wearing the (former)
+   accounts cyan/secondary scheme so it stands out. The other action buttons
+   share one consistent muted scheme. (Specificity beats the base .btn rule.) */
+.v516-top-actions .v515-setup-launch {
   width: auto !important;
   margin: 0 !important;
-  border-color: rgba(var(--accent-primary-rgb),.82) !important;
-  color: var(--accent-primary) !important;
-  background: linear-gradient(90deg, rgba(var(--accent-primary-rgb),.20), rgba(var(--accent-primary-rgb),.06)) !important;
-  box-shadow: 0 0 22px rgba(var(--accent-primary-rgb),.12) !important;
-}
-.v516-diagnostics-launch {
-  border-color: rgba(var(--accent-primary-rgb),.55) !important;
+  min-width: clamp(200px, 30vw, 360px) !important;
+  height: 54px !important;
+  font-size: clamp(0.92rem, 1.15vw, 1.08rem) !important;
+  font-weight: 800 !important;
+  letter-spacing: clamp(0.08em, 0.16vw, 0.18em) !important;
+  flex: 0 0 auto !important;
+  border-color: rgba(108, 240, 255, .7) !important;
   color: var(--accent-secondary) !important;
-  background: linear-gradient(90deg, rgba(var(--accent-primary-rgb),.13), rgba(var(--accent-primary-rgb),.06)) !important;
+  background: linear-gradient(90deg, rgba(108, 240, 255, .24), rgba(108, 240, 255, .08)) !important;
+  box-shadow: 0 0 28px rgba(108, 240, 255, .24) !important;
+}
+.v516-top-actions .btn:not(.v515-setup-launch) {
+  border-color: rgba(255, 255, 255, .14) !important;
+  color: var(--text-muted, #b9b3c9) !important;
+  background: linear-gradient(180deg, rgba(255, 255, 255, .045), rgba(255, 255, 255, .012)) !important;
+  box-shadow: none !important;
 }
 body.dashboard-mode .v53-career-card,
 body.dashboard-mode .v53-metrics-card,
@@ -3684,6 +3709,18 @@ body.dashboard-mode .v53-card-head span {
   color: var(--accent-secondary);
   font-weight: 950;
   letter-spacing: .16em;
+}
+/* Diag/AI tab switcher (merged Diagnostics + AI/Misc page). */
+.diagai-tabs { display: flex; gap: 6px; }
+.diagai-tab {
+  background: rgba(255,255,255,.06); color: rgba(255,255,255,.7);
+  border: 1px solid rgba(255,255,255,.12); border-radius: 8px;
+  padding: 4px 12px; font-size: .8rem; font-weight: 700; cursor: pointer;
+  letter-spacing: .04em;
+}
+.diagai-tab:hover { background: rgba(255,255,255,.12); color: #fff; }
+.diagai-tab.is-active {
+  background: var(--accent-secondary); color: #1a1a1a; border-color: var(--accent-secondary);
 }
 .v516-diagnostics-done { min-width: 130px; }
 .v516-diagnostics-body {
@@ -5602,7 +5639,7 @@ body > .sparks-tooltip[data-guest-index] {
   .settings-target-row { grid-template-columns: 1fr; }
 }
 
-/* SweepyModv5.0 settings refactor: setup layout + draggable stat priority modals */
+/* Pre Icarus v5.0 settings refactor: setup layout + draggable stat priority modals */
 #bot-settings-section {
   margin-bottom: 14px;
 }
@@ -5787,7 +5824,7 @@ body > .sparks-tooltip[data-guest-index] {
   .preset-control-grid-single { grid-template-columns: 1fr; }
 }
 
-/* SweepyModv5.3 setup button placement + solver backend indicator */
+/* Pre Icarus v5.3 setup button placement + solver backend indicator */
 body.dashboard-mode #setup-panel .panel-body > #bot-settings-section {
   order: -10;
   margin: 0 0 14px !important;
@@ -5863,7 +5900,7 @@ body.dashboard-mode #setup-panel .bot-settings-btn:focus-visible {
   }
 }
 
-/* SweepyModv5.5: keep setup settings buttons directly above Preset Configuration in the setup workspace modal. */
+/* Pre Icarus v5.5: keep setup settings buttons directly above Preset Configuration in the setup workspace modal. */
 .v515-setup-body #bot-settings-section {
   grid-column: 1 !important;
   grid-row: 2 !important;
@@ -5906,7 +5943,7 @@ body.dashboard-mode #setup-panel .bot-settings-btn:focus-visible {
   }
 }
 
-/* SweepyModv5.6 Smart Race Solver Settings */
+/* Pre Icarus v5.6 Smart Race Solver Settings */
 .v56-solver-settings-row {
   display: grid !important;
   grid-template-columns: 1fr !important;
@@ -6658,7 +6695,7 @@ body.dashboard-mode .v4-plan-diff {
   border-radius: 0.6rem;
 }
 
-/* SweepyModv5.9 split settings + weighted skill configuration */
+/* Pre Icarus v5.9 split settings + weighted skill configuration */
 #settings-preset-section .master-data-panel,
 #skill-config-launch-section .master-data-panel {
   gap: 0.9rem;
@@ -6912,7 +6949,7 @@ body.dashboard-mode .v4-plan-diff {
     height: 13px;
 }
 
-/* SweepyModv5.22 modular parent filtering and career monitor */
+/* Pre Icarus v5.22 modular parent filtering and career monitor */
 .parent-filter-bar {
     border: 1px solid rgba(var(--accent-primary-rgb), 0.22);
     background: rgba(5, 7, 18, 0.72);
@@ -7024,7 +7061,7 @@ body.dashboard-mode .v4-plan-diff {
 .monitor-crash { flex: 1; margin: 0; padding: 10px; overflow: auto; color: #ffb3c1; background: rgba(0,0,0,.28); font: 12px/1.45 ui-monospace, Consolas, monospace; }
 @media (max-width: 900px) { .monitor-split { grid-template-columns: 1fr; } .monitor-body { height: 60vh; } }
 
-/* SweepyModv5.28: compact operator controls and expanded run feed */
+/* Pre Icarus v5.28: compact operator controls and expanded run feed */
 .v520-action-footer {
   min-height: 82px !important;
   padding: 8px !important;
@@ -7088,7 +7125,7 @@ body.dashboard-mode .v547-decision-reasoning {
   }
 }
 
-/* SweepyModv5.29: stable reasoning selection and footer overlap cleanup */
+/* Pre Icarus v5.29: stable reasoning selection and footer overlap cleanup */
 .v520-start-status.is-empty {
   display: none !important;
 }
@@ -8762,6 +8799,11 @@ body.dashboard-mode .v547-decision-reasoning {
 
 /* v7.4 — Event Choices cleanup + search + auto/forced badges */
 .event-choices-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; }
+.event-cat-btn { opacity: 0.65; }
+.event-cat-btn:hover { opacity: 0.9; }
+.event-cat-btn.active { opacity: 1; background: rgba(120, 170, 255, 0.22); color: #cde0ff; box-shadow: inset 0 0 0 1px rgba(120, 170, 255, 0.5); }
+.event-cat-filter-toggle { display: inline-flex; align-items: center; gap: 0.3rem; font-size: 0.78rem; color: var(--text-muted); cursor: pointer; white-space: nowrap; user-select: none; }
+.event-cat-filter-toggle input { cursor: pointer; }
 .event-choices-search { flex: 1 1 220px; min-width: 180px; }
 .event-choices-statusbar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 0.4rem 0.8rem; margin: 0.5rem 0 0.65rem; }
 .event-choices-status { font-size: 0.8rem; color: var(--text-muted); }
@@ -8769,12 +8811,6 @@ body.dashboard-mode .v547-decision-reasoning {
 .event-choice-badge { font-size: 0.62rem; font-weight: 800; letter-spacing: 0.04em; padding: 0.1rem 0.4rem; border-radius: 0.3rem; text-transform: uppercase; }
 .event-choice-badge.badge-auto { background: rgba(120, 170, 255, 0.16); color: #aecbff; }
 .event-choice-badge.badge-override { background: rgba(245, 200, 80, 0.2); color: #ffd87a; }
-/* v7.6.3 — outcome-data confidence chip */
-.event-choice-conf { font-size: 0.56rem; font-weight: 800; letter-spacing: 0.04em; padding: 0.08rem 0.36rem; border-radius: 0.3rem; text-transform: uppercase; white-space: nowrap; }
-.event-choice-conf.conf-observed { background: rgba(123, 255, 176, 0.18); color: #7bffb0; }
-.event-choice-conf.conf-scraped { background: rgba(34, 238, 255, 0.14); color: #7fe9ff; }
-.event-choice-conf.conf-imported { background: rgba(180, 160, 255, 0.16); color: #ccbcff; }
-.event-choice-conf.conf-none { background: rgba(255, 255, 255, 0.06); color: rgba(255,255,255,0.5); }
 .event-choices-list { display: flex; flex-direction: column; gap: 0.55rem; }
 .event-choice-row { border: 1px solid rgba(255,255,255,0.10); border-left-width: 3px; border-left-color: rgba(120,170,255,0.5); border-radius: 0.6rem; background: rgba(255,255,255,0.035); padding: 0.6rem 0.75rem; display: flex; flex-direction: column; gap: 0.3rem; }
 .event-choice-row.has-override { border-left-color: rgba(245,200,80,0.85); background: rgba(245,200,80,0.05); }
@@ -8800,6 +8836,14 @@ body.dashboard-mode .v547-decision-reasoning {
 .changelog-logo { height: 1.7rem; width: auto; filter: drop-shadow(0 0 6px rgba(var(--accent-primary-rgb), 0.25)); }
 .changelog-title { font-size: 1.05rem; font-weight: 800; letter-spacing: 0.02em; color: var(--text-main); }
 .changelog-version { font-size: 0.8rem; color: #ffd87a; font-weight: 600; }
+.changelog-version.is-beta { color: #fff; background: #d9483b; padding: 1px 8px; border-radius: 10px; letter-spacing: 0.04em; }
+/* Persistent beta-build badge (added by JS only on beta builds). */
+#beta-build-badge {
+  position: fixed; top: 8px; right: 10px; z-index: 99999;
+  background: #d9483b; color: #fff; font-weight: 800; font-size: 0.72rem;
+  letter-spacing: 0.12em; padding: 3px 10px; border-radius: 10px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.4); pointer-events: none; opacity: 0.92;
+}
 .changelog-body { padding: 1rem 1.25rem 1.5rem; overflow-y: auto; color: var(--text-main); font-size: 0.88rem; line-height: 1.55; }
 /* v7.6.2: cleaner what's-new typography — accented section headings, roomier
    spacing, and styled bullets so release notes are easier to scan. */

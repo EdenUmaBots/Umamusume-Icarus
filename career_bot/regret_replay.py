@@ -20,17 +20,15 @@ independent, honest ways:
 Pure standard library, no I/O, deterministic given inputs -- so it can be
 re-run over historical logs freely and reused inside the Last Run Report or the
 benchmark harness.  The career log does *not* persist the full
-``home_info.command_info_array`` per turn (see scripts/backtest_training_scorer
-for that caveat), so this module deliberately does NOT try to re-run
-``score_trainings()``; it works from what the log actually records.
+``home_info.command_info_array`` per turn, so this module works from what the
+log actually records rather than re-deriving per-turn training scores.
 """
 from __future__ import annotations
 
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Mapping, Optional
 
-# command_id -> stat, matching career_bot/runner.py::TRAINING_LABELS and
-# scripts/backtest_training_scorer.py::COMMAND_TO_STAT exactly.
+# command_id -> stat (matches the training labels in career_bot/runner.py).
 COMMAND_TO_STAT: Dict[int, str] = {
     101: "speed",
     102: "power",

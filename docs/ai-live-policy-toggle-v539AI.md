@@ -1,13 +1,13 @@
-# SweepyModv5.39AI Live Policy Assistance Toggle
+# Pre Icarus v5.39AI Live Policy Assistance Toggle
 
-SweepyModv5.39AI adds a dedicated Live Policy Assistance control to the AI Learning dashboard.
+Pre Icarus v5.39AI adds a dedicated Live Policy Assistance control to the AI Learning dashboard.
 
 ## What it does
 
 - Lets users enable or disable live learned-policy score adjustments from the AI Learning modal.
 - Shows whether the current model recommends enabling Live Policy Assistance or keeping it disabled.
 - Uses data health, race-result coverage, turn-record count, and learned adjustment count to make the recommendation.
-- Does not bypass SweepyMod safety rules. Live policy only adjusts scores among legal Smart Race Solver candidates.
+- Does not bypass Pre Icarus safety rules. Live policy only adjusts scores among legal Smart Race Solver candidates.
 
 ## Recommendation rules
 

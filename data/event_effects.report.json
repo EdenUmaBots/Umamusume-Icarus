@@ -1,0 +1,28 @@
+{
+  "counts": {
+    "support_card": 674,
+    "story": 1835,
+    "total": 2509,
+    "title_matched_master": 2213
+  },
+  "unknown_reward_tokens": {
+    "brian_tryhard": 1,
+    "s_nore": 1,
+    "highest_facility": 1,
+    "expensive_races": 1,
+    "result_good": 1,
+    "result_bad": 1,
+    "fans_minimum": 2,
+    "fans_maximum": 2,
+    "motivation_good": 1,
+    "motivation_not_good": 1,
+    "stat_not_disabled": 1,
+    "unspecified_stats": 1,
+    "track_hint": 1,
+    "error": 1
+  },
+  "pages": 796,
+  "fetched": 0,
+  "cached": 796,
+  "failed": 0
+}

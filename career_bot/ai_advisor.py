@@ -1,4 +1,4 @@
-"""Local AI-advisor scaffolding for SweepyCL.
+"""Local AI-advisor scaffolding for Pre Icarus.
 
 This module does not call an external LLM.  It reads AI-ready datasets and local
 advisor statistics, then produces deterministic post-run recommendations and
@@ -250,7 +250,7 @@ def race_program_hint(base_dir: Any, program_id: Any) -> Dict[str, Any]:
         "win_rate": round(win_rate, 4),
         "avg_reward": round(avg_reward, 4),
         "adjustment": scoring["adjustment"],
-        "reason": "Local advisor learned this race from prior SweepyCL outcomes.",
+        "reason": "Local advisor learned this race from prior Pre Icarus outcomes.",
         "posterior_mean": scoring["mean"],
         "lcb": scoring["lcb"],
         "ucb": scoring["ucb"],

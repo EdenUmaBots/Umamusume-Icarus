@@ -1,26 +1,13 @@
 {
   "display_name": "Tokai Teio",
   "_comment": "Medium specialist with Long backup (Medium=A, Long=B, Mile=E, Sprint=F per Android DB). Stamina-leaning priority but not as aggressive as a pure stayer -- Medium is her primary distance so Speed still matters second. Long aptitude at B means she can race long but isn't optimized for it.",
-  "training_scorer_mode": "hint",
-
-  "training_scorer_overrides": {
-    "stat_priority": ["stamina", "speed", "power", "wit", "guts"],
-    "event_stat_priority": ["stamina", "speed", "power", "wit", "guts"],
-    "summer_stat_priority": ["stamina", "speed", "power", "wit", "guts"],
-    "rainbow_bonus_enabled": true,
-    "stat_targets": {
-      "sprint": {"speed": 800, "stamina": 600, "power": 700, "guts": 400, "wit": 900},
-      "mile":   {"speed": 900, "stamina": 700, "power": 800, "guts": 400, "wit": 1000},
-      "medium": {"speed": 1150, "stamina": 1000, "power": 1050, "guts": 500, "wit": 1000},
-      "long":   {"speed": 1050, "stamina": 1150, "power": 1000, "guts": 550, "wit": 1000}
-    }
-  },
-
   "solver_overrides": {},
   "target_epithets": [],
   "forced_epithets": [],
-  "preferred_distances": ["medium", "long"],
-
+  "preferred_distances": [
+    "medium",
+    "long"
+  ],
   "scenarios": {
     "4": {
       "_comment": "Trackblazer. Long=B so the long-distance stamina floor stays close to default; targetOptionalRaceCount at 38 between Oguri's 40 (Mile-heavy schedule has more options) and the default 36.",

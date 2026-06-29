@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Icarus · Command Console</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700;800&family=Barlow+Condensed:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css?v=10">
+</head>
+<body>
+<div class="app app--cockpit">
+  <div class="console">
+
+    <!-- STATUS RAIL -->
+    <div class="rail">
+      <a class="rail-brand" href="index.html" title="Icarus">
+        <span class="rail-mark"></span>
+        <span class="rail-word">ICARUS</span>
+      </a>
+      <div class="rail-pills" id="rail-pills">
+        <!-- rendered by app.js -->
+      </div>
+      <div class="dev" id="dev-cluster">
+        <button class="dev-btn" id="dev-tempt" type="button" title="Tempt Fate — bot speed / turn delay">TEMPT:OFF</button>
+        <button class="dev-btn" id="dev-burn" type="button" title="Burn clocks to retry races">BURN:OFF</button>
+        <button class="dev-btn" id="dev-loop" type="button" title="Loop careers">LOOP:1</button>
+        <button class="dev-btn" id="dev-finish" type="button" title="Finalize single runs">FINISH:OFF</button>
+      </div>
+      <!-- DISPLAY (appearance) button is injected here by core.js; LOGOUT lives in the transport bar -->
+      <div class="rail-toggles"></div>
+    </div>
+
+    <!-- OFFLINE BANNER (shown only when the backend is unreachable) -->
+    <div class="mockbar" id="mockbar">
+      <span class="x"></span>
+      OFFLINE · backend not reached. Run <code style="color:#e8c876">python main.py</code> and reload to go live.
+    </div>
+
+    <!-- TAB STRIP -->
+    <div class="tabs">
+      <a class="tab is-active" href="index.html">DASHBOARD</a>
+      <a class="tab" href="setup.html">SETUP</a>
+      <a class="tab" href="help.html">HELP</a>
+      <a class="tab" href="accounts.html">ACCOUNTS</a>
+      <a class="tab" href="diag.html">DIAG / AI</a>
+      <a class="tab" href="history.html">CAREER HISTORY</a>
+      <div class="tab-spacer"></div>
+      <div class="tab-live is-idle" id="tab-live">
+        <span class="dot"></span><span id="tab-live-text">IDLE</span>
+      </div>
+    </div>
+
+    <!-- BODY -->
+    <div class="body">
+
+      <!-- VITALS -->
+      <div class="vitals">
+        <div class="vitals-block">
+          <div class="portrait">
+            <iframe class="portrait-3d" id="portrait-3d" src="model-test/mini.html?v=3" title="trainee 3D model" scrolling="no"></iframe>
+            <img class="portrait-png" id="portrait-png" alt="trainee art" style="display:none">
+            <span class="portrait-tag" id="portrait-tag">3D MODEL · .PMX</span>
+            <span class="portrait-live" id="portrait-live">◷ idle</span>
+            <button class="portrait-mode" id="portrait-mode" type="button" title="Switch between the 3D model and a flat PNG">Seiun</button>
+          </div>
+          <div class="trainee-name" id="trainee-name">NO CAREER</div>
+          <div class="trainee-meta" id="trainee-meta">Waiting for signal…</div>
+        </div>
+
+        <div class="vitals-block">
+          <div class="hp-head">
+            <span class="hp-label c-mut" id="hp-label">HP</span>
+            <span class="hp-num" id="hp-num">--<span class="sub">/100</span></span>
+          </div>
+          <div class="hp-track"><div class="hp-fill fill-green" id="hp-fill" style="width:0%"></div></div>
+          <div class="kv-row"><span class="kv-k">MOOD</span><span class="kv-v c-mut" id="mood-v">—</span></div>
+          <div class="kv-row"><span class="kv-k">FANS</span><span class="kv-v c-amber" id="fans-v">—</span></div>
+        </div>
+
+        <div class="vitals-block">
+          <div class="attr-title">ATTRIBUTES</div>
+          <div id="attr-list">
+            <!-- rendered by app.js -->
+          </div>
+        </div>
+
+      </div>
+
+      <!-- FEED -->
+      <div class="feed">
+        <div class="col-head">
+          <span class="col-title">ACTION LOG</span>
+          <span class="col-meta" id="feed-meta">0 TURNS · IDLE</span>
+        </div>
+        <div class="log-cols">
+          <span>TURN</span><span>ACT</span><span>TARGET</span><span class="r">HP</span><span class="r">MOOD</span>
+        </div>
+        <div id="log-rows">
+          <!-- rendered by app.js -->
+        </div>
+      </div>
+
+      <!-- REASONING -->
+      <div class="reason">
+        <div class="reason-tabs">
+          <button class="reason-tab is-active" id="rt-decision" type="button">DECISION REASONING</button>
+        </div>
+        <div class="reason-body" id="reason-body">
+          <!-- rendered by app.js -->
+        </div>
+      </div>
+    </div>
+
+    <!-- TRANSPORT -->
+    <div class="transport">
+      <button class="btn is-primary tbtn" id="run-btn" type="button">RUN CAREER</button>
+      <button class="btn tbtn" id="pause-btn" type="button" disabled>PAUSE</button>
+      <button class="btn is-danger tbtn" id="stop-btn" type="button" disabled>STOP</button>
+      <button class="btn is-muted transport-logout" id="logout-btn" type="button">LOGOUT</button>
+    </div>
+
+    <!-- MONITOR -->
+    <div class="monitor">
+      <div class="monitor-head">
+        <span class="monitor-tag"><span class="dot"></span>MONITOR</span>
+        <div class="tab-spacer"></div>
+        <span class="monitor-meta" id="monitor-meta">idle</span>
+      </div>
+      <div class="monitor-grid">
+        <div class="monitor-log">
+          <div class="monitor-log-head">
+            <span class="monitor-log-title">LIVE LOG</span>
+            <button class="fbtn is-active" type="button">ALL</button>
+            <button class="fbtn" type="button">RACE</button>
+            <button class="fbtn" type="button">GAIN</button>
+            <button class="fbtn" type="button">WARN</button>
+            <button class="fbtn" type="button">ERROR</button>
+          </div>
+          <div class="monitor-rows" id="monitor-rows">
+            <!-- rendered by app.js -->
+          </div>
+        </div>
+        <div class="monitor-stats">
+          <div class="monitor-stats-head">
+            <span class="monitor-log-title">STATS</span>
+            <button class="fbtn" type="button">CRASH TRACE</button>
+          </div>
+          <div class="monitor-chart">
+            <svg viewBox="0 0 480 140" style="width:100%;height:120px;display:block" id="stat-chart">
+              <line x1="0" y1="10" x2="480" y2="10" stroke="#15181e"/>
+              <line x1="0" y1="45" x2="480" y2="45" stroke="#15181e"/>
+              <line x1="0" y1="80" x2="480" y2="80" stroke="#15181e"/>
+              <line x1="0" y1="115" x2="480" y2="115" stroke="#15181e"/>
+              <polyline fill="none" stroke="#f2a900" stroke-width="2" points="0,118 60,110 120,95 180,70 200,108 260,72 320,55 380,30 440,14 480,8"/>
+              <polyline fill="none" stroke="#f04444" stroke-width="1.6" points="0,116 80,108 160,96 240,82 320,68 400,52 480,44"/>
+              <polyline fill="none" stroke="#4ade80" stroke-width="1.6" points="0,120 80,112 160,102 240,90 320,80 400,66 480,56"/>
+              <polyline fill="none" stroke="#36c5d0" stroke-width="1.6" points="0,121 80,114 160,106 240,96 320,86 400,74 480,62"/>
+              <polyline fill="none" stroke="#c084fc" stroke-width="1.6" points="0,122 80,116 160,108 240,99 320,90 400,78 480,66"/>
+            </svg>
+            <div class="legend" id="stat-legend"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+<script src="core.js?v=14"></script>
+<script src="app.js?v=25"></script>
+</body>
+</html>

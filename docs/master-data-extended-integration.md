@@ -2,7 +2,7 @@
 
 ## Purpose
 
-The master-data integration exports official `master.mdb` data into SweepyMod's `data/` folder so runtime systems can use structured race, skill, trainee, shop, support-card, and succession data instead of relying only on older legacy maps.
+The master-data integration exports official `master.mdb` data into Pre Icarus's `data/` folder so runtime systems can use structured race, skill, trainee, shop, support-card, and succession data instead of relying only on older legacy maps.
 
 ## How it works
 

@@ -1,6 +1,6 @@
-# SweepyModv5.42AI Racing Style Adaptation
+# Pre Icarus v5.42AI Racing Style Adaptation
 
-SweepyModAI now records and trains a conservative racing-style adaptation model.
+Pre Icarus AI now records and trains a conservative racing-style adaptation model.
 The model is designed to learn whether changing from the Racing Settings style
 before a race would have helped, without claiming access to hidden game formulas.
 

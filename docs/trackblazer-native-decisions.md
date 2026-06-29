@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Trackblazer Native Decisions refine training scoring and race selection using native SweepyMod game state instead of Android OCR or screen-coordinate logic.
+Trackblazer Native Decisions refine training scoring and race selection using native Pre Icarus game state instead of Android OCR or screen-coordinate logic.
 
 ## Training scoring
 

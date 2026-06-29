@@ -1,6 +1,6 @@
-# SweepyModv5.25 Umabot Stability Backports
+# Pre Icarus v5.25 Umabot Stability Backports
 
-This build ports low-risk stability and maintainability patterns from Umabot while keeping SweepyMod's existing UI and feature contracts intact.
+This build ports low-risk stability and maintainability patterns from Umabot while keeping Pre Icarus's existing UI and feature contracts intact.
 
 ## Included improvements
 

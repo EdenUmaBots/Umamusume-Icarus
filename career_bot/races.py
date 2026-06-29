@@ -873,6 +873,19 @@ class RacePlanner:
             # trains. Falls through to the smart-mode "nothing wanted -> train".
         is_manual_race_list = source_mode == "manual"
         if valid_wanted and is_manual_race_list:
+            # RIVAL OVERWRITE (Trackblazer): a turn-slot may list a MAIN race plus
+            # one or more rival-overwrite races (extra_race_list = [main, overwrite,
+            # ...] for that turn, order preserved by _resolve_wanted_live). If the
+            # main is NOT the rival the game is presenting this turn but an overwrite
+            # IS, run the rival race instead of the main. Single-race turns and turns
+            # with no offered rival are unaffected (still the main pick). This is the
+            # only place manual mode deviates from strict "run valid_wanted[0]".
+            if is_mant and len(valid_wanted) > 1:
+                rival_map = self.get_rival_race_map(state)
+                if valid_wanted[0] not in rival_map:
+                    for overwrite_pid in valid_wanted[1:]:
+                        if overwrite_pid in rival_map:
+                            return overwrite_pid
             return valid_wanted[0]
 
         # v7.2 — Manual mode is STRICT. If the user picked a manual race list:

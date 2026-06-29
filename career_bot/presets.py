@@ -3,24 +3,6 @@ import re
 from pathlib import Path
 
 
-EXCLUDED_KEYS = {
-    "facility_period_configs",
-    "facility_ratios",
-}
-
-RENAMES = {
-    "race_list": "extra_race_list",
-    "skill_priority_list": "learn_skill_list",
-    "skill_blacklist": "learn_skill_blacklist",
-    "blacklistedSkills": "learn_skill_blacklist",
-    "extraWeight": "extra_weight",
-    "scoreValue": "score_value",
-    "baseScore": "base_score",
-    "statValueMultiplier": "stat_value_multiplier",
-    "witSpecialMultiplier": "wit_special_multiplier",
-    "cureAsapConditions": "cure_asap_conditions",
-}
-
 MANT_SCENARIO_ID = 4
 
 
@@ -105,6 +87,7 @@ def serialize_preset(raw):
         "manual_locks",
         "preferred_distances",
         "preferred_surfaces",
+        "extra_race_list_source",
         "summer_stat_priority",
         "training_stat_priority",
         "event_choice_stat_priority",

@@ -48,7 +48,7 @@ The old Running Style dropdown was removed from Preset Configuration. The duplic
 
 ## Omitted Android-only controls
 
-Training Analysis Validation and YOLO Stat Detection are intentionally not shown because SweepyMod reads native game payloads rather than Android screenshots.
+Training Analysis Validation and YOLO Stat Detection are intentionally not shown because Pre Icarus reads native game payloads rather than Android screenshots.
 
 ## Dependencies and interactions
 
@@ -58,7 +58,7 @@ UI code lives in `public/index.html`, `public/app.js`, and `public/styles.css`. 
 
 Open each settings modal, change values, click SAVE, refresh the page, and confirm the values survive. Run `node --check public/app.js` and full Python tests to validate wiring.
 
-## SweepyModv5.5 placement correction
+## Pre Icarus v5.5 placement correction
 
 The setup workspace grid explicitly places `#bot-settings-section` in the first column immediately above `#preset-section`. This prevents CSS grid auto-placement from pushing the Training Settings, Racing Settings, and Scenario Overrides buttons below Trackblazer or Race Schedule sections when the workspace modal is open.
 

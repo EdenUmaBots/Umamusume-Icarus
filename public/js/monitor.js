@@ -1,4 +1,4 @@
-/* SweepyCL Career Monitor — bottom drawer for live runner log, crash trace,
+/* Pre Icarus Career Monitor — bottom drawer for live runner log, crash trace,
    and current-run stat chart.  Uses separate live_history endpoint so the
    existing Career History archive stays unchanged. */
 // Shared coalescer for /api/career/runner — app.js + monitor.js poll this on
@@ -9,15 +9,22 @@
 window.SweepyRunnerFeed = window.SweepyRunnerFeed || (function () {
     let cache = null, ts = 0, inflight = null;
     const TTL = 900;
+    // v2.1: a hung /api/career/runner fetch used to leave `inflight` set forever,
+    // freezing EVERY runner-fed panel (status, action log, decision reasoning,
+    // monitor) until a full page reload. An AbortController timeout now rejects a
+    // stalled request so `.finally` clears `inflight` and the next tick recovers.
+    const FETCH_TIMEOUT_MS = 8000;
     return {
         get(force) {
             const now = Date.now();
             if (!force && cache && (now - ts) < TTL) return Promise.resolve(cache);
             if (inflight) return inflight;
-            inflight = fetch('/api/career/runner', { headers: { 'Accept': 'application/json' } })
+            const ctrl = (typeof AbortController !== 'undefined') ? new AbortController() : null;
+            const timer = ctrl ? setTimeout(() => { try { ctrl.abort(); } catch (e) {} }, FETCH_TIMEOUT_MS) : null;
+            inflight = fetch('/api/career/runner', { headers: { 'Accept': 'application/json' }, signal: ctrl ? ctrl.signal : undefined })
                 .then(r => r.json().catch(() => ({})).then(d => { if (!r.ok) throw new Error(d.detail || `HTTP ${r.status}`); return d; }))
                 .then(d => { cache = d; ts = Date.now(); return d; })
-                .finally(() => { inflight = null; });
+                .finally(() => { if (timer) clearTimeout(timer); inflight = null; });
             return inflight;
         },
         peek() { return cache; },

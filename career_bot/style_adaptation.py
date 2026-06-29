@@ -1,4 +1,4 @@
-"""Racing-style adaptation telemetry and conservative learner for SweepyCLAI.
+"""Racing-style adaptation telemetry and conservative learner for Pre Icarus AI.
 
 The live runner remains deterministic by default.  This module observes every
 race-style decision, records outcomes in an append-only JSONL stream, and trains

@@ -1,6 +1,6 @@
-# SweepyModv5.43 Local LLM Advisor
+# Pre Icarus v5.43 Local LLM Advisor
 
-SweepyModv5.43 adds an optional Local LLM Advisor that connects to a local OpenAI-compatible chat server. The feature is disabled by default and is designed as an analyst, not a driver.
+Pre Icarus v5.43 adds an optional Local LLM Advisor that connects to a local OpenAI-compatible chat server. The feature is disabled by default and is designed as an analyst, not a driver.
 
 ## What it does
 
@@ -43,7 +43,7 @@ ollama pull qwen3:8b
 ollama run qwen3:8b
 ```
 
-SweepyMod settings:
+Pre Icarus settings:
 
 - Provider: `Ollama`
 - Base URL: `http://localhost:11434/v1`

@@ -34,7 +34,29 @@ _check_required_packages()
 
 from fastapi import FastAPI, HTTPException
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse, HTMLResponse
+try:
+    from career_bot import skill_intercept  # DEV-ONLY web skill-buy intercept (not for beta/public)
+    _SKILL_INTERCEPT_AVAILABLE = True
+except Exception:  # excluded from beta/public builds -> inert stub, feature absent
+    _SKILL_INTERCEPT_AVAILABLE = False
+
+    class skill_intercept:  # type: ignore
+        @staticmethod
+        def is_enabled():
+            return False
+        @staticmethod
+        def get_pending():
+            return None
+        @staticmethod
+        def set_enabled(_x):
+            return False
+        @staticmethod
+        def submit_decision(_a, _i=None):
+            return None
+        @staticmethod
+        def cancel():
+            return None
+from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
 from pydantic import BaseModel, Field
 from pathlib import Path
 from copy import deepcopy
@@ -49,9 +71,19 @@ import frida
 from career_bot import master_data
 from career_bot import trackblazer
 from career_bot import diagnostics
-from career_bot import ai_dataset, ai_advisor, ai_trainer, local_llm, event_outcomes
+from career_bot import ai_dataset, ai_advisor, ai_trainer, local_llm
 from career_bot.config_store import ConfigStore
 from career_bot.runner import CareerRunner, runtime_output_root
+from career_bot.career_start_recovery import resume_career_fields
+from career_bot.report import _build_version
+from career_bot.item_helpers import (
+    _coerce_int,
+    _first_present,
+    _item_id_from_payload,
+    _item_count_from_payload,
+    get_item_count,
+    find_item_count,
+)
 from uma_api.client import UmaClient, get_ticket
 from uma_api.career_recovery import is_career_in_progress_error, resume_active_career
 
@@ -259,7 +291,7 @@ def _write_userdata_pointer(patch):
 
 def _resolve_userdata_dir():
     """Return the directory holding user-customizable files that should
-    persist across SweepyCL version upgrades (presets, settings,
+    persist across Pre Icarus version upgrades (presets, settings,
     accounts, steam token).
 
     Resolution order (v7.1 — adds the user-configurable pointer file):
@@ -584,7 +616,26 @@ from contextlib import asynccontextmanager
 
 @asynccontextmanager
 async def _lifespan(app):
-    # Startup: kick off the background AI auto-trainer (best-effort).
+    # Startup: regenerate master.mdb-derived data tables (moved here from module
+    # scope so a bare `import main` is cheap + side-effect-free). Best-effort: a
+    # generation failure must not prevent the server from starting.
+    try:
+        _md_status = master_data.status(base_dir)
+        if _md_status.get("exists"):
+            _md_result = master_data.generate(base_dir)
+            if _md_result.get("success"):
+                print(f"master.mdb data generated: {_md_status.get('master_mdb_path')}")
+            else:
+                print(f"master.mdb data generation failed: {_md_result.get('detail')}")
+        elif _md_status.get("requires_user_action"):
+            print(f"master.mdb requires user action: {_md_status.get('master_mdb_path')}")
+    except Exception as exc:
+        print(f"master.mdb data generation skipped: {exc}")
+    if STARTUP_WARNINGS:
+        print("Startup warnings (some data loaded empty):")
+        for _w in STARTUP_WARNINGS:
+            print(f"  - {_w}")
+    # Kick off the background AI auto-trainer (best-effort).
     # (Replaces the deprecated @app.on_event("startup") hook.)
     try:
         ai_trainer.start_background_trainer(
@@ -665,33 +716,60 @@ api_delay_scale = 1.0
 preset_store = ConfigStore(DIR, userdata_dir=USERDATA_DIR)
 career_runner = CareerRunner(DIR)
 
-base_dir = Path(__file__).parent.absolute()
-master_data_startup_status = master_data.status(base_dir)
-if master_data_startup_status.get("exists"):
-    master_data_startup_result = master_data.generate(base_dir)
-    if master_data_startup_result.get("success"):
-        print(
-            f"master.mdb data generated: {master_data_startup_status.get('master_mdb_path')}"
-        )
-    else:
-        print(
-            f"master.mdb data generation failed: {master_data_startup_result.get('detail')}"
-        )
-elif master_data_startup_status.get("requires_user_action"):
-    print(
-        f"master.mdb requires user action: {master_data_startup_status.get('master_mdb_path')}"
+# DEV-ONLY raw game-endpoint debug route (POST /api/debug/call). Exposes the
+# generic UmaClient.call() so a sniffer-discovered endpoint is callable without a
+# wrapper. EXCLUDED from public/beta builds -> when career_bot/raw_api.py is
+# absent this import fails and the route simply doesn't exist (404), same as the
+# skill-buy intercept. Guards (logged-in, not-mid-career, secret-masking) live in
+# raw_api.raw_call. active_client/career_runner are read lazily at request time.
+try:
+    from career_bot import raw_api as _raw_api
+    _raw_api.register(
+        app,
+        lambda: active_client,
+        lambda: bool(career_runner.snapshot().get("running")),
     )
+except Exception:
+    pass
+
+base_dir = Path(__file__).parent.absolute()
+# master.mdb-derived data tables are (re)generated in _lifespan at startup, not
+# at import time, so importing this module stays cheap and side-effect-free
+# (which is what unblocks real behavioral route tests instead of source-grep).
+STARTUP_WARNINGS = []
 chara_path = base_dir / "data" / "chara_list.json"
 support_path = base_dir / "data" / "support_list.json"
 images_dir = base_dir / "data" / "images"
 skill_icons_dir = base_dir / "data" / "skill_icons"
 
 if chara_path.exists():
-    with open(chara_path, "r", encoding="utf-8") as f:
-        chara_map = json.load(f)
+    try:
+        with open(chara_path, "r", encoding="utf-8") as f:
+            chara_map = json.load(f)
+    except Exception as exc:
+        chara_map = {}
+        STARTUP_WARNINGS.append(f"chara_list.json failed to load: {exc}")
+
+# Per-card VERSIONED trainee names (card_id -> "Name (Version)", e.g.
+# "Air Shakur (unsigned)") from data/card_names_core.json (tools/extract_card_names.py).
+# Used for the Setup trainee picker so each owned version shows its own version name
+# (its outfit icon is already per-card_id). Falls back to chara_map when absent.
+card_names_map = {}
+_card_names_path = base_dir / "data" / "card_names_core.json"
+if _card_names_path.exists():
+    try:
+        with open(_card_names_path, "r", encoding="utf-8") as f:
+            card_names_map = json.load(f)
+    except Exception as exc:
+        card_names_map = {}
+        STARTUP_WARNINGS.append(f"card_names_core.json failed to load: {exc}")
 if support_path.exists():
-    with open(support_path, "r", encoding="utf-8") as f:
-        support_map = json.load(f)
+    try:
+        with open(support_path, "r", encoding="utf-8") as f:
+            support_map = json.load(f)
+    except Exception as exc:
+        support_map = {}
+        STARTUP_WARNINGS.append(f"support_list.json failed to load: {exc}")
 
 
 
@@ -1002,7 +1080,6 @@ def _event_choice_paths():
     return (
         _runtime_json_path("events_seen.json"),
         _runtime_json_path("event_overrides.json"),
-        base_dir / "data" / "event_outcomes.json",
     )
 
 
@@ -1016,6 +1093,9 @@ def _discord_logging_config(redacted=False):
         "send_turn_logs": bool(cfg.get("send_turn_logs", True)),
         "send_career_summary": bool(cfg.get("send_career_summary", True)),
         "redact_sensitive": bool(cfg.get("redact_sensitive", True)),
+        "notify_on_finish": bool(cfg.get("notify_on_finish", True)),
+        "notify_on_crash": bool(cfg.get("notify_on_crash", True)),
+        "notify_on_epithet": bool(cfg.get("notify_on_epithet", False)),
     }
     if redacted and result["webhook_url"]:
         tail = result["webhook_url"][-8:]
@@ -1550,12 +1630,20 @@ def _guest_dedupe_key(item):
     return ("card_name_rank", cid, str(item.get("name") or "").strip().lower(), str(item.get("rank") or ""))
 
 
-def normalize_guest_parents(data):
+def normalize_guest_parents(data, strict=False):
     """Extract unique real guests/rentals while excluding owned veteran parents.
 
     The API can surface the same rental through many paths. It can also expose
     local trained characters in generic arrays. This normalizer keeps only one
     display card per guest identity and filters likely owned/veteran rows.
+
+    strict=True restricts extraction to the dedicated rental/guest/follow arrays
+    (``known_arrays``) only. Use it against the LOGIN home payload (which lacks
+    real guest arrays): the broad summary_user_info_array scan +
+    discover_guest_parent_sources heuristic otherwise mis-classifies arbitrary
+    umas (friends/recommended/own chara) as guest parents -- the "random umas"
+    bug. The full heuristic is correct ONLY against the pre_single_mode payload,
+    which genuinely carries borrowable guest/rental parents.
     """
     guests = []
     seen = set()
@@ -1600,7 +1688,7 @@ def normalize_guest_parents(data):
         for item in data.get(key, []) or []:
             add_item(item, source=key, path=key)
 
-    for user in data.get("summary_user_info_array", []) or []:
+    for user in (data.get("summary_user_info_array", []) or []) if not strict else []:
         for path, arr in _iter_nested_arrays(user):
             if any(token in path.lower() for token in ("rental", "succession", "guest", "parent", "chara", "follow")):
                 for item in arr:
@@ -1608,7 +1696,7 @@ def normalize_guest_parents(data):
         if _guest_parent_like(user, "summary_user_info_array"):
             add_item(user, owner=user, source="summary_user_info_array", path="summary_user_info_array")
 
-    for source in discover_guest_parent_sources(data):
+    for source in (discover_guest_parent_sources(data) if not strict else []):
         for item in source["items"]:
             add_item(item, source=source["path"], path=source["path"])
 
@@ -1623,42 +1711,6 @@ def normalize_guest_parents(data):
     return guests
 
 
-def fallback_guest_parents_from_friend_summaries(data):
-    """Last-resort visual guest list from followed-user/friend summaries.
-
-    This is intentionally marked incomplete. It prevents a blank Guest Parents
-    panel when the API exposes followed users but hides full guest lineage.
-    """
-    friends, _, source = normalize_friend_cards(data)
-    guests = []
-    seen = set()
-    for idx, friend in enumerate(friends):
-        key = (str(friend.get("viewer_id") or ""), str(friend.get("support_card_id") or friend.get("card_id") or ""))
-        if key in seen:
-            continue
-        seen.add(key)
-        support_id = friend.get("support_card_id") or friend.get("card_id") or 100101
-        guests.append({
-            "instance_id": f"follow-{friend.get('viewer_id', idx)}",
-            "card_id": str(support_id or 100101),
-            "name": friend.get("support_name") or friend.get("name") or "Followed Trainer",
-            "rank": 0,
-            "tree": {
-                "self": _empty_lineage(support_id or 100101, friend.get("support_name") or friend.get("name") or "Followed Trainer"),
-                "p1": _empty_lineage(),
-                "p2": _empty_lineage(),
-                "gp1": _empty_lineage(),
-                "gp2": _empty_lineage(),
-                "gp3": _empty_lineage(),
-                "gp4": _empty_lineage(),
-            },
-            "viewer_id": friend.get("viewer_id", 0),
-            "trainer_name": friend.get("name", ""),
-            "source": f"fallback_friend_summary:{source}",
-            "path": "fallback_friend_summary",
-            "incomplete": True,
-        })
-    return guests
 
 
 
@@ -2000,20 +2052,32 @@ def _pre_start_refresh(req):
 skill_data = {}
 skill_data_path = base_dir / "data" / "skill_data.json"
 if skill_data_path.exists():
-    with open(skill_data_path, "r", encoding="utf-8") as f:
-        skill_data = json.load(f)
+    try:
+        with open(skill_data_path, "r", encoding="utf-8") as f:
+            skill_data = json.load(f)
+    except Exception as exc:
+        skill_data = {}
+        STARTUP_WARNINGS.append(f"skill_data.json failed to load: {exc}")
 
 factor_map = {}
 factor_map_path = base_dir / "data" / "factor_map.json"
 if factor_map_path.exists():
-    with open(factor_map_path, "r", encoding="utf-8") as f:
-        factor_map = json.load(f)
+    try:
+        with open(factor_map_path, "r", encoding="utf-8") as f:
+            factor_map = json.load(f)
+    except Exception as exc:
+        factor_map = {}
+        STARTUP_WARNINGS.append(f"factor_map.json failed to load: {exc}")
 
 race_map = {}
 race_map_path = base_dir / "data" / "race_map.json"
 if race_map_path.exists():
-    with open(race_map_path, "r", encoding="utf-8") as f:
-        race_map = json.load(f)
+    try:
+        with open(race_map_path, "r", encoding="utf-8") as f:
+            race_map = json.load(f)
+    except Exception as exc:
+        race_map = {}
+        STARTUP_WARNINGS.append(f"race_map.json failed to load: {exc}")
 
 win_saddle_core = {}
 win_saddle_path = base_dir / "data" / "win_saddle_core.json"
@@ -2220,73 +2284,10 @@ def get_chara_factor_ids(chara):
     return [f.get("factor_id", 0) for f in chara.get("factor_info_array", [])]
 
 
-def _coerce_int(value, default=0):
-    try:
-        if value is None or value == "":
-            return default
-        return int(value)
-    except Exception:
-        return default
-
-
-def _first_present(mapping, keys):
-    if not isinstance(mapping, dict):
-        return None
-    for key in keys:
-        if key in mapping and mapping.get(key) is not None:
-            return mapping.get(key)
-    return None
-
-
-def _item_id_from_payload(item):
-    return _coerce_int(_first_present(item or {}, ("item_id", "itemId", "id")), 0)
-
-
-def _item_count_from_payload(item):
-    # Live account payloads have drifted across endpoint versions.  The old TP
-    # restore code only accepted `number`, which can make owned Toughness 30 look
-    # missing when the API reports the same value as `item_num`, `num`, or
-    # another count-shaped field.
-    return _coerce_int(
-        _first_present(
-            item or {},
-            (
-                "number",
-                "item_num",
-                "itemNum",
-                "num",
-                "count",
-                "quantity",
-                "owned_num",
-                "own_num",
-                "item_count",
-            ),
-        ),
-        0,
-    )
-
-
-def get_item_count(item_list, item_id):
-    wanted = _coerce_int(item_id, item_id)
-    for item in item_list or []:
-        current = _item_id_from_payload(item)
-        if current == wanted:
-            return _item_count_from_payload(item)
-    return 0
-
-
-def find_item_count(item_list, item_id):
-    """Return an item count only when the payload actually includes the item.
-
-    Career responses can include partial user_item arrays. Missing item 32 means
-    "unchanged", not zero, so TP item counts fall back to the cached client map.
-    """
-    wanted = _coerce_int(item_id, item_id)
-    for item in item_list or []:
-        current = _item_id_from_payload(item)
-        if current == wanted:
-            return _item_count_from_payload(item)
-    return None
+# Item-count helpers (_coerce_int, _first_present, _item_id_from_payload,
+# _item_count_from_payload, get_item_count, find_item_count) extracted to
+# career_bot/item_helpers.py and re-imported at the top of this module so
+# main.<name> and intra-main.py callers resolve unchanged.
 
 
 def _master_mdb_path_for_lookup():
@@ -2800,7 +2801,7 @@ async def reopen_userdata_intro():
 async def tp_restore_status():
     """Backward-compatible alias for older callers.
 
-    SweepyCL now uses the Umabot TP recovery item system. The old
+    Pre Icarus now uses the Umabot TP recovery item system. The old
     Toughness/Carats selector is intentionally not reported here.
     """
     return await get_tp_recovery_settings()
@@ -2827,6 +2828,9 @@ class StartCareerRequest(BaseModel):
     burn_clocks: bool = False
     carats_enabled: bool = False
     max_clocks_per_career: int = 0
+    clocks_g1_debut_only: bool = False
+    max_retries_per_race: int = -1
+    finalize_single_runs: bool = False
     tp_restore_currency: str = "carats"
     tp_restore_mode: str = ""
     tp_restore_allow_carats_fallback: bool = False
@@ -2855,6 +2859,9 @@ class RunCareerRequest(BaseModel):
     burn_clocks: bool = False
     carats_enabled: bool = False
     max_clocks_per_career: int = 0
+    clocks_g1_debut_only: bool = False
+    max_retries_per_race: int = -1
+    finalize_single_runs: bool = False
     dev_mode: bool = False
     run_count: int = 1  # 1 = one career, N = bounded loop, 0 = loop until stopped.
     tp_restore_currency: str = "carats"
@@ -2882,11 +2889,6 @@ class EventOverrideRequest(BaseModel):
     choice: int = -1  # -1 clears runtime override and returns to automatic scoring.
 
 
-class EventOutcomeImportRequest(BaseModel):
-    source_path: str = ""
-    replace: bool = False
-
-
 class NativeCaptureRequest(BaseModel):
     enabled: bool = True
 
@@ -2894,6 +2896,9 @@ class NativeCaptureRequest(BaseModel):
 class DiscordWebhookRequest(BaseModel):
     webhook_url: str = ""
     enabled: bool = True
+    notify_on_finish: bool = True
+    notify_on_crash: bool = True
+    notify_on_epithet: bool = False
 
 
 class SavePresetRequest(BaseModel):
@@ -2986,80 +2991,156 @@ async def set_ui_theme(req: ApiThemeRequest):
     return {"theme": theme}
 
 
-# v7.6 — scraped gametora event-effect overlay. Fills "effect not in database"
-# gaps for events the bot has seen, joined purely on numeric story_id.
-_EVENT_EFFECTS_SCRAPED = {"data": None}
+# Event-effect overlay sourced from gametora.com + master.mdb (tools/
+# gametora_event_scraper.py). Fills "effect not in database" gaps for events the
+# bot has seen. Keyed by name slug, so seen events are resolved by event NAME
+# (falling back to story_id for any future story-id-keyed source).
+_EVENT_EFFECTS_SCRAPED = {"data": None, "by_name": None}
 
 
 def _load_event_effects_scraped():
     if _EVENT_EFFECTS_SCRAPED["data"] is None:
         try:
-            p = base_dir / "data" / "event_effects_scraped.json"
-            _EVENT_EFFECTS_SCRAPED["data"] = json.loads(p.read_text(encoding="utf-8")) if p.exists() else {}
+            p = base_dir / "data" / "event_effects.json"
+            if not p.exists():
+                p = base_dir / "data" / "event_effects_game8.json"   # legacy fallback
+            raw = json.loads(p.read_text(encoding="utf-8")) if p.exists() else {}
         except Exception:
-            _EVENT_EFFECTS_SCRAPED["data"] = {}
+            raw = {}
+        data = raw if isinstance(raw, dict) else {}
+        _EVENT_EFFECTS_SCRAPED["data"] = data
+        idx = {}
+        for row in data.values():
+            if isinstance(row, dict):
+                nm = " ".join(str(row.get("event_name") or "").strip().split()).lower()
+                if nm and nm not in idx:
+                    idx[nm] = row
+        _EVENT_EFFECTS_SCRAPED["by_name"] = idx
     return _EVENT_EFFECTS_SCRAPED["data"]
+
+
+def _scraped_row_for(sid, event_name):
+    """Resolve a scraped event-effects row by story_id, then by event name."""
+    data = _load_event_effects_scraped()
+    row = data.get(sid)
+    if isinstance(row, dict):
+        return row
+    nm = " ".join(str(event_name or "").strip().split()).lower()
+    by_name = _EVENT_EFFECTS_SCRAPED.get("by_name") or {}
+    return by_name.get(nm) if nm else {}
+
+
+def _event_source_name(source_url):
+    """BUG #4a: derive a searchable character / support-card name from a gametora
+    source_url like .../supports/10017-gold-city or .../characters/100101-special-week
+    -> 'Gold City'. Lets Event Choices be searched by the character the card is
+    attached to (no rescrape needed; the slug is already in event_effects.json)."""
+    try:
+        m = re.search(r"/(?:supports|characters)/\d+-([a-z0-9-]+)", str(source_url or ""))
+        return m.group(1).replace("-", " ").title() if m else ""
+    except Exception:
+        return ""
+
+
+def _running_preset_name():
+    """BUG 4b: the preset name of the CURRENTLY-RUNNING career (or None when idle),
+    so forced event overrides land on the preset the runner is actually using
+    rather than whatever preset is merely 'active' in the UI."""
+    try:
+        snap = career_runner.snapshot()
+        return snap.get("preset") if snap.get("running") else None
+    except Exception:
+        return None
 
 
 @app.get("/api/events")
 async def get_event_choices(cards: str = ""):
-    seen_path, overrides_path, db_path = _event_choice_paths()
+    seen_path, overrides_path = _event_choice_paths()
     seen = _read_json_file(seen_path)
-    # Per-preset event choices live on the active preset; merge the legacy global
-    # file underneath for display so pre-migration overrides still show.
-    overrides = {**(_read_json_file(overrides_path) or {}), **preset_store.read_event_overrides()}
-    db = _read_json_file(db_path)
-    scraped = _load_event_effects_scraped()
+    # Per-preset event choices live on the running preset (when a career is
+    # running) else the active preset; merge the legacy global file underneath for
+    # display so pre-migration overrides still show. (BUG 4b: show what will apply.)
+    overrides = {**(_read_json_file(overrides_path) or {}), **preset_store.read_event_overrides(_running_preset_name())}
     support_filter = {int(x) for x in re.split(r"[,\s]+", str(cards or "")) if x.strip().isdigit()}
 
     merged = {}
-    for sid in set(seen.keys()) | set(db.keys()):
+    for sid in seen.keys():
         seen_row = seen.get(sid) if isinstance(seen.get(sid), dict) else {}
-        db_row = db.get(sid) if isinstance(db.get(sid), dict) else {}
         support_card_id = _safe_int(seen_row.get("support_card_id"))
         if support_filter and support_card_id and support_card_id not in support_filter:
             continue
-        outcomes = db_row.get("outcomes") or {}
-        # Overlay scraped effects only when we don't already have outcomes, so
-        # curated/dumper-imported data always wins.
-        scraped_row = scraped.get(sid) if isinstance(scraped.get(sid), dict) else {}
-        filled_from_scrape = False
-        if (not outcomes) and scraped_row:
-            sc = scraped_row.get("choices") or {}
-            outcomes = {str(k): (v.get("effect") or "") for k, v in sc.items() if isinstance(v, dict) and v.get("effect")}
-            filled_from_scrape = bool(outcomes)
-        # v7.6.3: surface how well-backed the outcome data is. Natively-observed
-        # entries (recorded from the bot's own runs) carry an observation count
-        # and confidence; this lets the UI show an "observed Nx" badge so users
-        # can tell data-backed events from guesses.
-        observations = _safe_int(db_row.get("observations"))
-        confidence = str(db_row.get("confidence") or "")
-        kb_source = str(db_row.get("source") or "")
+        # gametora+master.mdb is the sole effect/outcome source now (the
+        # event_outcomes knowledge base was removed); resolve the seen event by name.
+        scraped_row = _scraped_row_for(sid, seen_row.get("event_name"))
+        sc = (scraped_row.get("choices") if isinstance(scraped_row, dict) else {}) or {}
+        outcomes = {str(k): (v.get("effect") or "") for k, v in sc.items() if isinstance(v, dict) and v.get("effect")}
+        # Derive the TRUE choice count: seen num_choices -> captured
+        # choice_select_indices -> game8 choice count -> outcomes length.
+        true_num_choices = _safe_int(seen_row.get("num_choices"))
+        if not true_num_choices:
+            csi = seen_row.get("choice_select_indices")
+            if isinstance(csi, list) and csi:
+                true_num_choices = len(csi)
+        if not true_num_choices:
+            true_num_choices = len(sc) if isinstance(sc, dict) else 0
+        if not true_num_choices:
+            true_num_choices = len(outcomes)
         merged[sid] = {
             "story_id": sid,
             "event_id": seen_row.get("event_id", ""),
-            "event_name": seen_row.get("event_name") or db_row.get("event_name") or scraped_row.get("event_name") or "",
+            "event_name": seen_row.get("event_name") or scraped_row.get("event_name") or "",
             "support_card_id": support_card_id,
-            "num_choices": int(seen_row.get("num_choices") or len(outcomes) or 0),
+            "category": "support_card" if support_card_id else "story",
+            "num_choices": int(true_num_choices or 0),
+            "choice_select_indices": list(seen_row.get("choice_select_indices") or []),
             "auto_pick": seen_row.get("picked"),
-            "auto_source": seen_row.get("source") or ("db" if db_row else ("gametora" if filled_from_scrape else "")),
+            "auto_source": seen_row.get("source") or ("gametora" if outcomes else ""),
             "count": int(seen_row.get("count") or 0),
             "override": int(overrides[sid]) if sid in overrides else None,
             "outcomes": outcomes if isinstance(outcomes, dict) else {},
-            "observations": observations,
-            "confidence": confidence,
-            "data_source": kb_source or ("gametora" if filled_from_scrape else ("db" if db_row else "")),
+            "source_name": _event_source_name((scraped_row or {}).get("source_url")),
         }
-    events = sorted(merged.values(), key=lambda row: (row.get("support_card_id") or 0, -int(row.get("count") or 0), row.get("event_name") or "~", row.get("story_id") or ""))
+    # Also list every catalog event so the panel is populated even before a career
+    # has run (events_seen.json may be empty). The event slug is used as the row's
+    # story_id so the existing override pipeline (keyed by story_id) keeps working.
+    # This runs unconditionally: a deck/cards filter only narrows the seen-event
+    # rows above (which carry a real support card id), never this catalog, so the
+    # panel is never empty just because a deck is selected.
+    catalog = _load_event_effects_scraped()
+    for slug, row in catalog.items():
+        if slug == "_meta" or slug in seen or slug in merged or not isinstance(row, dict):
+            continue
+        sc = row.get("choices") if isinstance(row.get("choices"), dict) else {}
+        g_outcomes = {str(k): (v.get("effect") or "") for k, v in sc.items() if isinstance(v, dict) and v.get("effect")}
+        merged[slug] = {
+            "story_id": slug,
+            "event_id": "",
+            "event_name": row.get("event_name") or "",
+            "support_card_id": 0,
+            "category": "support_card" if row.get("category") == "support_card" else "story",
+            "num_choices": len(sc),
+            "choice_select_indices": [int(k) for k in sc.keys() if str(k).lstrip("-").isdigit()],
+            "auto_pick": None,
+            "auto_source": "gametora",
+            "count": 0,
+            "override": int(overrides[slug]) if slug in overrides else None,
+            "outcomes": g_outcomes,
+            "source_name": _event_source_name(row.get("source_url")),
+        }
+    # Sort by category first (Story before Support Card) so each tab renders a
+    # stable, grouped list; catalog support-card rows have support_card_id 0, so the
+    # category key — not the card id — drives grouping.
+    events = sorted(merged.values(), key=lambda row: (1 if row.get("category") == "support_card" else 0, row.get("support_card_id") or 0, -int(row.get("count") or 0), row.get("event_name") or "~", row.get("story_id") or ""))
     return {"success": True, "events": events}
 
 
-def _migrate_legacy_event_overrides():
+def _migrate_legacy_event_overrides(name=None):
     """Fold any entries from the legacy global event_overrides.json into the
-    active preset's per-preset event_overrides, then empty the global file so it
-    no longer wins over the preset in the runner. Returns the merged dict."""
-    overrides = preset_store.read_event_overrides()
-    _, overrides_path, _ = _event_choice_paths()
+    target preset's per-preset event_overrides (running preset when given, else
+    active), then empty the global file so it no longer wins over the preset in
+    the runner. Returns the merged dict."""
+    overrides = preset_store.read_event_overrides(name)
+    _, overrides_path = _event_choice_paths()
     legacy = _read_json_file(overrides_path) or {}
     if legacy:
         for k, v in legacy.items():
@@ -3073,23 +3154,26 @@ async def set_event_choice_override(req: EventOverrideRequest):
     sid = str(req.story_id or "").strip()
     if not sid:
         return {"success": False, "detail": "story_id required"}
-    # Event choices are now per-preset: stored on the active preset (read by the
-    # runner via preset.event_overrides), not the shared global file.
-    overrides = _migrate_legacy_event_overrides()
+    # Event choices are per-preset: store on the RUNNING preset when a career is
+    # running (so the forced choice actually applies this career — BUG 4b), else
+    # the active preset. Read by the runner via preset.event_overrides.
+    target = _running_preset_name()
+    overrides = _migrate_legacy_event_overrides(target)
     if int(req.choice) < 0:
         overrides.pop(sid, None)
     else:
         overrides[sid] = int(req.choice)
-    saved = preset_store.save_event_overrides(overrides)
+    saved = preset_store.save_event_overrides(overrides, name=target)
     return {"success": True, "story_id": sid, "override": saved.get(sid)}
 
 
 # v6.7.25 — bulk reset: wipes every saved override so all events fall back to Auto.
 @app.post("/api/events/overrides/clear")
 async def clear_all_event_choice_overrides():
-    overrides = _migrate_legacy_event_overrides()
+    target = _running_preset_name()
+    overrides = _migrate_legacy_event_overrides(target)
     cleared = len(overrides)
-    preset_store.save_event_overrides({})
+    preset_store.save_event_overrides({}, name=target)
     return {"success": True, "cleared": cleared}
 
 
@@ -3352,10 +3436,6 @@ async def get_support_details(ids: str = "", lbs: str = "", trainee_card_id: int
     }
 
 
-def _native_capture_enabled():
-    return bool(_read_settings().get("native_event_capture", True))
-
-
 def _skill_optimizer_enabled():
     # #7 — value-per-SP skill-purchase optimizer. OFF by default so the existing
     # priority-order buying is unchanged unless the user opts in.
@@ -3400,53 +3480,6 @@ async def set_skill_optimizer(req: NativeCaptureRequest = None):
     return {"success": True, "enabled": bool(payload.enabled)}
 
 
-@app.get("/api/events/outcome-kb")
-async def get_event_outcome_kb():
-    data = event_outcomes.summary(base_dir)
-    # v7.6.2: surface native capture state so the KB panel can show that the
-    # bot auto-records outcomes from its own runs (no Frida/dumper required).
-    try:
-        data["native_capture_enabled"] = _native_capture_enabled()
-        data["native_observed_events"] = sum(
-            1 for row in (event_outcomes.load_outcomes(base_dir) or {}).values()
-            if isinstance(row, dict) and str(row.get("source") or "").startswith("native")
-        )
-    except Exception:
-        pass
-    return data
-
-
-@app.get("/api/events/native-capture")
-async def get_native_capture():
-    return {"success": True, "enabled": _native_capture_enabled()}
-
-
-@app.post("/api/events/native-capture")
-async def set_native_capture(req: NativeCaptureRequest = None):
-    payload = req or NativeCaptureRequest()
-    settings = _read_settings()
-    settings["native_event_capture"] = bool(payload.enabled)
-    _write_settings(settings)
-    try:
-        career_runner.native_event_capture = bool(payload.enabled)
-    except Exception:
-        pass
-    return {"success": True, "enabled": bool(payload.enabled)}
-
-
-@app.post("/api/events/outcome-kb/import")
-async def import_event_outcome_kb(req: EventOutcomeImportRequest = None):
-    payload = req or EventOutcomeImportRequest()
-    try:
-        return event_outcomes.import_outcomes(
-            base_dir,
-            source_path=(payload.source_path.strip() or None),
-            replace=bool(payload.replace),
-        )
-    except Exception as exc:
-        raise HTTPException(status_code=400, detail=f"Event outcome import failed: {exc}")
-
-
 @app.get("/api/settings/discord-webhook")
 async def get_discord_webhook():
     cfg = _discord_logging_config(redacted=True)
@@ -3461,6 +3494,9 @@ async def set_discord_webhook(req: DiscordWebhookRequest):
         "send_turn_logs": True,
         "send_career_summary": True,
         "redact_sensitive": True,
+        "notify_on_finish": bool(req.notify_on_finish),
+        "notify_on_crash": bool(req.notify_on_crash),
+        "notify_on_epithet": bool(req.notify_on_epithet),
     })
     return {"success": True, "configured": bool(cfg.get("enabled") and cfg.get("webhook_url")), **cfg}
 
@@ -3718,15 +3754,9 @@ def _trainee_stat_priority(card_id):
         )
     except Exception:
         pass
-    priority = []
-    try:
-        prof = json.loads((base / f"{profile_name}.json").read_text(encoding="utf-8"))
-        priority = (prof.get("training_scorer_overrides") or {}).get("stat_priority") or []
-    except Exception:
-        priority = []
-    priority = [str(s).lower() for s in priority if s]
-    if not priority:
-        priority = list(_DEFAULT_STAT_PRIORITY)
+    # v2.1: per-profile stat priority (the old training_scorer_overrides) was
+    # removed with the scorer; support recommendations use the meta default.
+    priority = list(_DEFAULT_STAT_PRIORITY)
     return priority, profile_name
 
 
@@ -4253,35 +4283,59 @@ def api_character_profile_list():
         raise HTTPException(status_code=500, detail=str(exc))
 
 
-@app.post("/api/character-profile/mode")
-def api_character_profile_mode(req: dict):
-    """Toggle the training_scorer_mode for a named profile.
-
-    Body: ``{"profile_id": "oguri_cap", "mode": "authoritative" | "hint" | "disabled"}``
-
-    Writes the change to the profile's JSON file on disk.  Per-scenario
-    overrides aren't supported via this endpoint -- edit the JSON directly
-    for that.
-    """
+@app.get("/api/character-profile/roster")
+def api_character_profile_roster():
+    """Full trainee roster (name + card_id + base aptitudes) for the Smart Race
+    Solver's character picker. Replaces the v3 modal's hardcoded ~16-entry list.
+    Aptitude sparks default to 0 (the solve flow adds parent sparks on top)."""
     try:
-        profile_id = str((req or {}).get("profile_id") or "").strip()
-        mode = str((req or {}).get("mode") or "").strip().lower()
-        if mode not in ("hint", "authoritative", "disabled"):
-            raise HTTPException(status_code=400, detail=f"invalid mode: {mode!r}")
-        if not profile_id or "/" in profile_id or ".." in profile_id:
-            raise HTTPException(status_code=400, detail="invalid profile_id")
-        from career_bot import character_profiles
-        path = Path(DIR) / "data" / character_profiles.PROFILES_DIRNAME / f"{profile_id}.json"
-        if not path.exists():
-            raise HTTPException(status_code=404, detail=f"profile not found: {profile_id}")
-        with path.open("r", encoding="utf-8") as f:
-            payload = json.load(f)
-        payload["training_scorer_mode"] = mode
-        with path.open("w", encoding="utf-8") as f:
-            json.dump(payload, f, indent=2, ensure_ascii=False)
-        return {"success": True, "profile_id": profile_id, "mode": mode}
-    except HTTPException:
-        raise
+        import json as _json
+        path = base_dir / "data" / "trainee_profiles_core.json"
+        rows = _json.loads(path.read_text(encoding="utf-8"))
+        DMAP = (("Sprint", "sprint"), ("Mile", "mile"), ("Medium", "medium"), ("Long", "long"))
+        TMAP = (("Turf", "turf"), ("Dirt", "dirt"))
+        seen = set()
+        out = []
+        for r in rows:
+            name = str(r.get("name") or "").strip()
+            cid = r.get("card_id")
+            if not name or not cid or name in seen:
+                continue
+            seen.add(name)
+            d = r.get("distance_aptitude") or {}
+            t = r.get("track_aptitude") or {}
+            apt = {lab: [str(d.get(key) or "G").upper(), 0] for lab, key in DMAP}
+            apt.update({lab: [str(t.get(key) or "G").upper(), 0] for lab, key in TMAP})
+            out.append({"name": name, "id": int(cid), "apt": apt})
+        out.sort(key=lambda x: x["name"])
+        return {"success": True, "characters": out}
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+@app.get("/api/character-profile/colors")
+def api_character_profile_colors():
+    """Per-card UI accent colours (card_id -> {main, sub, border} hex) for the v3
+    per-trainee theming. Keyed by card_id (NOT deduped by name) so the active
+    career's exact card resolves to its own palette. Read-only metadata; the
+    frontend fetches it once and caches it."""
+    try:
+        import json as _json
+        path = base_dir / "data" / "trainee_profiles_core.json"
+        rows = _json.loads(path.read_text(encoding="utf-8"))
+        colors = {}
+        for r in rows:
+            cid = r.get("card_id")
+            uc = r.get("ui_colors") or {}
+            main = str(uc.get("main") or uc.get("border") or "").strip().lstrip("#")
+            if not cid or not main:
+                continue
+            colors[str(int(cid))] = {
+                "main": main,
+                "sub": str(uc.get("sub") or main).strip().lstrip("#"),
+                "border": str(uc.get("border") or main).strip().lstrip("#"),
+            }
+        return {"success": True, "colors": colors}
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc))
 
@@ -4352,81 +4406,6 @@ def api_character_profile_epithets(req: dict):
         return {"success": True, "profile_id": profile_id,
                 "target_epithets": payload.get("target_epithets", []),
                 "forced_epithets": payload.get("forced_epithets", [])}
-    except HTTPException:
-        raise
-    except Exception as exc:
-        raise HTTPException(status_code=500, detail=str(exc))
-
-
-@app.post("/api/character-profile/training-targets")
-def api_character_profile_training_targets(req: dict):
-    """Edit a profile's per-distance stat targets, stat priority, and the
-    parent-aware target-adaptation toggle.  Writes to the profile JSON.
-
-    Body (all fields optional except profile_id)::
-
-        {"profile_id": "oguri_cap",
-         "stat_priority": ["speed","power","stamina","wit","guts"],
-         "stat_targets": {"long": {"speed":1050,"stamina":1100, ...}, ...},
-         "adapt_targets_to_inheritance": true}
-
-    ``stat_targets`` may be partial (only the distances/stats provided are
-    updated).  Values clamp to 0..1500.  ``stat_priority`` must be a
-    permutation of the five stats.
-    """
-    STATS = ("speed", "stamina", "power", "guts", "wit")
-    DISTS = ("sprint", "mile", "medium", "long")
-    try:
-        profile_id = str((req or {}).get("profile_id") or "").strip()
-        if not profile_id or "/" in profile_id or ".." in profile_id:
-            raise HTTPException(status_code=400, detail="invalid profile_id")
-        from career_bot import character_profiles
-        path = Path(DIR) / "data" / character_profiles.PROFILES_DIRNAME / f"{profile_id}.json"
-        if not path.exists():
-            raise HTTPException(status_code=404, detail=f"profile not found: {profile_id}")
-        with path.open("r", encoding="utf-8") as f:
-            payload = json.load(f)
-        overrides = payload.get("training_scorer_overrides")
-        if not isinstance(overrides, dict):
-            overrides = {}
-            payload["training_scorer_overrides"] = overrides
-
-        if "stat_priority" in (req or {}):
-            sp = [str(s).strip().lower() for s in (req["stat_priority"] or [])]
-            if sorted(sp) != sorted(STATS):
-                raise HTTPException(status_code=400,
-                    detail="stat_priority must be a permutation of speed/stamina/power/guts/wit")
-            overrides["stat_priority"] = sp
-
-        if "stat_targets" in (req or {}):
-            incoming = req["stat_targets"] or {}
-            if not isinstance(incoming, dict):
-                raise HTTPException(status_code=400, detail="stat_targets must be an object")
-            targets = overrides.get("stat_targets")
-            targets = dict(targets) if isinstance(targets, dict) else {}
-            for dist, row in incoming.items():
-                if dist not in DISTS or not isinstance(row, dict):
-                    continue
-                cur = dict(targets.get(dist) or {})
-                for stat, val in row.items():
-                    if stat not in STATS:
-                        continue
-                    try:
-                        cur[stat] = max(0, min(1500, int(val)))
-                    except (TypeError, ValueError):
-                        continue
-                targets[dist] = cur
-            overrides["stat_targets"] = targets
-
-        if "adapt_targets_to_inheritance" in (req or {}):
-            payload["adapt_targets_to_inheritance"] = bool(req["adapt_targets_to_inheritance"])
-
-        with path.open("w", encoding="utf-8") as f:
-            json.dump(payload, f, indent=2, ensure_ascii=False)
-        return {"success": True, "profile_id": profile_id,
-                "stat_priority": overrides.get("stat_priority"),
-                "stat_targets": overrides.get("stat_targets"),
-                "adapt_targets_to_inheritance": payload.get("adapt_targets_to_inheritance", False)}
     except HTTPException:
         raise
     except Exception as exc:
@@ -4515,7 +4494,218 @@ async def save_skill_config(req: SaveSkillConfigRequest):
 
 @app.get("/api/smart-solver/config")
 async def get_smart_solver_config(preset: str = ""):
-    return {"success": True, "config": preset_store.read_solver_config(preset or None)}
+    cfg = preset_store.read_solver_config(preset or None)
+    # Also surface the persisted race-list source ("manual"/"smart") so the UI can
+    # restore the planner mode on load instead of defaulting to "smart" from browser
+    # localStorage -- that drift is what silently let the solver take over a manual
+    # schedule. read_one(None) resolves to the active preset.
+    saved = preset_store.read_one(preset or None) or {}
+    source = str(saved.get("extra_race_list_source") or "").strip().lower()
+    return {"success": True, "config": cfg, "source": source}
+
+
+@app.get("/api/trackblazer/races")
+def api_trackblazer_races():
+    """Race calendar for the v3 manual race picker. Returns the graded + Open races
+    (G1/G2/G3/OP) keyed by program_id — the same id the engine matches against in
+    extra_race_list. Debut/maiden auto-races (grade 700/800/900) are excluded."""
+    try:
+        import json as _json
+        path = base_dir / "data" / "race_planner_core.json"
+        rows = _json.loads(path.read_text(encoding="utf-8"))
+        GLABEL = {100: "G1", 200: "G2", 300: "G3", 400: "OP"}
+        GPRI = {"G1": 4, "G2": 3, "G3": 2, "OP": 1}
+        seen = set()
+        out = []
+        for r in rows:
+            graw = int(r.get("grade_raw") or 0)
+            if graw not in GLABEL:
+                continue
+            pid = r.get("program_id")
+            if pid is None:
+                continue
+            pid = int(pid)
+            turn = int(r.get("turn") or 0)
+            # Dedup per calendar OCCURRENCE (program_id + turn), not globally by
+            # program_id: many G2/G3 races recur in both Classic and Senior years
+            # under the SAME program_id, and a global dedup dropped every Senior
+            # occurrence (its pid was already 'seen' from the earlier Classic turn),
+            # leaving Senior cells like Early Sep/Late Sep/Early Oct/Early Nov/Early
+            # Dec empty + unselectable. (A recurring race picked manually still fires
+            # whenever the engine is offered that program_id.)
+            if (pid, turn) in seen:
+                continue
+            seen.add((pid, turn))
+            out.append({
+                "id": pid,
+                # BUG #1: per-occurrence id (year_key*100000 + program_id) so the
+                # picker can select a recurring race in ONE year only. The engine's
+                # wanted_programs turn-scopes occurrence ids (meta[occ].turn) while
+                # bare program_ids stay turn-blind, so this is backward compatible.
+                "occ": int(r.get("occurrence_id") or 0),
+                "turn": turn,
+                "date": r.get("date") or "",
+                "name": r.get("name") or "",
+                "grade": GLABEL[graw],
+                "distance": r.get("distance") or "",
+                "distance_m": int(r.get("distance_m") or 0),
+                "fans": int(r.get("fans") or 0),
+            })
+        out.sort(key=lambda x: (x["turn"], -GPRI.get(x["grade"], 0)))
+        return {"success": True, "races": out}
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+# --- Race win-probability (read-only analytics, Phase 1) --------------------
+# Opponent-aware P(win)/P(top-3) from the game's own master.mdb data. Does NOT
+# change how the bot plays; it only reports an estimate so its calibration can
+# be validated (tools/race_winnability_report.py) before any Phase-2 decisioning.
+_WIN_PROB_MODEL = None
+_RACE_PROGRAM_INDEX = None
+
+
+def _win_prob_model():
+    global _WIN_PROB_MODEL
+    if _WIN_PROB_MODEL is None:
+        from career_bot import win_probability as _wp
+        _WIN_PROB_MODEL = _wp.load_model(base_dir)
+    return _WIN_PROB_MODEL
+
+
+def _race_program_index():
+    """program_id -> {distance_m, ground, name} (program-constant race facts)."""
+    global _RACE_PROGRAM_INDEX
+    if _RACE_PROGRAM_INDEX is None:
+        idx = {}
+        try:
+            rows = json.loads((base_dir / "data" / "race_planner_core.json").read_text(encoding="utf-8"))
+            for r in rows:
+                pid = r.get("program_id")
+                if pid is None:
+                    continue
+                pid = int(pid)
+                if pid in idx:
+                    continue
+                idx[pid] = {
+                    "distance_m": int(r.get("distance_m") or 0),
+                    "ground": int(r.get("ground") or 1),
+                    "name": r.get("name") or "",
+                }
+        except Exception:
+            idx = {}
+        _RACE_PROGRAM_INDEX = idx
+    return _RACE_PROGRAM_INDEX
+
+
+class WinProbabilityRequest(BaseModel):
+    program_id: int = 0
+    turn: int = 0
+    trainee_chara_id: int = 0       # base chara id (e.g. 1001); or pass card_id
+    card_id: int = 0
+    speed: int = 0
+    stamina: int = 0
+    power: int = 0
+    guts: int = 0
+    wit: int = 0
+    motivation: int = 3
+    running_style: int = 0          # 1 front / 2 pace / 3 late / 4 end (for style aptitude)
+    # Full aptitude block (letters or ints), shaped like chara_info aptitudes:
+    #   {distance:{short,mile,medium,long}, ground:{turf,dirt}, style:{front,pace,late,end}}
+    aptitudes: dict = Field(default_factory=dict)
+    # Optional explicit per-race grade overrides (used if aptitudes block absent):
+    distance_grade: str = ""
+    surface_grade: str = ""
+    style_grade: str = ""
+    distance_m: int = 0             # optional override; else resolved from program_id
+    ground: int = 0                 # optional override (1 turf / 2 dirt)
+    k: float = 0.0
+
+
+_STYLE_APT_KEY = {1: "front", 2: "pace", 3: "late", 4: "end"}
+
+
+def _augment_race_results_with_winprob(rows, card_id):
+    """Attach a compact read-only win_probability to each completed-career race
+    row (computed from the stored pre-race stat_snapshot + performance_hint, so
+    it IS the genuine pre-race estimate). Never raises; skips a row on any error.
+    """
+    try:
+        from career_bot import win_probability as _wp
+        model = _win_prob_model()
+        chara_id = _wp.chara_id_from_card(card_id)
+    except Exception:
+        return rows
+    for r in rows or []:
+        if not isinstance(r, dict):
+            continue
+        try:
+            perf = r.get("performance_hint") or {}
+            ground = 2 if str(perf.get("surface_label") or r.get("terrain") or "").lower().startswith("dirt") else 1
+            res = model.compute(
+                stats=r.get("stat_snapshot") or {}, distance_m=r.get("distance_m"),
+                ground=ground, distance_grade=perf.get("distance_aptitude"),
+                surface_grade=perf.get("surface_aptitude"),
+                style_grade=perf.get("running_style_aptitude"),
+                motivation=int(perf.get("motivation") or 3),
+                trainee_chara_id=chara_id, turn=int(r.get("turn") or 0),
+                program_id=int(r.get("program_id") or 0),
+            )
+            r["win_probability"] = {
+                "p_win": res["p_win"], "p_top3": res["p_top3"],
+                "expected_rank": res["expected_rank"], "field_size": res["field_size"],
+                "available": res["available"],
+            }
+        except Exception:
+            continue
+    return rows
+
+
+@app.post("/api/race/win-probability")
+def api_race_win_probability(req: WinProbabilityRequest):
+    """Estimate P(win)/P(top-3) for an upcoming race vs its named-rival field.
+
+    Read-only. `available` is False when no named rivals are known for the race
+    (so the caller can hide a misleading 100%). The mob runners that fill the
+    rest of the gate at race time are not modelled (see `note`).
+    """
+    try:
+        from career_bot import win_probability as _wp
+        model = _win_prob_model()
+        prog = _race_program_index().get(int(req.program_id or 0), {})
+        distance_m = int(req.distance_m or prog.get("distance_m") or 0)
+        ground = int(req.ground or prog.get("ground") or 1)
+        chara_id = int(req.trainee_chara_id or 0) or _wp.chara_id_from_card(req.card_id)
+
+        apt = req.aptitudes or {}
+        dist_block = apt.get("distance") or {}
+        ground_block = apt.get("ground") or apt.get("track") or {}
+        style_block = apt.get("style") or {}
+        dist_key, _ = _wp.distance_bucket(distance_m)
+        # NPC json uses 'medium'; some chara payloads use 'middle' -> accept both.
+        distance_grade = (dist_block.get(dist_key) or dist_block.get("middle" if dist_key == "medium" else dist_key)
+                          or req.distance_grade or None)
+        surf_name = "dirt" if ground == 2 else "turf"
+        surface_grade = ground_block.get(surf_name) or req.surface_grade or None
+        style_name = _STYLE_APT_KEY.get(int(req.running_style or 0))
+        style_grade = (style_block.get(style_name) if style_name else None) or (req.style_grade or None)
+
+        stats = {"speed": req.speed, "stamina": req.stamina, "power": req.power,
+                 "guts": req.guts, "wit": req.wit}
+        k = float(req.k) if req.k else _wp.DEFAULT_K
+        result = model.compute(
+            stats=stats, distance_m=distance_m, ground=ground,
+            distance_grade=distance_grade, surface_grade=surface_grade,
+            style_grade=style_grade, motivation=int(req.motivation or 3),
+            trainee_chara_id=chara_id, turn=int(req.turn or 0),
+            program_id=int(req.program_id or 0), k=k,
+        )
+        result.update({"success": True, "program_id": int(req.program_id or 0),
+                       "race_name": prog.get("name", ""), "distance_m": distance_m,
+                       "ground": ground})
+        return result
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
 
 
 @app.post("/api/smart-solver/config")
@@ -4659,21 +4849,26 @@ def start_career_from_request(req):
     time.sleep(random.uniform(0.5, 1.5))
 
     active_start_state["tp_restore_reasoning"] = restore_reasoning
-    # Safeguard against result_code 2511: the game rejects single_mode_free/start when
-    # the support deck exceeds 6 cards (5 owned + 1 borrowed friend). The custom-deck
-    # builder caps at 5, but a saved preset or other deck path can still over-fill it
-    # and fail the whole start. Trim extras here so the run starts with a legal deck.
+    # Safeguard against result_code 2511: the game rejects single_mode_free/start
+    # when the deck is illegal. Two triggers: (1) more than 6 cards total, and
+    # (2) the borrowed friend duplicated among the owned support_card_ids — the
+    # friend has its OWN slot (friend_support_card_info), so the same card_id must
+    # not also appear in support_card_ids. A saved preset or the v3 deck picker can
+    # produce either. The old guard only count-trimmed and missed the duplicate
+    # case. sanitize_support_deck drops blanks/dupes, removes the friend from the
+    # owned list, and caps to 5 (friend borrowed) / 6. See tests/test_deck_sanitize.py.
     try:
-        _friend_present = bool(_safe_int(getattr(req, "friend_card_id", 0)))
-        _deck_cap = 5 if _friend_present else 6
-        if isinstance(req.support_card_ids, list) and len(req.support_card_ids) > _deck_cap:
-            print(
-                f"[deck-guard] Support deck has {len(req.support_card_ids)} cards; trimming "
-                f"to {_deck_cap} to avoid result_code 2511 (max 6 incl. borrowed friend)."
-            )
-            req.support_card_ids = req.support_card_ids[:_deck_cap]
-    except Exception:
-        pass
+        from uma_api.deck_sanitize import sanitize_support_deck
+        if isinstance(req.support_card_ids, list):
+            _before = list(req.support_card_ids)
+            req.support_card_ids = sanitize_support_deck(_before, getattr(req, "friend_card_id", 0))
+            if req.support_card_ids != _before:
+                print(
+                    f"[deck-guard] Sanitized support deck {_before} -> {req.support_card_ids} "
+                    f"(borrowed friend {getattr(req, 'friend_card_id', 0)}) to avoid result_code 2511."
+                )
+    except Exception as _deck_guard_err:
+        print(f"[deck-guard] sanitize skipped: {_deck_guard_err}")
     try:
         result = active_client.start_career(
             card_id=req.card_id,
@@ -4852,6 +5047,15 @@ async def login(req: LoginRequest):
             raise HTTPException(status_code=401, detail="Game login failed")
         active_client = c
 
+        # BUG #5: login wiped active_selection (line ~4789); restore the persisted
+        # picker selection from disk so the chosen trainee / parents / guest /
+        # deck / friend survive a `python main.py` restart. The Setup UI reads it
+        # back via /api/session -> data["selection"]. `global active_selection`
+        # is declared at the top of this handler, so this targets the module global.
+        _persisted_sel = _load_active_selection()
+        if _persisted_sel:
+            active_selection = _persisted_sel
+
         d = res.get("data", {})
         career_data = None
         if d.get("single_mode_chara_light") or d.get("single_mode_chara"):
@@ -4872,7 +5076,9 @@ async def login(req: LoginRequest):
         card_list = d.get("card_list", [])
         for card in card_list:
             cid = str(card.get("card_id", card.get("id", "")))
-            umas.append({"id": cid, "name": chara_map.get(cid, f"Unknown ({cid})")})
+            # Prefer the versioned card name ("Air Shakur (unsigned)") so each owned
+            # version is distinct in the trainee picker; fall back to the chara name.
+            umas.append({"id": cid, "name": card_names_map.get(cid) or chara_map.get(cid, f"Unknown ({cid})")})
 
         supports = []
         support_card_list = d.get("support_card_list", [])
@@ -5069,7 +5275,12 @@ async def login(req: LoginRequest):
                 "rank_score": chara.get("rank_score", 0),
             }
 
-        guest_parents = normalize_guest_parents(d)
+        # v2.1: STRICT at login. The login home payload has no real guest arrays,
+        # so the broad heuristic used to scoop up random umas as "guest parents"
+        # (fixed only on Refresh). Strict returns only genuine rental/guest arrays
+        # (usually none here) -> the UI shows the empty "Click Refresh" state until
+        # a real pre_single_mode fetch resolves the actual guest parents.
+        guest_parents = normalize_guest_parents(d, strict=True)
         active_dashboard_data = {
             "success": True,
             "account": account,
@@ -5374,7 +5585,6 @@ def manage_career_loop(req, preset, initial_result):
 
     while not backend_loop_stop:
         runs_done += 1
-        career_runner.native_event_capture = _native_capture_enabled()
         career_runner.goal_lookahead = _goal_lookahead_enabled()
         career_runner.set_loop_info(runs_done, target)
         career_runner.start(
@@ -5385,6 +5595,9 @@ def manage_career_loop(req, preset, initial_result):
             burn_clocks=req.burn_clocks,
             carats_enabled=req.carats_enabled,
             max_clocks_per_career=req.max_clocks_per_career,
+            clocks_g1_debut_only=getattr(req, "clocks_g1_debut_only", False),
+            max_retries_per_race=getattr(req, "max_retries_per_race", -1),
+            finalize_single_runs=getattr(req, "finalize_single_runs", False),
             dev_mode=True,
         )
 
@@ -5395,6 +5608,16 @@ def manage_career_loop(req, preset, initial_result):
             time.sleep(1)
 
         status = career_runner.snapshot()
+        # Record the just-completed career into the (session-only) Career History.
+        # In loop mode the finished snapshot is transient — the next career starts
+        # before the dashboard poll can observe it — so the poll-based recorder on
+        # /api/career/runner misses EVERY looped career (history showed nothing even
+        # before restart). Record it explicitly here; run_id de-dup makes it safe if
+        # the poll also catches it. Still in-memory only (cleared on restart).
+        try:
+            record_completed_career_from_snapshot(status)
+        except Exception:
+            pass
         if status.get("last_error"):
             consecutive_fails += 1
             if consecutive_fails >= 3:
@@ -5509,36 +5732,68 @@ async def run_career(req: RunCareerRequest):
     try:
         account = active_account or {}
         career = account.get("career") or {}
+        load_data = {}
+        # UNCONDITIONAL live-state probe: always ask the game whether a career is
+        # in progress (e.g. one the user started MANUALLY in-game), instead of
+        # trusting our possibly-stale cached active flag. Without this, a cold
+        # resume right after server start misses the manual career and falls
+        # through to a fresh start that ignores the in-game trainee/parents/deck/
+        # friend. When no career is in progress this is a harmless read that leaves
+        # career.active False, so a genuine fresh start is unaffected.
+        if active_client:
+            try:
+                index_result = active_client.call("load/index")
+                load_data = index_result.get("data", {})
+                update_start_state(load_data)
+                account = get_account_status(load_data)
+                active_account = account
+                career = account.get("career") or {}
+            except Exception as _probe_exc:
+                print(f"[career/run] live-state probe failed ({_probe_exc}); using cached account state", flush=True)
+
+        result = None
+        chara_info = None
         if career.get("active"):
-            index_result = active_client.call("load/index")
-            load_data = index_result.get("data", {})
-            update_start_state(load_data)
+            try:
+                career_result = active_client.load_career()
+                career_data = career_result.get("data", {})
 
-            account = get_account_status(load_data)
-            active_account = account
-            career = account.get("career") or {}
+                account = get_account_status(load_data, career_result)
+                career_status = account.get("career") or {}
+                chara_info = career_data.get("chara_info") or {}
 
-        if career.get("active"):
-            career_result = active_client.load_career()
-            career_data = career_result.get("data", {})
+                # Self-heal: a genuinely-resumable career must carry a live
+                # chara_info + card_id. If load_career came back empty/incomplete
+                # (e.g. a stale local active flag, or a non-looped run that
+                # self-terminated at the finale), DON'T crash on int(None) -- fall
+                # through to a clean start so the user never has to restart the bot.
+                # All numeric coercions below are 0-safe for the same reason
+                # (matched_deck_id, friend/parent ids can legitimately be None).
+                if not chara_info:
+                    raise ValueError("stale/incomplete active career: no chara_info")
+                # resume_career_fields raises ValueError on a missing card_id and
+                # 0-safe coerces the rest (deck_id/friend/parent ids can be None) ->
+                # no int(None) crash; the except below self-heals to a fresh start.
+                fields = resume_career_fields(career_status)
 
-            account = get_account_status(load_data, career_result)
-            active_account = account
+                active_account = account
+                req.card_id = fields["card_id"]
+                req.support_card_ids = fields["support_card_ids"]
+                req.friend_viewer_id = fields["friend_viewer_id"]
+                req.friend_card_id = fields["friend_card_id"]
+                req.parent_id_1 = fields["parent_id_1"]
+                req.parent_id_2 = fields["parent_id_2"]
+                req.deck_id = fields["deck_id"]
 
-            career_status = account.get("career")
-            req.card_id = int(career_status.get("card_id"))
-            req.support_card_ids = career_status.get("support_card_ids")
-            req.friend_viewer_id = int(career_status.get("friend_viewer_id"))
-            req.friend_card_id = int(career_status.get("friend_card_id"))
-            req.parent_id_1 = int(career_status.get("parent_id_1"))
-            req.parent_id_2 = int(career_status.get("parent_id_2"))
-            req.deck_id = int(career_status.get("deck_id"))
-
-            chara_info = career_data.get("chara_info") or {}
-            if active_dashboard_data:
-                active_dashboard_data["account"] = account
-            result = career_result
-        else:
+                if active_dashboard_data:
+                    active_dashboard_data["account"] = account
+                result = career_result
+            except Exception as resume_exc:
+                print(f"[career/run] resume of active career failed ({resume_exc}); "
+                      f"clearing stale state and starting fresh", flush=True)
+                _clear_finished_career_setup_state(clear_selection=False)
+                result = None
+        if result is None:
             started = start_career_from_request(req)
             if not started.get("success"):
                 return started
@@ -5557,7 +5812,6 @@ async def run_career(req: RunCareerRequest):
             backend_loop_thread.start()
             time.sleep(0.5)
         else:
-            career_runner.native_event_capture = _native_capture_enabled()
             career_runner.goal_lookahead = _goal_lookahead_enabled()
             career_runner.set_loop_info(1, 1)
             career_runner.start(
@@ -5568,6 +5822,9 @@ async def run_career(req: RunCareerRequest):
                 burn_clocks=req.burn_clocks,
                 carats_enabled=req.carats_enabled,
                 max_clocks_per_career=req.max_clocks_per_career,
+                clocks_g1_debut_only=getattr(req, "clocks_g1_debut_only", False),
+                max_retries_per_race=getattr(req, "max_retries_per_race", -1),
+                finalize_single_runs=getattr(req, "finalize_single_runs", False),
                 dev_mode=False,
             )
 
@@ -5704,16 +5961,29 @@ def _write_accounts_config(accounts):
     return clean
 
 
-def _health_for_port(port):
-    import urllib.error
+def _health_for_port(port, timeout=6.0):
     import urllib.request
-    url = f"http://127.0.0.1:{int(port)}/api/health"
+    import socket
+    port = int(port)
+    url = f"http://127.0.0.1:{port}/api/health"
     try:
-        with urllib.request.urlopen(url, timeout=1.5) as res:
+        # v2.0: timeout raised 1.5s -> 6s (matches the manager). /api/health calls
+        # snapshot() and can exceed 1.5s mid-career, which falsely flipped a healthy
+        # instance to "offline".
+        with urllib.request.urlopen(url, timeout=timeout) as res:
             payload = json.loads(res.read().decode("utf-8"))
             payload["reachable"] = True
             return payload
     except Exception as exc:
+        # v2.0: fall back to a bare TCP connect. If the port is accepting
+        # connections, the instance IS up (just slow/busy answering /api/health) --
+        # report reachable instead of offline.
+        try:
+            with socket.create_connection(("127.0.0.1", port), timeout=1.5):
+                return {"success": True, "reachable": True, "source": "tcp-probe",
+                        "detail": "port is listening (health endpoint slow/busy)"}
+        except Exception:
+            pass
         return {"success": False, "reachable": False, "detail": str(exc)}
 
 
@@ -5747,9 +6017,26 @@ async def api_accounts_status():
 
     rows = []
     now = time.time()
+    self_port = int(PORT)
+    _self_snap = career_runner.snapshot() or {}
+    self_running = bool(_self_snap.get("running"))
+    _self_lt = _self_snap.get("lifetime") or {}
+    self_runs = int(_self_lt.get("careers_completed") or 0)
+    self_fans = int(_self_lt.get("total_fans_gained_live") or _self_lt.get("total_fans_gained") or 0)
+    seen_self = False
     for account in accounts:
         port = int(account.get("port") or 1616)
         name = str(account.get("name") or "")
+        # v2.0: the dashboard serving this request is obviously online -- never
+        # report the live instance as offline against itself.
+        if port == self_port:
+            seen_self = True
+            rows.append({**account, "runs": self_runs, "fans": self_fans, "health": {
+                "success": True, "reachable": True, "source": "self",
+                "process_running": True, "runner_running": self_running,
+                "detail": "this dashboard instance",
+            }})
+            continue
         direct_health = _health_for_port(port)
         child = manager_by_port.get(port) or manager_by_name.get(name) or {}
         child_health = child.get("last_health") or {}
@@ -5758,7 +6045,7 @@ async def api_accounts_status():
         health = dict(child_health) if child_health else {}
         if direct_health.get("reachable"):
             health.update(direct_health)
-            health["source"] = "direct"
+            health["source"] = direct_health.get("source") or "direct"
         elif child_running and child_health:
             health.update({
                 "reachable": True,
@@ -5768,12 +6055,28 @@ async def api_accounts_status():
         else:
             health = direct_health
             health["source"] = "direct-error"
+            # v2.0: help the user spot the most common cause -- a port that no
+            # instance is listening on / a roster port that doesn't match the bot.
+            health["hint"] = (
+                f"Nothing answering on port {port}. This dashboard runs on port {self_port}. "
+                f"Check the account's port matches the running bot, or launch it via the Manager."
+            )
 
         health["process_running"] = child_running or bool(health.get("reachable"))
         health["manager_last_health_at"] = child.get("last_health_at", 0)
         health["manager_last_health_age"] = int(max(0, now - float(child.get("last_health_at") or 0))) if child else None
         health["manager_error"] = child.get("last_health_error", "")
         rows.append({**account, "health": health})
+
+    # v2.0: if the live instance isn't in the roster, surface it anyway so it's
+    # never invisible / shown offline.
+    if not seen_self:
+        rows.insert(0, {"name": PROFILE_NAME, "port": self_port, "auto_added": True,
+            "runs": self_runs, "fans": self_fans, "health": {
+            "success": True, "reachable": True, "source": "self",
+            "process_running": True, "runner_running": self_running,
+            "detail": "this dashboard instance (auto-added)",
+        }})
     return {"success": True, "accounts": rows, "manager_status": manager_status}
 
 
@@ -5801,6 +6104,47 @@ async def api_accounts_manager_start():
         creationflags=getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0),
     )
     return {"success": True, "pid": manager_process.pid}
+
+
+@app.get("/api/stream")
+async def api_event_stream():
+    """Server-Sent Events feed of live game-API calls (off the event bus the client
+    publishes to) — a real-time alternative/supplement to polling. Emits compact,
+    SECRET-FREE events {ts, dir, ep, req_id, rc} only; never request payloads. The
+    dashboard still polls; this is additive."""
+    import queue as _queue
+    from fastapi.responses import StreamingResponse
+    from career_bot import event_bus
+
+    q = event_bus.subscribe()
+
+    async def gen():
+        last_ka = time.time()
+        try:
+            yield "retry: 3000\n\n"
+            yield f"data: {json.dumps({'dir': 'OPEN', 'ep': 'stream', 'ts': time.time()})}\n\n"
+            while True:
+                drained = 0
+                while True:
+                    try:
+                        evt = q.get_nowait()
+                    except _queue.Empty:
+                        break
+                    yield f"data: {json.dumps(evt)}\n\n"
+                    drained += 1
+                now = time.time()
+                if drained == 0 and now - last_ka >= 15:
+                    last_ka = now
+                    yield ": keepalive\n\n"  # SSE comment keeps the connection alive
+                await asyncio.sleep(0.5)
+        finally:
+            event_bus.unsubscribe(q)
+
+    return StreamingResponse(
+        gen(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
 
 
 @app.get("/api/health")
@@ -5837,7 +6181,9 @@ async def api_health():
         "runner_running": runner_running,
         "runner_stale_seconds": stale_seconds,
         "runner_last_error": runner.get("last_error", ""),
+        "runner_crashed": (not runner_running) and bool(runner.get("last_error")) and not bool(runner.get("finished")),
         "recoveries": runner.get("recoveries", 0),
+        "recent_server_rejects": runner.get("recent_server_rejects", 0),
         "waiting_for_server": waiting_for_server,
         "server_wait_reason": runner.get("server_wait_reason", ""),
         "run_id": runner.get("run_id", ""),
@@ -5875,15 +6221,21 @@ async def latest_career_snapshot(limit: int = 120):
     path = _latest_snapshot_path()
     if not path:
         return {"success": False, "detail": "No state snapshots found", "rows": []}
-    rows = []
-    try:
+    # v2.1: read off the event loop so a large snapshot file can't block the
+    # single asyncio worker and stall concurrent /api/career/runner polls (which
+    # is what could freeze the live UI).
+    def _read_rows():
+        out = []
         with path.open("r", encoding="utf-8") as f:
             lines = f.readlines()[-max(1, min(int(limit or 120), 1000)):]
         for line in lines:
             try:
-                rows.append(json.loads(line))
+                out.append(json.loads(line))
             except Exception:
                 pass
+        return out
+    try:
+        rows = await asyncio.to_thread(_read_rows)
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc))
     return {"success": True, "path": str(path), "count": len(rows), "rows": rows}
@@ -5962,15 +6314,15 @@ async def ai_rebuild_dataset():
 
     This is an offline maintenance action. It does not alter live career logic.
     """
-    return ai_dataset.rebuild_from_career_logs(base_dir, build_version="SweepyCLv7.0")
+    return ai_dataset.rebuild_from_career_logs(base_dir, build_version=_build_version())
 
 
 @app.post("/api/ai/import-logs")
 async def ai_import_previous_logs(req: AiImportLogsRequest):
     """Import career logs from an older build/runtime folder or zip.
 
-    The import path is resolved by the local SweepyCL server, so users can paste
-    a Windows path such as ``C:/UmamusumeChatGPT/SweepyModv5.33`` or a zip file
+    The import path is resolved by the local Pre Icarus server, so users can paste
+    a Windows path such as ``C:/UmamusumeChatGPT/OldBuild`` or a zip file
     path. Gameplay logs, AI-safe aggregates, and settings presets are imported;
     auth files are ignored.
     """
@@ -5978,7 +6330,7 @@ async def ai_import_previous_logs(req: AiImportLogsRequest):
         base_dir,
         req.source_path,
         rebuild=bool(req.rebuild_dataset),
-        build_version="SweepyCLv7.0",
+        build_version=_build_version(),
         import_presets=bool(req.import_presets),
     )
     if result.get("success") and req.train_after_import:
@@ -6159,16 +6511,6 @@ async def download_latest_decision_trace():
 
 
 
-def _rank_label(value):
-    try:
-        value = int(value)
-    except Exception:
-        return str(value or "")
-    return {
-        1: "G", 2: "G+", 3: "F", 4: "F+", 5: "E", 6: "E+",
-        7: "D", 8: "D+", 9: "C", 10: "C+", 11: "B", 12: "B+",
-        13: "A", 14: "A+", 15: "S", 16: "S+", 17: "SS", 18: "SS+",
-    }.get(value, str(value))
 
 def _history_safe_int(value, default=0):
     try:
@@ -6409,6 +6751,9 @@ def _career_history_summary_from_runner(snap):
     action_history = deepcopy(list(snap.get("action_history") or []))
     race_results = deepcopy(list(snap.get("race_results") or final_chara.get("race_results") or []))
     card_id = str(final_chara.get("card_id") or snap.get("card_id") or "")
+    # Read-only: attach the pre-race win-probability estimate to each race row so
+    # Career History can show "predicted P(win) vs actual finish". Never raises.
+    _augment_race_results_with_winprob(race_results, card_id)
     trainee_name = chara_map.get(card_id, f"Card {card_id}" if card_id else "Unknown")
     fans_gained = int(snap.get("fans_gained") or 0)
     fans_current = int(final_chara.get("fans") or snap.get("fans_current") or 0)
@@ -6698,8 +7043,6 @@ async def career_live_history():
     history = snap.get("action_history") or []
     return {
         "success": True,
-        "turns": snap.get("date_history") or [],
-        "scores": snap.get("score_history") or [],
         "stats": [
             {"turn": row.get("turn"), "action": row.get("action"), **(row.get("stats") or {})}
             for row in history
@@ -6789,13 +7132,21 @@ async def bot_metrics():
 @app.get("/api/career/runner")
 async def career_runner_status():
     snap = career_runner.snapshot()
+    # DEV-ONLY: surface the web skill-buy intercept state for the dev dashboard.
+    snap["skill_intercept"] = {"enabled": skill_intercept.is_enabled(), "pending": skill_intercept.get_pending(), "available": _SKILL_INTERCEPT_AVAILABLE}
     record_completed_career_from_snapshot(snap)
     extra = {}
     loop_active = bool(backend_loop_thread and backend_loop_thread.is_alive())
     snap["loop_active"] = loop_active
     if snap.get("finished") and not snap.get("running") and not snap.get("last_error") and not loop_active:
         extra = _clear_finished_career_setup_state(clear_selection=True)
-    return {"success": True, "runner": snap, **extra}
+    # Include fresh account resources (TP / carats / gold / clocks) from the live
+    # client so the dashboard updates every poll (~1.5s), not only on career
+    # start/stop. Preserves the career card from the last full account snapshot.
+    account = get_account_status({})
+    if active_account and active_account.get("career"):
+        account["career"] = active_account["career"]
+    return {"success": True, "runner": snap, "account": account, **extra}
 
 
 @app.get("/api/career/history")
@@ -6816,6 +7167,7 @@ async def career_history():
 async def stop_career_runner():
     global backend_loop_stop
     backend_loop_stop = True
+    skill_intercept.cancel()  # DEV-ONLY: release a waiting skill-buy intercept so stop never hangs
     career_runner.stop()
     snap = career_runner.snapshot()
     extra = {}
@@ -6848,6 +7200,28 @@ class BurnClocksRequest(BaseModel):
 async def set_burn_clocks(req: BurnClocksRequest):
     career_runner.set_burn_clocks(req.burn_clocks)
     return {"success": True, "runner": career_runner.snapshot()}
+
+
+# --- DEV-ONLY web skill-buy intercept (private; not for the beta/public build) ---
+class SkillInterceptToggle(BaseModel):
+    enabled: bool
+
+
+@app.post("/api/career/runner/skill_intercept")
+async def set_skill_intercept(req: SkillInterceptToggle):
+    skill_intercept.set_enabled(req.enabled)
+    return {"success": True, "enabled": skill_intercept.is_enabled()}
+
+
+class SkillDecision(BaseModel):
+    action: str = "confirm"   # confirm | skip | proceed
+    ids: list = []
+
+
+@app.post("/api/career/runner/skill_decision")
+async def submit_skill_decision(req: SkillDecision):
+    skill_intercept.submit_decision(req.action, req.ids)
+    return {"success": True}
 
 
 @app.post("/api/career/friends")
@@ -6991,7 +7365,10 @@ async def get_guest_parent_list(req: FriendListRequest):
         # Fallback: some builds nest rental parents under friend/support payloads
         # loaded during login. Try the dashboard cache if the fresh payload had none.
         if not guest_parents and active_dashboard_data:
-            guest_parents = normalize_guest_parents(active_dashboard_data)
+            # STRICT: only resurface genuine nested guest arrays from the cache,
+            # never the broad heuristic (which would re-classify the cached login
+            # home payload's random umas / the player's own parents as guests).
+            guest_parents = normalize_guest_parents(active_dashboard_data, strict=True)
             guest_sources = discover_guest_parent_sources(active_dashboard_data)
 
         # Do not fall back to friend support cards. Guest Parents must be real
@@ -7130,6 +7507,35 @@ async def get_image(image_name: str):
     raise HTTPException(status_code=404, detail="Image not found")
 
 
+@app.get("/api/card-art/{image_name}")
+async def get_card_art(image_name: str):
+    """Per-trainee 512x512 standing illustration (extracted via
+    tools/extract_card_art.py into data/card_art/<chara_id>.png). Keyed by
+    card_id in the URL; mapped to chara_id = card_id // 100. Falls back to the
+    small portrait icon (/api/images) so callers always get an image."""
+    _img_cache = {"Cache-Control": "public, max-age=604800"}
+    raw = image_name.split("?")[0].replace(".png", "")
+    card_art_dir = base_dir / "data" / "card_art"
+    try:
+        card_id = int(raw)
+        # 1) this card's own outfit (the signature race outfit for base cards,
+        #    the alt outfit for alt cards), keyed by card_id.
+        own = card_art_dir / f"{card_id}.png"
+        if own.exists():
+            return FileResponse(own, media_type="image/png", headers=_img_cache)
+        # 2) the chara's base/signature card (xxxx01) — same trainee, signature look.
+        base_card = card_art_dir / f"{(card_id // 100) * 100 + 1}.png"
+        if base_card.exists():
+            return FileResponse(base_card, media_type="image/png", headers=_img_cache)
+    except (TypeError, ValueError):
+        pass
+    # 3) fallback: the small portrait icon for this card id
+    icon = images_dir / f"{raw}.png"
+    if icon.exists():
+        return FileResponse(icon, media_type="image/png", headers=_img_cache)
+    raise HTTPException(status_code=404, detail="Card art not found")
+
+
 @app.get("/api/skill-icons/{image_name}")
 async def get_skill_icon(image_name: str):
     # Skill icons live in their own namespace because skill icon_ids collide
@@ -7158,6 +7564,30 @@ async def get_item_icon(image_name: str):
             path, media_type=media, headers={"Cache-Control": "public, max-age=604800"}
         )
     raise HTTPException(status_code=404, detail="Item icon not found")
+
+
+@app.get("/api/logs/export")
+async def export_logs():
+    """Zip all career logs for sharing/feedback. Each log is re-redacted on
+    export, so even logs written before redaction shipped are safe to share."""
+    import tempfile
+    import zipfile
+    from datetime import datetime as _dt
+    from career_bot import report as _report
+    logs_dir = Path(RUNTIME_DIR) / "bot_logs"
+    files = sorted(logs_dir.glob("career_log_*.json")) if logs_dir.exists() else []
+    stamp = _dt.now().strftime("%Y%m%d_%H%M%S")
+    fd, tmp = tempfile.mkstemp(prefix="icarus_logs_", suffix=".zip")
+    os.close(fd)
+    with zipfile.ZipFile(tmp, "w", zipfile.ZIP_DEFLATED) as zf:
+        for f in files:
+            try:
+                data = json.loads(f.read_text(encoding="utf-8"))
+                _report._redact_sensitive(data)
+                zf.writestr(f.name, json.dumps(data, ensure_ascii=False, indent=2))
+            except Exception:
+                continue
+    return FileResponse(tmp, filename=f"icarus_career_logs_{stamp}.zip", media_type="application/zip")
 
 
 @app.get("/api/changelog")
@@ -7194,7 +7624,9 @@ async def get_changelog():
 
 @app.get("/styles.css")
 async def styles_css():
-    path = base_dir / "public" / "styles.css"
+    # v3 is the default UI at "/", so root /styles.css serves the v3 stylesheet.
+    # The legacy UI lives at /legacy/ and gets its own styles.css from that mount.
+    path = base_dir / "public-v3" / "styles.css"
     if path.exists():
         # no-cache (not no-store): the browser caches the file but revalidates
         # via ETag each load, so an unchanged file returns a tiny 304 instead of
@@ -7207,7 +7639,9 @@ async def styles_css():
 
 @app.get("/app.js")
 async def app_js():
-    path = base_dir / "public" / "app.js"
+    # v3 default at "/": root /app.js serves the v3 dashboard script (legacy UI's
+    # app.js is served from the /legacy/ mount).
+    path = base_dir / "public-v3" / "app.js"
     if path.exists():
         return FileResponse(
             path,
@@ -7215,6 +7649,23 @@ async def app_js():
             headers={"Cache-Control": "no-cache"},
         )
     raise HTTPException(status_code=404, detail="app.js not found")
+
+
+@app.get("/skill_intercept_ui.js")
+async def skill_intercept_ui_js():
+    # DEV/PRIVATE-only: the old-UI skill-buy intercept toggle script. The old UI
+    # serves each public/ file via an explicit route (there is no catch-all), so
+    # this file 404'd without one and the toggle never rendered. Served from
+    # public/ root like /app.js. Absent from public builds (the file is excluded
+    # and its <script> tag stripped by the build), so this 404s harmlessly there.
+    path = base_dir / "public" / "skill_intercept_ui.js"
+    if path.exists():
+        return FileResponse(
+            path,
+            media_type="application/javascript",
+            headers={"Cache-Control": "no-cache"},
+        )
+    raise HTTPException(status_code=404, detail="skill_intercept_ui.js not found")
 
 
 @app.get("/sweep.png")
@@ -7326,12 +7777,62 @@ async def get_js_file(file_name: str):
 
 @app.get("/", response_class=HTMLResponse)
 async def root():
-    index_path = base_dir / "public" / "index.html"
+    # v3 (public-v3) is now the DEFAULT UI at "/". The legacy UI is at /legacy/.
+    index_path = base_dir / "public-v3" / "index.html"
+    if not index_path.exists():
+        index_path = base_dir / "public" / "index.html"   # fallback to legacy
     if index_path.exists():
         return FileResponse(
             index_path, media_type="text/html", headers={"Cache-Control": "no-store, no-cache, must-revalidate, max-age=0"}
         )
     return "index.html not found"
+
+
+@app.get("/legacy")
+async def legacy_redirect():
+    # /legacy -> /legacy/ so the StaticFiles mount resolves relative assets.
+    return RedirectResponse(url="/legacy/")
+
+
+@app.get("/v3")
+async def v3_redirect_root():
+    # Back-compat: the v3 UI used to live at /v3/. It's now the root, so send
+    # any old /v3 bookmark to "/".
+    return RedirectResponse(url="/")
+
+
+@app.get("/v3/{rest:path}")
+async def v3_redirect(rest: str):
+    return RedirectResponse(url="/" + rest)
+
+
+# --- Static mounts (registered AFTER every @app route so explicit routes —
+# "/", "/api/*", "/app.js", "/styles.css", images, /races, /js, /css, ... —
+# always take precedence). ---
+#   * Legacy UI preserved at /legacy/ (its assets are relative, so they resolve
+#     under the mount automatically).
+#   * v3 mounted at "/" as the catch-all so its remaining assets (core.js,
+#     setup.html, model-test/, setup.js, ...) are served at the clean root URL.
+if (base_dir / "public").exists():
+    app.mount(
+        "/legacy",
+        StaticFiles(directory=base_dir / "public", html=True),
+        name="legacy",
+    )
+# Race banner images (public/races/<name>.png) — used by the v3 race schedule.
+# Mounted at /races (before the "/" catch-all) so both UIs resolve them.
+if (base_dir / "public" / "races").exists():
+    app.mount(
+        "/races",
+        StaticFiles(directory=base_dir / "public" / "races"),
+        name="races",
+    )
+if (base_dir / "public-v3").exists():
+    app.mount(
+        "/",
+        StaticFiles(directory=base_dir / "public-v3", html=True),
+        name="root",
+    )
 
 
 def set_console_topmost():
@@ -7457,44 +7958,6 @@ def ensure_port_available(port):
         detail_lines.append(f"  PID {item['pid']} | {label} | {item['local_addr']} | {command}")
 
     raise RuntimeError("\n".join(detail_lines))
-
-
-    current_pid = os.getpid()
-    pids = set()
-    marker = f":{port}"
-    for line in proc.stdout.splitlines():
-        parts = line.split()
-        if len(parts) < 5:
-            continue
-        local_addr = parts[1]
-        state = parts[3].upper() if len(parts) >= 5 else ""
-        pid_text = parts[-1]
-        if marker not in local_addr or state != "LISTENING":
-            continue
-        try:
-            pid = int(pid_text)
-        except ValueError:
-            continue
-        if pid and pid != current_pid:
-            pids.add(pid)
-
-    if not pids:
-        return
-    print(
-        f"Port {port} already in use; killing listener PID(s): {', '.join(map(str, sorted(pids)))}",
-        flush=True,
-    )
-    for pid in sorted(pids):
-        try:
-            subprocess.run(
-                ["taskkill", "/PID", str(pid), "/F"],
-                capture_output=True,
-                text=True,
-                timeout=5,
-            )
-        except Exception:
-            pass
-    time.sleep(0.5)
 
 
 def has_fresh_auth_config(cfg):

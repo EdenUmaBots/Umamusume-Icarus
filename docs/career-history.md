@@ -33,4 +33,4 @@ Career History depends on runner completion snapshots. It is display-only and do
 
 ## Verification
 
-Complete a career successfully, open Career History, and confirm the run appears. Restart SweepyMod and confirm the list is empty.
+Complete a career successfully, open Career History, and confirm the run appears. Restart Pre Icarus and confirm the list is empty.

@@ -1,6 +1,6 @@
-# SweepyModv5.26 Operator Controls
+# Pre Icarus v5.26 Operator Controls
 
-This update ports selected UmaAuto/UmaBot operator-control patterns while keeping SweepyMod's Trackblazer and existing dashboard contract intact.
+This update ports selected UmaAuto/UmaBot operator-control patterns while keeping Pre Icarus's Trackblazer and existing dashboard contract intact.
 
 ## True pause/resume
 

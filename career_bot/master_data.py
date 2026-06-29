@@ -57,6 +57,7 @@ DIRECT_TABLES = [
     "single_mode_route_race",
     "single_mode_route_condition",
     "single_mode_rival",
+    "single_mode_npc",
     "single_mode_free_coin_race",
     "single_mode_free_win_point",
     "single_mode_reward_set",
@@ -1402,7 +1403,7 @@ def synthesize_training_effects_core(base_dir, master_data):
     """Export official base training effects by scenario/command/level.
 
     The live API remains the primary source for per-turn training gains. This
-    master-data export gives SweepyCL a stable baseline for logging, fallback
+    master-data export gives Pre Icarus a stable baseline for logging, fallback
     scoring, and anomaly/debug traces when the live command payload is sparse.
     """
     data_dir = Path(base_dir) / "data"
@@ -2084,8 +2085,8 @@ def _event_item_name(item, name_maps):
 def synthesize_event_reward_display_core(base_dir, master_data):
     """Export event reward/display helper tables for event traces and UI labels.
 
-    These tables do not replace runtime event payloads or curated
-    event_outcomes.json; they provide official display metadata where master.mdb
+    These tables do not replace runtime event payloads; they provide official
+    display metadata where master.mdb
     exposes it so scoring/debug traces can use stable labels instead of opaque IDs.
     """
     data_dir = Path(base_dir) / "data"

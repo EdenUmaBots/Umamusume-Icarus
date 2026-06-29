@@ -10706,6 +10706,104 @@
     "is_general_skill": 0
   },
   {
+    "skill_id": 120011,
+    "name": "Dreams Donned with Pride!",
+    "rarity": 5,
+    "group_id": 12001,
+    "group_rate": 1,
+    "grade_value": 340,
+    "cost": 0,
+    "skill_category": 5,
+    "skill_category_label": "unique_active",
+    "tags": [
+      401
+    ],
+    "icon_id": 20013,
+    "activate_lot": 0,
+    "preconditions": [
+      "track_id==10005"
+    ],
+    "conditions": [
+      "phase>=2&is_finalcorner==1&corner!=0&is_activate_any_skill==1",
+      "phase>=2&is_finalcorner==1&corner!=0&is_activate_any_skill==1"
+    ],
+    "ability_types": [
+      27
+    ],
+    "effect_blocks": [
+      {
+        "condition_slot": 1,
+        "ability_slot": 1,
+        "precondition": "track_id==10005",
+        "condition": "phase>=2&is_finalcorner==1&corner!=0&is_activate_any_skill==1",
+        "ability_type": 27,
+        "ability_value_usage": 1,
+        "ability_value_level_usage": 1,
+        "float_ability_value": 4500,
+        "target_type": 1,
+        "target_value": 0
+      },
+      {
+        "condition_slot": 2,
+        "ability_slot": 1,
+        "precondition": "",
+        "condition": "phase>=2&is_finalcorner==1&corner!=0&is_activate_any_skill==1",
+        "ability_type": 27,
+        "ability_value_usage": 1,
+        "ability_value_level_usage": 1,
+        "float_ability_value": 2500,
+        "target_type": 1,
+        "target_value": 0
+      }
+    ],
+    "level_values": {
+      "27": [
+        {
+          "level": 1,
+          "float_ability_value_coef": 10000
+        },
+        {
+          "level": 2,
+          "float_ability_value_coef": 10100
+        },
+        {
+          "level": 3,
+          "float_ability_value_coef": 10400
+        },
+        {
+          "level": 4,
+          "float_ability_value_coef": 10700
+        },
+        {
+          "level": 5,
+          "float_ability_value_coef": 11000
+        },
+        {
+          "level": 6,
+          "float_ability_value_coef": 11300
+        },
+        {
+          "level": 7,
+          "float_ability_value_coef": 11600
+        },
+        {
+          "level": 8,
+          "float_ability_value_coef": 11900
+        },
+        {
+          "level": 9,
+          "float_ability_value_coef": 12200
+        },
+        {
+          "level": 10,
+          "float_ability_value_coef": 12500
+        }
+      ]
+    },
+    "disable_singlemode": 1,
+    "is_general_skill": 0
+  },
+  {
     "skill_id": 200011,
     "name": "Right-Handed ◎",
     "rarity": 1,
@@ -31249,6 +31347,90 @@
     "is_general_skill": 1
   },
   {
+    "skill_id": 201113,
+    "name": "Refraction Arc",
+    "rarity": 2,
+    "group_id": 20111,
+    "group_rate": 3,
+    "grade_value": 508,
+    "cost": 150,
+    "skill_category": 4,
+    "skill_category_label": "position_corner",
+    "tags": [
+      203,
+      401
+    ],
+    "icon_id": 20012,
+    "activate_lot": 1,
+    "preconditions": [],
+    "conditions": [
+      "distance_type==3&all_corner_random==1"
+    ],
+    "ability_types": [
+      27
+    ],
+    "effect_blocks": [
+      {
+        "condition_slot": 1,
+        "ability_slot": 1,
+        "precondition": "",
+        "condition": "distance_type==3&all_corner_random==1",
+        "ability_type": 27,
+        "ability_value_usage": 1,
+        "ability_value_level_usage": 1,
+        "float_ability_value": 3500,
+        "target_type": 1,
+        "target_value": 0
+      }
+    ],
+    "level_values": {
+      "27": [
+        {
+          "level": 1,
+          "float_ability_value_coef": 10000
+        },
+        {
+          "level": 2,
+          "float_ability_value_coef": 10100
+        },
+        {
+          "level": 3,
+          "float_ability_value_coef": 10400
+        },
+        {
+          "level": 4,
+          "float_ability_value_coef": 10700
+        },
+        {
+          "level": 5,
+          "float_ability_value_coef": 11000
+        },
+        {
+          "level": 6,
+          "float_ability_value_coef": 11300
+        },
+        {
+          "level": 7,
+          "float_ability_value_coef": 11600
+        },
+        {
+          "level": 8,
+          "float_ability_value_coef": 11900
+        },
+        {
+          "level": 9,
+          "float_ability_value_coef": 12200
+        },
+        {
+          "level": 10,
+          "float_ability_value_coef": 12500
+        }
+      ]
+    },
+    "disable_singlemode": 1,
+    "is_general_skill": 1
+  },
+  {
     "skill_id": 201122,
     "name": "Hawkeye",
     "rarity": 1,
@@ -48018,6 +48200,172 @@
     "is_general_skill": 0
   },
   {
+    "skill_id": 300131,
+    "name": "Ruler of Japan",
+    "rarity": 5,
+    "group_id": 30013,
+    "group_rate": 1,
+    "grade_value": 340,
+    "cost": 0,
+    "skill_category": 5,
+    "skill_category_label": "unique_active",
+    "tags": [
+      401
+    ],
+    "icon_id": 20013,
+    "activate_lot": 0,
+    "preconditions": [],
+    "conditions": [
+      "remain_distance>=350&remain_distance<=400"
+    ],
+    "ability_types": [
+      27
+    ],
+    "effect_blocks": [
+      {
+        "condition_slot": 1,
+        "ability_slot": 1,
+        "precondition": "",
+        "condition": "remain_distance>=350&remain_distance<=400",
+        "ability_type": 27,
+        "ability_value_usage": 1,
+        "ability_value_level_usage": 1,
+        "float_ability_value": 3500,
+        "target_type": 1,
+        "target_value": 0
+      }
+    ],
+    "level_values": {
+      "27": [
+        {
+          "level": 1,
+          "float_ability_value_coef": 10000
+        },
+        {
+          "level": 2,
+          "float_ability_value_coef": 10100
+        },
+        {
+          "level": 3,
+          "float_ability_value_coef": 10400
+        },
+        {
+          "level": 4,
+          "float_ability_value_coef": 10700
+        },
+        {
+          "level": 5,
+          "float_ability_value_coef": 11000
+        },
+        {
+          "level": 6,
+          "float_ability_value_coef": 11300
+        },
+        {
+          "level": 7,
+          "float_ability_value_coef": 11600
+        },
+        {
+          "level": 8,
+          "float_ability_value_coef": 11900
+        },
+        {
+          "level": 9,
+          "float_ability_value_coef": 12200
+        },
+        {
+          "level": 10,
+          "float_ability_value_coef": 12500
+        }
+      ]
+    },
+    "disable_singlemode": 1,
+    "is_general_skill": 0
+  },
+  {
+    "skill_id": 300141,
+    "name": "Indomitable",
+    "rarity": 5,
+    "group_id": 30014,
+    "group_rate": 1,
+    "grade_value": 340,
+    "cost": 0,
+    "skill_category": 5,
+    "skill_category_label": "unique_active",
+    "tags": [
+      401
+    ],
+    "icon_id": 20013,
+    "activate_lot": 0,
+    "preconditions": [],
+    "conditions": [
+      "remain_distance>=350&remain_distance<=400"
+    ],
+    "ability_types": [
+      27
+    ],
+    "effect_blocks": [
+      {
+        "condition_slot": 1,
+        "ability_slot": 1,
+        "precondition": "",
+        "condition": "remain_distance>=350&remain_distance<=400",
+        "ability_type": 27,
+        "ability_value_usage": 1,
+        "ability_value_level_usage": 1,
+        "float_ability_value": 3500,
+        "target_type": 1,
+        "target_value": 0
+      }
+    ],
+    "level_values": {
+      "27": [
+        {
+          "level": 1,
+          "float_ability_value_coef": 10000
+        },
+        {
+          "level": 2,
+          "float_ability_value_coef": 10100
+        },
+        {
+          "level": 3,
+          "float_ability_value_coef": 10400
+        },
+        {
+          "level": 4,
+          "float_ability_value_coef": 10700
+        },
+        {
+          "level": 5,
+          "float_ability_value_coef": 11000
+        },
+        {
+          "level": 6,
+          "float_ability_value_coef": 11300
+        },
+        {
+          "level": 7,
+          "float_ability_value_coef": 11600
+        },
+        {
+          "level": 8,
+          "float_ability_value_coef": 11900
+        },
+        {
+          "level": 9,
+          "float_ability_value_coef": 12200
+        },
+        {
+          "level": 10,
+          "float_ability_value_coef": 12500
+        }
+      ]
+    },
+    "disable_singlemode": 1,
+    "is_general_skill": 0
+  },
+  {
     "skill_id": 900011,
     "name": "Shooting Star",
     "rarity": 1,
@@ -56975,6 +57323,104 @@
     "is_general_skill": 1
   },
   {
+    "skill_id": 920011,
+    "name": "Dreams Donned with Pride!",
+    "rarity": 1,
+    "group_id": 92001,
+    "group_rate": 2,
+    "grade_value": 180,
+    "cost": 200,
+    "skill_category": 5,
+    "skill_category_label": "unique_active",
+    "tags": [
+      401
+    ],
+    "icon_id": 20011,
+    "activate_lot": 1,
+    "preconditions": [
+      "track_id==10005"
+    ],
+    "conditions": [
+      "phase>=2&is_finalcorner==1&corner!=0&is_activate_any_skill==1",
+      "phase>=2&is_finalcorner==1&corner!=0&is_activate_any_skill==1"
+    ],
+    "ability_types": [
+      27
+    ],
+    "effect_blocks": [
+      {
+        "condition_slot": 1,
+        "ability_slot": 1,
+        "precondition": "track_id==10005",
+        "condition": "phase>=2&is_finalcorner==1&corner!=0&is_activate_any_skill==1",
+        "ability_type": 27,
+        "ability_value_usage": 1,
+        "ability_value_level_usage": 1,
+        "float_ability_value": 2500,
+        "target_type": 1,
+        "target_value": 0
+      },
+      {
+        "condition_slot": 2,
+        "ability_slot": 1,
+        "precondition": "",
+        "condition": "phase>=2&is_finalcorner==1&corner!=0&is_activate_any_skill==1",
+        "ability_type": 27,
+        "ability_value_usage": 1,
+        "ability_value_level_usage": 1,
+        "float_ability_value": 500,
+        "target_type": 1,
+        "target_value": 0
+      }
+    ],
+    "level_values": {
+      "27": [
+        {
+          "level": 1,
+          "float_ability_value_coef": 10000
+        },
+        {
+          "level": 2,
+          "float_ability_value_coef": 10100
+        },
+        {
+          "level": 3,
+          "float_ability_value_coef": 10400
+        },
+        {
+          "level": 4,
+          "float_ability_value_coef": 10700
+        },
+        {
+          "level": 5,
+          "float_ability_value_coef": 11000
+        },
+        {
+          "level": 6,
+          "float_ability_value_coef": 11300
+        },
+        {
+          "level": 7,
+          "float_ability_value_coef": 11600
+        },
+        {
+          "level": 8,
+          "float_ability_value_coef": 11900
+        },
+        {
+          "level": 9,
+          "float_ability_value_coef": 12200
+        },
+        {
+          "level": 10,
+          "float_ability_value_coef": 12500
+        }
+      ]
+    },
+    "disable_singlemode": 1,
+    "is_general_skill": 1
+  },
+  {
     "skill_id": 1000011,
     "name": "Carnival Bonus",
     "rarity": 1,
@@ -57268,6 +57714,261 @@
         {
           "level": 10,
           "float_ability_value_coef": 12000
+        }
+      ]
+    },
+    "disable_singlemode": 1,
+    "is_general_skill": 0
+  },
+  {
+    "skill_id": 1200011,
+    "name": "Medium Race Enthusiast",
+    "rarity": 1,
+    "group_id": 120001,
+    "group_rate": 1,
+    "grade_value": 508,
+    "cost": 0,
+    "skill_category": 0,
+    "skill_category_label": "green",
+    "tags": [
+      203,
+      405,
+      501
+    ],
+    "icon_id": 10051,
+    "activate_lot": 0,
+    "preconditions": [],
+    "conditions": [
+      "distance_type==3&ground_type==1"
+    ],
+    "ability_types": [
+      5
+    ],
+    "effect_blocks": [
+      {
+        "condition_slot": 1,
+        "ability_slot": 1,
+        "precondition": "",
+        "condition": "distance_type==3&ground_type==1",
+        "ability_type": 5,
+        "ability_value_usage": 1,
+        "ability_value_level_usage": 1,
+        "float_ability_value": 600000,
+        "target_type": 1,
+        "target_value": 0
+      }
+    ],
+    "level_values": {
+      "5": [
+        {
+          "level": 1,
+          "float_ability_value_coef": 10000
+        },
+        {
+          "level": 2,
+          "float_ability_value_coef": 10100
+        },
+        {
+          "level": 3,
+          "float_ability_value_coef": 10200
+        },
+        {
+          "level": 4,
+          "float_ability_value_coef": 10300
+        },
+        {
+          "level": 5,
+          "float_ability_value_coef": 10400
+        },
+        {
+          "level": 6,
+          "float_ability_value_coef": 10500
+        },
+        {
+          "level": 7,
+          "float_ability_value_coef": 10600
+        },
+        {
+          "level": 8,
+          "float_ability_value_coef": 10700
+        },
+        {
+          "level": 9,
+          "float_ability_value_coef": 10800
+        },
+        {
+          "level": 10,
+          "float_ability_value_coef": 11000
+        }
+      ]
+    },
+    "disable_singlemode": 1,
+    "is_general_skill": 0
+  },
+  {
+    "skill_id": 1200021,
+    "name": "Long Race Enthusiast",
+    "rarity": 1,
+    "group_id": 120002,
+    "group_rate": 1,
+    "grade_value": 508,
+    "cost": 0,
+    "skill_category": 0,
+    "skill_category_label": "green",
+    "tags": [
+      204,
+      402,
+      501
+    ],
+    "icon_id": 10021,
+    "activate_lot": 0,
+    "preconditions": [],
+    "conditions": [
+      "distance_type==4&ground_type==1"
+    ],
+    "ability_types": [
+      2
+    ],
+    "effect_blocks": [
+      {
+        "condition_slot": 1,
+        "ability_slot": 1,
+        "precondition": "",
+        "condition": "distance_type==4&ground_type==1",
+        "ability_type": 2,
+        "ability_value_usage": 1,
+        "ability_value_level_usage": 1,
+        "float_ability_value": 600000,
+        "target_type": 1,
+        "target_value": 0
+      }
+    ],
+    "level_values": {
+      "2": [
+        {
+          "level": 1,
+          "float_ability_value_coef": 10000
+        },
+        {
+          "level": 2,
+          "float_ability_value_coef": 10100
+        },
+        {
+          "level": 3,
+          "float_ability_value_coef": 10200
+        },
+        {
+          "level": 4,
+          "float_ability_value_coef": 10300
+        },
+        {
+          "level": 5,
+          "float_ability_value_coef": 10400
+        },
+        {
+          "level": 6,
+          "float_ability_value_coef": 10500
+        },
+        {
+          "level": 7,
+          "float_ability_value_coef": 10600
+        },
+        {
+          "level": 8,
+          "float_ability_value_coef": 10700
+        },
+        {
+          "level": 9,
+          "float_ability_value_coef": 10800
+        },
+        {
+          "level": 10,
+          "float_ability_value_coef": 11000
+        }
+      ]
+    },
+    "disable_singlemode": 1,
+    "is_general_skill": 0
+  },
+  {
+    "skill_id": 1200031,
+    "name": "Mile Race Enthusiast",
+    "rarity": 1,
+    "group_id": 120003,
+    "group_rate": 1,
+    "grade_value": 508,
+    "cost": 0,
+    "skill_category": 0,
+    "skill_category_label": "green",
+    "tags": [
+      202,
+      403,
+      501
+    ],
+    "icon_id": 10031,
+    "activate_lot": 0,
+    "preconditions": [],
+    "conditions": [
+      "distance_type==2&ground_type==1"
+    ],
+    "ability_types": [
+      3
+    ],
+    "effect_blocks": [
+      {
+        "condition_slot": 1,
+        "ability_slot": 1,
+        "precondition": "",
+        "condition": "distance_type==2&ground_type==1",
+        "ability_type": 3,
+        "ability_value_usage": 1,
+        "ability_value_level_usage": 1,
+        "float_ability_value": 600000,
+        "target_type": 1,
+        "target_value": 0
+      }
+    ],
+    "level_values": {
+      "3": [
+        {
+          "level": 1,
+          "float_ability_value_coef": 10000
+        },
+        {
+          "level": 2,
+          "float_ability_value_coef": 10100
+        },
+        {
+          "level": 3,
+          "float_ability_value_coef": 10200
+        },
+        {
+          "level": 4,
+          "float_ability_value_coef": 10300
+        },
+        {
+          "level": 5,
+          "float_ability_value_coef": 10400
+        },
+        {
+          "level": 6,
+          "float_ability_value_coef": 10500
+        },
+        {
+          "level": 7,
+          "float_ability_value_coef": 10600
+        },
+        {
+          "level": 8,
+          "float_ability_value_coef": 10700
+        },
+        {
+          "level": 9,
+          "float_ability_value_coef": 10800
+        },
+        {
+          "level": 10,
+          "float_ability_value_coef": 11000
         }
       ]
     },

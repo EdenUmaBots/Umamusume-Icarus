@@ -1,4 +1,4 @@
-# SweepyModv5.29 Action Reasoning and Training Balance
+# Pre Icarus v5.29 Action Reasoning and Training Balance
 
 ## Action Log click lock
 
@@ -10,7 +10,7 @@ The live `Turn / action / step` footer ticker was redundant with Action Log, Dec
 
 ## Training balance
 
-Training scoring keeps SweepyMod's existing MANT logic but adds a small target-pressure layer inspired by the Android automation bot's ratio-based scoring. Stats far below their target get a stronger multiplier, stats close to target taper down, and Wit receives dampening when it is already ahead of weaker target stats.
+Training scoring keeps Pre Icarus's existing MANT logic but adds a small target-pressure layer inspired by the Android automation bot's ratio-based scoring. Stats far below their target get a stronger multiplier, stats close to target taper down, and Wit receives dampening when it is already ahead of weaker target stats.
 
 Wit is still allowed when it is valuable, especially for safe recovery or strong friendship training. The change only reduces repeated Wit picks when Speed, Power, Stamina, or Guts are clearly behind the selected build targets.
 

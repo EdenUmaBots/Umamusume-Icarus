@@ -2,7 +2,7 @@
 
 ## Purpose
 
-SweepyModv5.12 adds the first official-data planning pass for Trackblazer. It uses `master.mdb` to enrich Smart Race Solver and race-selection logic with static route, rival, race reward, and performance-rate metadata.
+Pre Icarus v5.12 adds the first official-data planning pass for Trackblazer. It uses `master.mdb` to enrich Smart Race Solver and race-selection logic with static route, rival, race reward, and performance-rate metadata.
 
 ## New generated files
 

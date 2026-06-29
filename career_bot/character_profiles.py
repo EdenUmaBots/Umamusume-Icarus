@@ -1,12 +1,10 @@
-"""SweepyCL character profiles (v6.2 / v6.3).
+"""Pre Icarus character profiles (v6.2 / v6.3).
 
 Each character profile is a JSON file under ``data/character_profiles/`` that
 ships a tuned override bundle for:
 
-  - the v6.1 training scorer (``TrainingScorerConfig`` field overrides)
   - the Trackblazer race solver (weight overrides, target/forced epithets,
     distance preferences)
-  - the training-scorer mode flag (``hint`` vs ``authoritative``)
 
 Profiles are resolved at run start from the trainee's ``card_id`` (or
 ``chara_id``).  When no character match is found, the v6.3 auto-derivation
@@ -70,10 +68,6 @@ class CharacterProfile:
     # relying on name matching.
     matched_card_id: int = 0
 
-    # Training scorer overrides (subset of TrainingScorerConfig fields)
-    training_scorer_overrides: Dict[str, Any] = field(default_factory=dict)
-    training_scorer_mode: str = "hint"   # "hint" | "authoritative" | "disabled"
-
     # Race solver overrides (subset of trackblazer DEFAULT_SOLVER_WEIGHTS)
     solver_overrides: Dict[str, Any] = field(default_factory=dict)
 
@@ -114,33 +108,11 @@ class CharacterProfile:
     # solver call happens via ``effective_target_epithets()``.
     auto_picked_epithets: List[str] = field(default_factory=list)
 
-    # v6.8: when True, the runtime relaxes this profile's stamina target if the
-    # trainee starts with weak stamina inheritance (low stamina aptitude) so the
-    # scorer doesn't burn turns chasing an unreachable stamina number.  Applied
-    # by adapt_stamina_targets(); default off.
-    adapt_targets_to_inheritance: bool = False
-
     # Raw payload for debug/dashboard rendering
     raw: Dict[str, Any] = field(default_factory=dict)
 
     # ----- convenience accessors -----
 
-    def training_scorer_config(self):
-        """Construct a ``TrainingScorerConfig`` from the override dict.
-
-        Unknown override keys are silently ignored so a profile written
-        against a future scorer version doesn't crash an older runtime.
-        """
-        # Local import keeps this module decoupled from the scorer at
-        # module-load time (avoids any cycle if the scorer ever needs to
-        # reference profiles).
-        from career_bot import training_scorer as ts
-
-        cfg = ts.TrainingScorerConfig()
-        for key, value in (self.training_scorer_overrides or {}).items():
-            if hasattr(cfg, key):
-                setattr(cfg, key, value)
-        return cfg
 
     def solver_weight_overrides(self) -> Dict[str, Any]:
         """Return a flat dict ready to feed into ``trackblazer.solve_with_node(weights=...)``."""
@@ -172,8 +144,6 @@ class CharacterProfile:
             "matched_card_id": self.matched_card_id,
             "derivation": self.derivation,
             "scenario_id": self.scenario_id,
-            "training_scorer_overrides": dict(self.training_scorer_overrides),
-            "training_scorer_mode": self.training_scorer_mode,
             "solver_overrides": dict(self.solver_overrides),
             "target_epithets": list(self.target_epithets),
             "forced_epithets": list(self.forced_epithets),
@@ -181,7 +151,6 @@ class CharacterProfile:
             "preferred_distances": list(self.preferred_distances),
             "auto_pick_epithets": bool(self.auto_pick_epithets),
             "auto_picked_epithets": list(self.auto_picked_epithets),
-            "adapt_targets_to_inheritance": bool(self.adapt_targets_to_inheritance),
         }
 
 
@@ -265,13 +234,11 @@ def _merge_scenario(payload: Mapping[str, Any], scenario_id: int) -> Dict[str, A
 
         {
           "display_name": "Oguri Cap",
-          "training_scorer_overrides": {...},
           "solver_overrides": {...},
           "target_epithets": [...],
           ...
           "scenarios": {
             "4": {
-              "training_scorer_overrides": {...},
               "solver_overrides": {...}
             }
           }
@@ -283,7 +250,7 @@ def _merge_scenario(payload: Mapping[str, Any], scenario_id: int) -> Dict[str, A
     merged: Dict[str, Any] = {}
     scenario_block = ((payload.get("scenarios") or {}).get(str(scenario_id))) or {}
 
-    for k in ("display_name", "training_scorer_mode"):
+    for k in ("display_name",):
         merged[k] = _coalesce_field(payload, scenario_block, k)
 
     # v6.4: auto_pick_epithets is a bool with a True default; the
@@ -301,15 +268,8 @@ def _merge_scenario(payload: Mapping[str, Any], scenario_id: int) -> Dict[str, A
         # Character Profile tab's checkbox.
         merged["auto_pick_epithets"] = False
 
-    # v6.8: parent-aware stamina adaptation toggle (bool, default False),
-    # scenario-overridable like auto_pick_epithets.
-    if "adapt_targets_to_inheritance" in scenario_block:
-        merged["adapt_targets_to_inheritance"] = bool(scenario_block.get("adapt_targets_to_inheritance"))
-    else:
-        merged["adapt_targets_to_inheritance"] = bool(payload.get("adapt_targets_to_inheritance", False))
-
     # Dict fields: shallow-merge scenario overrides onto base
-    for k in ("training_scorer_overrides", "solver_overrides"):
+    for k in ("solver_overrides",):
         base = dict(payload.get(k) or {})
         base.update(dict(scenario_block.get(k) or {}))
         merged[k] = base
@@ -404,9 +364,6 @@ def resolve_profile(
         matched_via = "default"
 
     merged = _merge_scenario(payload, scenario_id)
-    mode = (merged.get("training_scorer_mode") or "hint").strip().lower()
-    if mode not in {"hint", "authoritative", "disabled"}:
-        mode = "hint"
 
     # Suggested epithets: when a hand-curated profile matches AND we have a
     # display_name we can look up in the catalog, surface the signature
@@ -423,8 +380,6 @@ def resolve_profile(
         matched_via=matched_via,
         matched_card_id=cid,
         scenario_id=int(scenario_id or 0),
-        training_scorer_overrides=dict(merged.get("training_scorer_overrides") or {}),
-        training_scorer_mode=mode,
         solver_overrides=dict(merged.get("solver_overrides") or {}),
         target_epithets=list(merged.get("target_epithets") or []),
         forced_epithets=list(merged.get("forced_epithets") or []),
@@ -433,7 +388,6 @@ def resolve_profile(
         derivation="default" if matched_via == "default" else "hand_curated",
         auto_pick_epithets=auto_pick_enabled,
         auto_picked_epithets=auto_picked,
-        adapt_targets_to_inheritance=bool(merged.get("adapt_targets_to_inheritance", False)),
         raw=dict(payload),
     )
 
@@ -491,11 +445,10 @@ def _derive_stat_targets(aptitudes: Mapping[str, int]) -> Dict[str, Dict[str, in
     Where the trainee has S/A aptitude, full-strength targets apply.  Lower
     grades pull the targets down (a C-aptitude Long target doesn't push to
     1100 Stamina because the trainee can't compete at that distance anyway).
-    The training scorer's importance factor still multiplies by target
-    magnitude so this naturally de-weights weak distances.
+    Targets de-weight weak distances by their magnitude.
     """
     out: Dict[str, Dict[str, int]] = {}
-    # Default per-distance targets (matches TrainingScorerConfig defaults)
+    # Default per-distance targets.
     defaults = {
         "sprint": {"speed": 1200, "stamina": 400, "power": 1100, "guts": 400, "wit": 1000},
         "mile":   {"speed": 1200, "stamina": 600, "power": 1000, "guts": 400, "wit": 1000},
@@ -589,16 +542,6 @@ def _derive_from_chara_info(
     suggested = _suggested_epithets_for_name(name, base_dir)
     auto_picked = _auto_pick_epithet_names(name, base_dir)
 
-    training_scorer_overrides = {
-        "stat_priority": priority,
-        "stat_targets": stat_targets,
-    }
-    # When the trainee's best aptitude is at S, the build benefits more
-    # from the rainbow-bonus regime since rainbow training compounds with
-    # facility level boosts on the dominant stat.
-    if aptitudes.get(best_dist, 0) >= 8:
-        training_scorer_overrides["rainbow_bonus_enabled"] = True
-
     solver_overrides: Dict[str, Any] = {}
     # Trackblazer (scenario_id == 4) is the only scenario we currently tune
     # the solver weights for.  Other scenarios run with the global defaults.
@@ -613,8 +556,6 @@ def _derive_from_chara_info(
         display_name=name,
         matched_via="auto",
         scenario_id=int(scenario_id or 0),
-        training_scorer_overrides=training_scorer_overrides,
-        training_scorer_mode="hint",
         solver_overrides=solver_overrides,
         target_epithets=[],
         forced_epithets=[],

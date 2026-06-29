@@ -1,8 +1,8 @@
-# Code Analysis Follow-up for SweepyModv5.7
+# Code Analysis Follow-up for Pre Icarus v5.7
 
 ## Purpose
 
-SweepyModv5.7 implements the actionable findings from the SweepyModv5.6 audit: confirmed bugs, robustness gaps, solver UX improvements, and redundant solver-mode state cleanup.
+Pre Icarus v5.7 implements the actionable findings from the Pre Icarus v5.6 audit: confirmed bugs, robustness gaps, solver UX improvements, and redundant solver-mode state cleanup.
 
 ## Bugs fixed
 

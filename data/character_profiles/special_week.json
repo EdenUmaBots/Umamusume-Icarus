@@ -1,26 +1,13 @@
 {
   "display_name": "Special Week",
   "_comment": "Special Week is the canonical Long stayer (Long=A, Medium=A, Mile=C, Sprint=F per the Android preset DB). Stat priority leans Stamina-first to support long races, with Guts elevated above Wit because long races trip the guts-clutch threshold more often. Per-distance stat targets push Stamina to 1200 on Long and Power down on Sprint (which Special Week shouldn't be running anyway). Long-distance stamina floor stays at the default 550 because she absolutely should be building stamina.",
-  "training_scorer_mode": "hint",
-
-  "training_scorer_overrides": {
-    "stat_priority": ["stamina", "speed", "power", "guts", "wit"],
-    "event_stat_priority": ["stamina", "speed", "power", "guts", "wit"],
-    "summer_stat_priority": ["stamina", "speed", "power", "guts", "wit"],
-    "rainbow_bonus_enabled": true,
-    "stat_targets": {
-      "sprint": {"speed": 800, "stamina": 600, "power": 700, "guts": 400, "wit": 800},
-      "mile":   {"speed": 1000, "stamina": 800, "power": 900, "guts": 500, "wit": 900},
-      "medium": {"speed": 1100, "stamina": 1000, "power": 1000, "guts": 500, "wit": 900},
-      "long":   {"speed": 1100, "stamina": 1200, "power": 1000, "guts": 600, "wit": 900}
-    }
-  },
-
   "solver_overrides": {},
   "target_epithets": [],
   "forced_epithets": [],
-  "preferred_distances": ["long", "medium"],
-
+  "preferred_distances": [
+    "long",
+    "medium"
+  ],
   "scenarios": {
     "4": {
       "_comment": "Trackblazer for Special Week. Stamina is her strongest dimension; don't undermine the Long-distance race-risk gate (default 550 stays). Raise targetOptionalRaceCount to push for full schedule density now that the bot will be picking longer races where her aptitudes shine. epithetValue up for when target_epithets are populated.",

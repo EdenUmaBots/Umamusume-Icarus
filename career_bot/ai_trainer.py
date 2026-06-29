@@ -1,4 +1,4 @@
-"""Automatic local AI training and advisor model generation for SweepyCL.
+"""Automatic local AI training and advisor model generation for Pre Icarus.
 
 This module is intentionally local-first and deterministic.  It does not call an
 external LLM and it never executes gameplay actions.  It turns the AI-ready JSONL
@@ -21,7 +21,7 @@ from pathlib import Path
 from typing import Any, Callable, Dict, Iterable, List, Mapping, Optional, Tuple
 
 from career_bot.ai_dataset import DATASET_FILES, dataset_status, rebuild_advisor_stats, runtime_output_root, safe_float, safe_int, JSONL_ARCHIVE_MARKER
-from career_bot import style_adaptation, local_llm, event_outcomes
+from career_bot import style_adaptation, local_llm
 
 AI_TRAINER_VERSION = 2
 MIN_CONFIDENCE_DEFAULT = 0.65
@@ -872,7 +872,7 @@ def _summary_key(summary: Mapping[str, Any]) -> str:
 def build_shadow_policy_report(turn_rows: List[Mapping[str, Any]], policy: Mapping[str, Any]) -> Dict[str, Any]:
     """Evaluate learned policy hints without changing live decisions.
 
-    SweepyCL does not usually store full candidate sets for every turn, so the
+    Pre Icarus does not usually store full candidate sets for every turn, so the
     shadow report focuses on the action that actually happened.  A warning is
     considered useful when the policy would have penalized a race that then lost;
     it is considered a false alarm when the policy would have penalized a race
@@ -1147,7 +1147,6 @@ def build_ai_dashboard_payload(
         "health": dict(health or {}),
         "style_adaptation": dict(style_payload or {}),
         "local_llm": local_llm.dashboard_summary(root),
-        "event_outcome_kb": event_outcomes.summary(root),
         "live_policy": {
             "enabled": bool(policy.get("enabled")),
             "race_adjustments": len(policy.get("races") or {}),
@@ -1195,7 +1194,7 @@ def build_llm_prompt_pack(root: Path, turn_rows: List[Mapping[str, Any]], tuning
             "schema_version": AI_TRAINER_VERSION,
             "task": "config_tuning_review",
             "suggestion": suggestion,
-            "question": "Review this local analytics tuning suggestion and propose safe SweepyCL config defaults.",
+            "question": "Review this local analytics tuning suggestion and propose safe Pre Icarus config defaults.",
             "synthetic_weight": 0.0,
         })
     latest_rows = rows[-200:]
@@ -1224,7 +1223,7 @@ def build_post_run_report(root: Path, run_payload: Mapping[str, Any], race_table
     }
     _atomic_write_json(report_dir / "latest_post_run_report.json", payload)
     md_lines = [
-        "# SweepyCL AI Advisor Report",
+        "# Pre Icarus AI Advisor Report",
         "",
         f"Generated: {payload['generated_at']}",
         f"Reason: {payload.get('training_reason') or 'manual'}",
@@ -1507,7 +1506,7 @@ def create_safe_debug_bundle(base_dir: Any) -> Path:
         "style_adaptation_shadow_report.json",
     }
     with zipfile.ZipFile(out, "w", compression=zipfile.ZIP_DEFLATED) as zf:
-        zf.writestr("README.txt", "Safe SweepyCL AI diagnostics bundle. Auth tokens and raw API logs are intentionally excluded.\n")
+        zf.writestr("README.txt", "Safe Pre Icarus AI diagnostics bundle. Auth tokens and raw API logs are intentionally excluded.\n")
         for name in sorted(include_names):
             path = root / name
             if path.exists() and path.is_file():
@@ -1536,10 +1535,8 @@ def latest_dashboard(base_dir: Any) -> Dict[str, Any]:
             "detail": "AI dashboard has not been generated yet. Click Train Now or wait for auto-training.",
             "auto_training": status,
             "local_llm": local_llm.dashboard_summary(base_dir),
-            "event_outcome_kb": event_outcomes.summary(base_dir),
         }
     payload["success"] = True
-    payload["event_outcome_kb"] = event_outcomes.summary(base_dir)
     return payload
 
 

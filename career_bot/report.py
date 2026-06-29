@@ -98,9 +98,56 @@ def add_event(report, row):
     return turn
 
 
+# v2.1: career logs were ~50MB because api_calls stored full raw API payloads
+# (~94% of the file) PLUS bot-injected context (runner_context/action_history/
+# replan_log) that leaks into the logged response objects. Slim each logged
+# api_call to metadata + ONLY the response keys downstream consumers actually
+# read, so logs shrink ~95% while staying coherent for AI debugging. Consumers
+# (verified): ai_dataset._race_result_from_api_response reads data.data.
+# {race_reward_info, chara_info, race_history} on race_end; ai_dataset.
+# _api_context_from_turn / _stats_from_turn_payload read data.data.{home_info,
+# free_data_set, race_condition_array, unchecked_event_array, chara_info};
+# benchmark reads data.data.chara_info. Anything not in the keep-set is dropped.
+_API_KEEP_KEYS_ALWAYS = frozenset({
+    "chara_info", "home_info", "free_data_set",
+    "race_condition_array", "unchecked_event_array",
+})
+_API_KEEP_KEYS_RACE_END = frozenset({"race_reward_info", "race_history"})
+
+
+def _slim_api_event(event):
+    """Project a logged api_call to metadata + consumer-read response keys only.
+    Drops full raw payloads and bot-injected context (runner_context,
+    action_history, replan_log, the trained_chara roster, etc.)."""
+    if not isinstance(event, dict):
+        return event
+    slim = {k: event.get(k) for k in ("ts", "direction", "endpoint", "req_id", "turn") if k in event}
+    # v2.1: preserve the skill-purchase REQUEST body (a small list of skill ids)
+    # so per-skill spending is diagnosable in career logs. Other request bodies
+    # stay dropped (they're large and not useful for AI/debug analysis).
+    if event.get("direction") == "REQ" and "gain_skills" in str(event.get("endpoint") or ""):
+        slim["data"] = event.get("data")
+        return slim
+    data = event.get("data")
+    if isinstance(data, dict):
+        if "response_code" in data:
+            slim["response_code"] = data.get("response_code")
+        if "error" in data:  # keep ERR-call error text -- useful for AI debugging
+            slim["error"] = data.get("error")
+        inner = data.get("data")
+        if isinstance(inner, dict):
+            keep = set(_API_KEEP_KEYS_ALWAYS)
+            if "race_end" in str(event.get("endpoint") or ""):
+                keep |= _API_KEEP_KEYS_RACE_END  # race_history only here (else it's bot-injected bloat)
+            proj = {k: inner[k] for k in inner if k in keep}
+            if proj:
+                slim["data"] = {"data": proj}
+    return slim
+
+
 def add_api_call(report, event):
     turn = get_turn(report, turn_from_event(event))
-    turn.setdefault("api_calls", []).append(event)
+    turn.setdefault("api_calls", []).append(_slim_api_event(event))
     report["final_turn"] = max(safe_int(report.get("final_turn")), safe_int(turn.get("turn")))
 
 
@@ -166,9 +213,56 @@ def finish_report(report, status=None):
         report["final_turn"] = max(safe_int(turn.get("turn")) for turn in turns)
 
 
+# Personal / credential fields that must never appear in a shared career log.
+# The first block is the user-specified device/network/Steam identity fields; the
+# second is login credentials (sharing these would be an account-takeover risk).
+_REDACT_KEYS = frozenset({
+    "device_id", "device_name", "graphics_device_name", "ip_address",
+    "platform_os_version", "carrier", "keychain", "locale", "button_info",
+    "dmm_viewer_id", "dmm_onetime_token", "steam_id", "steam_session_ticket",
+    "udid", "auth_key",
+})
+
+
+def _build_version():
+    """Read the build/channel label from the top CHANGELOG.md heading (e.g.
+    'Icarus v2.1 (Beta 1)' or 'Icarus v2.0'). Stamped into every career log so a
+    shared log self-identifies exactly which build produced it."""
+    try:
+        changelog = Path(__file__).resolve().parent.parent / "CHANGELOG.md"
+        for line in changelog.read_text(encoding="utf-8").splitlines():
+            if line.startswith("## "):
+                return line[3:].strip()
+    except Exception:
+        pass
+    return "unknown"
+
+
+def _redact_sensitive(obj):
+    """Recursively redact personal/credential fields in place, so career logs
+    never leak device, network, or Steam/account identifiers."""
+    if isinstance(obj, dict):
+        for key in list(obj.keys()):
+            if key in _REDACT_KEYS:
+                obj[key] = "[REDACTED]"
+            else:
+                _redact_sensitive(obj[key])
+    elif isinstance(obj, list):
+        for item in obj:
+            _redact_sensitive(item)
+    return obj
+
+
 def write_report(report, output_dir):
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
+    # Scrub personal data before anything is written to disk (covers the career
+    # log, the latest_career_log.json copy, and the AI-ready exports below).
+    _redact_sensitive(report)
+    # Stamp the build/channel so a shared log self-identifies its build.
+    report["build_version"] = _build_version()
+    if isinstance(report.get("runtime_settings"), dict):
+        report["runtime_settings"]["build_version"] = report["build_version"]
     stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     path = output_dir / f"career_log_{stamp}.json"
 
@@ -211,10 +305,10 @@ def write_report(report, output_dir):
     # They never alter the user-facing career log and must never stop report
     # creation if a derived dataset cannot be written.
     try:
-        manifest = export_report_ai_datasets(report, output_dir, build_version="SweepyModv5.40AI")
+        manifest = export_report_ai_datasets(report, output_dir, build_version=_build_version())
         report["ai_export_manifest"] = manifest
         if after_career_export:
-            report["ai_auto_training"] = after_career_export(output_dir, manifest=manifest, build_version="SweepyModv5.40AI")
+            report["ai_auto_training"] = after_career_export(output_dir, manifest=manifest, build_version=_build_version())
     except Exception as exc:
         report["ai_export_error"] = {"type": type(exc).__name__, "message": str(exc)}
     return path

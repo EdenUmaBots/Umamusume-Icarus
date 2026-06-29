@@ -1,4 +1,4 @@
-# SweepyModv5.35 Running Style, AI Modal, and Nav Polish
+# Pre Icarus v5.35 Running Style, AI Modal, and Nav Polish
 
 This release focuses on five small but important UX/decision-safety fixes:
 

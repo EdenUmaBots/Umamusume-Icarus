@@ -4,11 +4,11 @@ A clean implementation of the reference Trackblazer decision model (a
 scoring-shared training scorer plus the Campaign/Trackblazer waterfall), ported
 to run on Icarus's exact game-API data.
 
-This is the DEFAULT engine. When active, it FULLY OWNS the per-turn
-training/rest/mood/recreation decision — it does NOT use the legacy
-``_score_command`` / ``_best_command`` / race-vs-train gates. The legacy
-("Classic") engine is left completely intact and is selected via
-``mant_config.decision_mode`` in ("legacy", "classic").
+This is the DEFAULT and ONLY engine. When active, it FULLY OWNS the per-turn
+training/rest/mood/recreation decision. The dormant legacy ("Classic") scorer
+(``_score_command`` / ``_best_command`` / race-vs-train gates) that used to live
+in mant.py has been removed; ``decision_mode`` values "legacy"/"classic"/"android"
+are accepted as backward-compatible aliases for this engine.
 
 Build status (incremental):
   * STEP 1 (this module): training scorer + per-distance targets + milestone
@@ -27,6 +27,8 @@ from __future__ import annotations
 
 from career_bot.scenarios.base import Decision
 from career_bot.trackblazer_guide import is_summer_turn
+from career_bot import trackblazer_rules as tb_rules
+from career_bot.scenarios.mant import JUNIOR_FOCUS_LAST_TURN   # safe: mant imports this module lazily
 
 
 # --- Trackblazer scoring constants (TrainingScoringConstants, defaults) -------
@@ -46,11 +48,17 @@ MAIN_STAT_THRESHOLD = [30, 30, 30, 30, 15]            # spd/sta/pow/guts/wit
 MAIN_STAT_BONUS = 2.0
 REL_VALUE_BLUE = 2.5
 REL_VALUE_GREEN = 1.0
-REL_VALUE_ORANGE = 0.0
+# v2.1 bond rework: low-bond (orange, <60) partners were worth 0.0, so the engine
+# never deliberately bond-rushed in junior and off-priority cards (e.g. a Stamina
+# SSR like Super Creek when priority is Speed/Power) stalled at ~3 bars, never
+# reaching rainbow (>=80). The three defaults below now favor finishing bonds;
+# all are overridable per-preset via mant_config (bond_value_orange / bond_weight /
+# bond_finish_push_cap) and the Training Settings "Bond / Friendship" sliders.
+REL_VALUE_ORANGE = 0.4
 REL_DIMINISH = 0.5
 REL_EARLY_GAME = 1.3
 STAT_WEIGHT_WITH_BARS = 0.6
-REL_WEIGHT_WITH_BARS = 0.1
+REL_WEIGHT_WITH_BARS = 0.15
 MISC_WEIGHT = 0.3
 SKILL_HINT_PER = 10.0
 SKILL_HINT_OVERRIDE = 10000.0
@@ -58,9 +66,33 @@ RAINBOW_MULT_ENABLED = 2.0
 RAINBOW_MULT_DISABLED = 1.5
 ANTICIPATORY_MIN_FILL = 50.0
 ANTICIPATORY_COEFF = 0.2
-ANTICIPATORY_CAP = 0.6
+ANTICIPATORY_CAP = 1.0
 STAT_CAP = 1200
 FINALE_STAT_BONUS_PER_RACE = 15
+
+
+def _rainbow_attenuation(fill, floor=0.25):
+    """Attenuation factor (0..1) applied to the rainbow training bonus based on
+    how full the trained stat already is (fill = current stat / its cap).
+
+    A rainbow (friendship training) is most valuable on a stat that still has
+    room to grow. As the stat fills toward its cap the bonus ramps down toward 0
+    so the engine stops chasing rainbows on finished stats and keeps training
+    stats that still need work. `floor` keeps a near-capped rainbow worth
+    something so a real friendship turn is never fully discarded.
+
+    Continuous monotonic curve: fill < 0.7 -> 1.0; 0.7..0.9 -> 1.0..0.5;
+    0.9..1.0 -> 0.5..0.0; fill >= 1.0 -> 0.0 (then floored)."""
+    if fill >= 1.0:
+        atten = 0.0
+    elif fill >= 0.9:
+        atten = 0.5 - (fill - 0.9) / 0.1 * 0.5
+    elif fill >= 0.7:
+        atten = 1.0 - (fill - 0.7) / 0.2 * 0.5
+    else:
+        atten = 1.0
+    return max(float(floor), atten)
+
 
 # Per-distance targets [Spd/Sta/Pow/Guts/Wit] — matched to a reference
 # run (Oguri_CapP_2026-06-18): 1200/600/1200/600/1200 (Long: Sta 800/
@@ -193,13 +225,18 @@ class MantTrackblazerCore:
         vital = int(chara.get("vital") or 0)
         motivation = int(chara.get("motivation") or 3)
         summer = (turn in SUMMER_CAMP_TURNS) or is_summer_turn(turn, getattr(self.ref, "trackblazer_guide", {}))
+        free_mode = self.ref._strategy_mode_is(chara, preset, "free")   # Sirius/Throne Mode B
         finale = turn >= 73
         can_safely_train = vital > int(_acfg(cfg, "trackblazer_force_train_energy_floor",
                                              "force_train_energy_floor_android", 20))
 
         # T0/T1 — the engine trains through summer & finale (banks stats; avoids
         # the consecutive-race energy penalty). Only if a training is available.
-        if training and can_safely_train and (summer or finale):
+        # v2.1 (#31): NOT in manual mode -- the user's manual race schedule is
+        # authoritative, so a race they scheduled on a summer/finale turn must not
+        # be trained over. Manual mode falls through to race_planner.choose(), which
+        # runs the scheduled race if available or returns None (then train/rest).
+        if training and can_safely_train and (summer or finale) and not manual:
             return self._train(data, chara, preset, training, reason_prefix="summer/finale")
 
         # Mandatory in-game race always runs (game leaves only the race enabled).
@@ -211,6 +248,15 @@ class MantTrackblazerCore:
                 return Decision("race", {"program_id": forced, "current_turn": chara["turn"],
                                          "_strategy": self.ref, "_forced_race": True},
                                 self.ref.race_planner.label(forced))
+
+        # Sirius/Throne SCHEDULED group outing (Mode A) — on its calendar turns,
+        # after the game's mandatory race (above) and before optional racing/training.
+        # _scheduled_recreation self-skips summer + returns None when nothing is due
+        # (the goal-driven catch-up recovers any slipped turn next time it's available).
+        if self.ref._strategy_mode_is(chara, preset, "scheduled"):
+            _sched = self.ref._scheduled_recreation(commands, turn, chara, preset)
+            if _sched:
+                return self._as_command(_sched, chara, "trackblazer: scheduled group outing")
 
         # Runtime consecutive-race streak cap. The solver enforces max_races_in_row
         # in PLANNING, but runtime overrides (marquee guard / missing-race substitute
@@ -237,7 +283,11 @@ class MantTrackblazerCore:
                     has_energy_item = any(self.ref._owned_item_count(data, iid) > 0 for iid in ENERGY_ITEM_IDS)
                 except Exception:
                     has_energy_item = False
-                if vital >= int(cfg.get("marquee_min_vital", 30)) or has_energy_item:
+                # Year-end marquee (e.g. Arima Kinen): always allow it through the
+                # gate -- it's safe to chain into (year ends next; energy doesn't
+                # affect the race outcome), so don't require energy/an energy item.
+                if (vital >= int(cfg.get("marquee_min_vital", 30)) or has_energy_item
+                        or tb_rules.is_year_end_rest_exempt(turn)):
                     # NOT _forced_race: that flag marks a race MANDATORY, so a loss
                     # would stop the career (complete_career_on_failure). A marquee
                     # is optional — run it through the prediction gate so the runner
@@ -248,7 +298,12 @@ class MantTrackblazerCore:
                                     self.ref.race_planner.label(mq))
 
         # Trackblazer energy/consecutive-race guard (shouldAllowConsecutiveRace).
-        if not manual and vital <= 10 and consec >= 3 and not cfg.get("ignore_low_energy_racing_block", False):
+        # Exempt year-end wrap-up race turns (Hopeful/Arima/finale) -- the year/
+        # career ends right after, so the consecutive-race penalty never carries
+        # forward and the race is safe to chain into (parity with legacy mant.py).
+        if (not manual and vital <= 10 and consec >= 3
+                and not tb_rules.is_year_end_rest_exempt(turn)
+                and not cfg.get("ignore_low_energy_racing_block", False)):
             return self._as_command(rest or recreation, chara, "trackblazer energy guard: rest (energy<=10, 3+ consecutive races)")
 
         # STEP 3 (option B): keep Icarus's MILP smart-race solver for scheduling
@@ -261,7 +316,9 @@ class MantTrackblazerCore:
         if self.ref.race_planner and training and streak_ok:
             program_id = self.ref.race_planner.choose(state, preset)
             if program_id:
-                if not manual and vital <= 1 and consec >= 3 and not cfg.get("ignore_low_energy_racing_block", False):
+                if (not manual and vital <= 1 and consec >= 3
+                        and not tb_rules.is_year_end_rest_exempt(turn)
+                        and not cfg.get("ignore_low_energy_racing_block", False)):
                     return self._as_command(rest or recreation, chara, "trackblazer hard-block race (energy<=1, 3+ consecutive)")
                 # STEP 2: irregular training (Year 2+) — hijack this race turn to
                 # train when an exceptional training is available. Skipped in manual
@@ -279,7 +336,8 @@ class MantTrackblazerCore:
                     if bcmd is not None:
                         bidx = TRAINING_COMMANDS.get(bcmd.get("command_id"), 0)
                         main_gain = self._stat_gains(bcmd)[bidx]
-                        thr = int(cfg.get("irregular_training_min_main_gain", 50))
+                        thr = int(cfg.get("irregular_training_min_main_gain",
+                                          tb_rules.DEFAULT_IRREGULAR_TRAINING_MIN_MAIN_GAIN))
                         if main_gain >= thr:
                             return self._as_command(bcmd, chara, f"trackblazer: irregular training (gain {main_gain} >= {thr}, train over race)")
                 # Manual picks are forced -> no prediction gate (the runner only
@@ -301,8 +359,50 @@ class MantTrackblazerCore:
         good = great - 1                         # GOOD = one below GREAT
         pre_camp = turn in (34, 35, 58, 59)
         want_mood = good if not pre_camp else great
-        if recreation and motivation < want_mood and vital >= int(cfg.get("mood_recovery_energy_floor", 50)):
-            return self._as_command(recreation, chara, f"trackblazer: recover mood (mot {motivation} < {want_mood})")
+        # v2.0: don't recreate pre-debut (turn < ~12). The mood/stat gain isn't
+        # worth missing the early bond/friendship-threshold building; fall through
+        # to training/rest instead.
+        recreation_min_turn = int(cfg.get("recreation_min_turn", 12))
+        # 2026-06-29: SUMMER CAMP (37-40 / 61-64) is the prime stat source -- train
+        # at mood 3+ rather than spend a precious camp turn on Recreation. The
+        # summer force-train at the top of decide() already covers non-manual runs;
+        # this guard closes the manual-mode leak (force-train is skipped there) so
+        # 61-64 still trains. Tunable (default ON).
+        summer_train_over_rec = bool(cfg.get("summer_force_train_over_recreation", True))
+        skip_summer_recreation = summer_train_over_rec and summer and can_safely_train
+        if (recreation and turn >= recreation_min_turn and motivation < want_mood
+                and vital >= int(cfg.get("mood_recovery_energy_floor", 50))
+                and not skip_summer_recreation):
+            # Spec (Low): a Berry Sweet Cupcake is the dedicated mood-recovery
+            # resource. If one is owned above the cupcake reserve AND energy is
+            # low enough that the item layer will actually queue it (vital below
+            # the cupcake threshold), skip Recreation and let the next training
+            # turn spend the Berry Sweet for mood -- preserving the turn for
+            # training. The dual gate avoids training with unrecovered low mood
+            # when no Berry Sweet can fire; otherwise Recreation runs unchanged.
+            cupcake_reserve = max(0, int(cfg.get("trackblazer_cupcake_reserve", 1)))
+            try:
+                berry_qty = int(self.ref._owned_item_count(data, 2302) or 0)
+                plain_qty = int(self.ref._owned_item_count(data, 2301) or 0)
+                kale_qty = int(self.ref._owned_item_count(data, 2101) or 0)
+            except Exception:
+                berry_qty = plain_qty = kale_qty = 0
+            cupcake_thresh = int(cfg.get("cupcake_energy_threshold", 70))
+            berry_escape = berry_qty > cupcake_reserve and vital < cupcake_thresh
+            # 2026-06-29: by turn>=61 with NO Royal Kale Juice owned, the reserved
+            # cupcake can never combo with kale -- release it. Train and let the
+            # item layer (_mood_target, which spends ANY cupcake for mood past turn
+            # 60) patch mood, instead of wasting the turn on Recreation. Tunable.
+            release_no_kale = bool(cfg.get("release_cupcake_reserve_when_no_kale", True))
+            no_kale_release = (release_no_kale and turn >= 61 and kale_qty == 0
+                               and (berry_qty + plain_qty) > 0)
+            if not (berry_escape or no_kale_release):
+                if free_mode:
+                    _outing = self.ref._free_group_outing(commands, turn, chara)
+                    if _outing:
+                        return self._as_command(_outing, chara, "trackblazer: free group outing (mood)")
+                return self._as_command(recreation, chara, f"trackblazer: recover mood (mot {motivation} < {want_mood})")
+            # else: fall through to training; the item layer (_mood_target) queues a cupcake.
 
         # Energy rest — but first try the energy-item rescue: if a good
         # training exists and an owned Vita/Kale (or charm) can carry it, train
@@ -320,6 +420,10 @@ class MantTrackblazerCore:
                 if rescue:
                     bidx = TRAINING_COMMANDS.get(bcmd.get("command_id"), 0)
                     return self._as_command(bcmd, chara, f"trackblazer: energy-rescue train {STAT_KEYS[bidx]} (vital {vital}, item top-up)")
+            if free_mode:
+                _outing = self.ref._free_group_outing(commands, turn, chara)
+                if _outing:
+                    return self._as_command(_outing, chara, "trackblazer: free group outing (rest)")
             return self._as_command(rest, chara, f"trackblazer: rest (energy {vital} <= {rest_threshold})")
 
         # Default -> train (the Trackblazer scorer).
@@ -382,9 +486,36 @@ class MantTrackblazerCore:
             for s, c in scored
         ]
         self.ref.last_decision_trace = {"mode": "trackblazer", "targets": targets, "priority": priority}
+        # Sirius/Throne JUNIOR BOND FOCUS (Mode A, group deck, turns <= 11): prefer the
+        # facility with the most Group-card partners so their outings unlock on schedule
+        # (a late unlock slips the whole plan). Group-partner count > bondable > score.
+        _turn = int(chara.get("turn") or 0)
+        if (_turn <= JUNIOR_FOCUS_LAST_TURN
+                and self.ref._strategy_mode_is(chara, preset, "scheduled")
+                and _cfg(preset).get("sirius_throne_junior_focus", True)
+                and self.ref._deck_has_group_cards(chara)):
+            _gslots = set(self.ref._group_card_slots(chara))
+            if _gslots:
+                best_score, best = max(scored, key=lambda row: (
+                    len(_gslots & {int(p) for p in (row[1].get("training_partner_array") or [])}),
+                    self.ref._bondable_count(row[1], chara), row[0]))
+                _jidx = TRAINING_COMMANDS.get(best.get("command_id"))
+                return self._as_command(best, chara, f"trackblazer: junior group-focus train {STAT_KEYS[_jidx]}")
         best_score, best = scored[0]
         idx = TRAINING_COMMANDS.get(best.get("command_id"))
         return self._as_command(best, chara, f"{reason_prefix}: train {STAT_KEYS[idx]} (score {best_score:.1f})")
+
+    def _live_stat_cap(self, chara, idx):
+        """Live per-stat ceiling from chara_info (max_speed/.../max_wiz), falling back
+        to the static STAT_CAP when the field is absent. The server's live cap can be
+        BELOW the static 1200 (training past it is wasted SP) or raised above it by
+        cap-up effects; either way the real ceiling is authoritative. Identical
+        behavior to before whenever the live cap equals STAT_CAP (the common case)."""
+        try:
+            v = int((chara or {}).get("max_" + STAT_KEYS[idx]) or 0)
+        except Exception:
+            v = 0
+        return v if v > 0 else STAT_CAP
 
     def _score_training(self, cmd, idx, gains, chara, preset, targets, priority, year, summer):
         """Port of the reference calculateRawTrainingScore."""
@@ -394,15 +525,17 @@ class MantTrackblazerCore:
 
         # Junior / pre-debut: bond-rush (Scoring.kt scoreFriendshipTraining).
         if year == 0:
-            return self._friendship_score(cmd, chara)
+            return self._friendship_score(cmd, chara, cfg)
 
         # Cap / finale-buffer gating. In capped focus mode the ~100-below-cap
         # buffer is removed so priority stats can be trained to the true cap;
         # only the hard STAT_CAP stop remains.
         finale_bonus = self._finale_bonus(int(chara.get("turn") or 0))
-        eff_cap = STAT_CAP - 100 - finale_bonus
+        # Cap-aware: use the LIVE per-stat ceiling instead of the static 1200.
+        stat_cap = self._live_stat_cap(chara, idx)
+        eff_cap = stat_cap - 100 - finale_bonus
         rainbow = self.ref._rainbow_partner_count(cmd, chara)
-        if cur >= STAT_CAP:
+        if cur >= stat_cap:
             return 0.0
         potential = cur + (gains[idx] if idx < len(gains) else 0)
         if (not capped) and cfg.get("disable_training_on_maxed_stats", True) and (cur >= eff_cap or potential >= eff_cap):
@@ -410,19 +543,34 @@ class MantTrackblazerCore:
                 return 0.0
 
         stat_score = self._stat_efficiency(cmd, gains, chara, targets, priority, summer, capped)
-        rel_score = self._relationship_score(cmd, chara, year)
+        rel_score = self._relationship_score(cmd, chara, year, cfg)
         misc_score = self._misc_score(cmd, cfg)
 
-        total = stat_score * STAT_WEIGHT_WITH_BARS + rel_score * REL_WEIGHT_WITH_BARS + misc_score * MISC_WEIGHT
+        bond_weight = float(cfg.get("bond_weight", REL_WEIGHT_WITH_BARS))
+        total = stat_score * STAT_WEIGHT_WITH_BARS + rel_score * bond_weight + misc_score * MISC_WEIGHT
 
-        # Rainbow multiplier (Year 2+ only).
+        # Rainbow multiplier (Year 2+ only). The bonus is attenuated by how full
+        # the trained stat already is, so a rainbow on a near- or over-capped stat
+        # is worth less than one on a stat with room to grow. Only the rainbow
+        # uplift (mult - 1.0) is scaled; the base turn value is kept, and for a
+        # normal mid-build stat (fill < 0.7) the multiplier is exactly 2.0x / 1.5x
+        # as before.
         if rainbow > 0 and year > 0:
-            total *= RAINBOW_MULT_ENABLED if cfg.get("enable_rainbow_training_bonus", True) else RAINBOW_MULT_DISABLED
-        elif cfg.get("enable_prioritize_near_max_friendship", True) and year > 0 and rainbow == 0:
-            # Anticipatory near-max-friendship.
+            base_mult = RAINBOW_MULT_ENABLED if cfg.get("enable_rainbow_training_bonus", True) else RAINBOW_MULT_DISABLED
+            if cfg.get("rainbow_attenuate_by_usefulness", True):
+                main_tgt = targets[idx] if idx < len(targets) else STAT_CAP
+                fill = cur / float(main_tgt) if main_tgt > 0 else 0.0
+                floor = float(cfg.get("rainbow_attenuate_floor", 0.25))
+                total *= 1.0 + (base_mult - 1.0) * _rainbow_attenuation(fill, floor)
+            else:
+                total *= base_mult
+        elif cfg.get("enable_near_rainbow_bonus", cfg.get("enable_prioritize_near_max_friendship", True)) and year > 0 and rainbow == 0:
+            # Anticipatory near-max-friendship: push green (60-79) bonds to rainbow.
+            # (UI "Near-Max Friendship Boost" writes enable_near_rainbow_bonus.)
             contributions = self._near_max_fill(cmd, chara)
             if contributions > 0:
-                total *= 1.0 + min(ANTICIPATORY_CAP, ANTICIPATORY_COEFF * contributions)
+                push_cap = float(cfg.get("bond_finish_push_cap", ANTICIPATORY_CAP))
+                total *= 1.0 + min(push_cap, ANTICIPATORY_COEFF * contributions)
         return max(0.0, total)
 
     def _stat_efficiency(self, cmd, gains, chara, targets, priority, summer, capped=False):
@@ -458,11 +606,25 @@ class MantTrackblazerCore:
             score += gain * ratio_mult * priority_mult * level_mult * main_bonus
         return score
 
-    def _relationship_score(self, cmd, chara, year):
+    def _bond_values(self, cfg):
+        """Per-band bond/friendship values (orange <60, green 60-79, blue >=80),
+        overridable per-preset via mant_config (bond_value_orange/green/blue) and
+        the Training Settings sliders. v2.1 default for orange is 0.4 (was 0.0) so
+        the engine bond-rushes low-bond partners early instead of leaving
+        off-priority cards stranded at ~3 bars."""
+        c = cfg or {}
+        return (
+            float(c.get("bond_value_orange", REL_VALUE_ORANGE)),
+            float(c.get("bond_value_green", REL_VALUE_GREEN)),
+            float(c.get("bond_value_blue", REL_VALUE_BLUE)),
+        )
+
+    def _relationship_score(self, cmd, chara, year, cfg=None):
         bonds = self.ref._bond_map(chara)
         partners = cmd.get("training_partner_array") or []
         if not partners:
             return 0.0
+        v_orange, v_green, v_blue = self._bond_values(cfg)
         score = 0.0
         max_score = 0.0
         early = REL_EARLY_GAME if year == 0 else 1.0
@@ -471,11 +633,11 @@ class MantTrackblazerCore:
                 bond = int(bonds.get(int(pid), 0) or 0)
             except Exception:
                 continue
-            base = REL_VALUE_BLUE if bond >= 80 else (REL_VALUE_GREEN if bond >= 60 else REL_VALUE_ORANGE)
+            base = v_blue if bond >= 80 else (v_green if bond >= 60 else v_orange)
             if base > 0:
                 fill = bond / 100.0
                 score += base * (1.0 - fill * REL_DIMINISH) * early
-                max_score += REL_VALUE_BLUE * REL_EARLY_GAME
+                max_score += v_blue * REL_EARLY_GAME
         return (score / max_score * 100.0) if max_score > 0 else 0.0
 
     def _misc_score(self, cmd, cfg):
@@ -485,18 +647,19 @@ class MantTrackblazerCore:
             return SKILL_HINT_OVERRIDE + base
         return max(0.0, min(100.0, base))
 
-    def _friendship_score(self, cmd, chara):
+    def _friendship_score(self, cmd, chara, cfg=None):
         bonds = self.ref._bond_map(chara)
         partners = cmd.get("training_partner_array") or []
         if not partners:
             return -1e9
+        v_orange, v_green, v_blue = self._bond_values(cfg)
         score = 0.0
         for pid in partners:
             try:
                 bond = int(bonds.get(int(pid), 0) or 0)
             except Exception:
                 continue
-            score += REL_VALUE_BLUE if bond >= 80 else (REL_VALUE_GREEN if bond >= 60 else REL_VALUE_ORANGE)
+            score += v_blue if bond >= 80 else (v_green if bond >= 60 else v_orange)
         return score
 
     def _near_max_fill(self, cmd, chara):
@@ -531,6 +694,13 @@ class MantTrackblazerCore:
         return 2
 
     def _finale_bonus(self, turn):
+        # The finale stat buffer only matters in the finale window: applying it
+        # career-wide shrinks the effective cap to ~1055 from turn 0, abandoning
+        # non-rainbow training headroom on near-capped priority stats. Gate it
+        # behind turn >= 73 so the buffer reserves room only when finale races
+        # are about to add stats.
+        if int(turn or 0) < 73:
+            return 0
         remaining = max(0, 75 - max(turn, 72))
         return remaining * FINALE_STAT_BONUS_PER_RACE
 
@@ -565,23 +735,40 @@ class MantTrackblazerCore:
 
     def _phase_targets(self, chara, preset, year):
         cfg = _cfg(preset)
-        dist = self._preferred_distance(chara, preset)
-        # User per-distance targets take PRIORITY over the hard-coded defaults.
-        # Priority: explicit trackblazer_stat_targets override (legacy alias:
-        # android_stat_targets) > the UI's stat_targets_by_distance (same
-        # sprint/mile/medium/long keys, in [Spd,Sta,Pow,Guts,Wit] order) >
-        # DEFAULT_TARGETS. (Previously only android_stat_targets was read — a key
-        # the UI never writes — so the user's stat targets were silently ignored.)
-        override = (_acfg(cfg, "trackblazer_stat_targets", "android_stat_targets", {}) or {}).get(dist)
-        if not (isinstance(override, list) and len(override) == 5):
-            override = (cfg.get("stat_targets_by_distance") or {}).get(dist)
-        base = list(override) if isinstance(override, list) and len(override) == 5 else list(DEFAULT_TARGETS[dist])
+        # v2.1: a GLOBAL stat target (Training Settings) overrides the per-distance
+        # table for EVERY distance when enabled. Milestone phasing and
+        # disable_stat_targets still layer on top below, identical to the
+        # per-distance path.
+        gt = cfg.get("global_stat_target")
+        if cfg.get("enable_global_stat_target", False) and isinstance(gt, list) and len(gt) == 5:
+            base = list(gt)
+        else:
+            dist = self._preferred_distance(chara, preset)
+            # User per-distance targets take PRIORITY over the hard-coded defaults.
+            # Priority: explicit trackblazer_stat_targets override (legacy alias:
+            # android_stat_targets) > the UI's stat_targets_by_distance (same
+            # sprint/mile/medium/long keys, in [Spd,Sta,Pow,Guts,Wit] order) >
+            # DEFAULT_TARGETS. (Previously only android_stat_targets was read — a key
+            # the UI never writes — so the user's stat targets were silently ignored.)
+            override = (_acfg(cfg, "trackblazer_stat_targets", "android_stat_targets", {}) or {}).get(dist)
+            if not (isinstance(override, list) and len(override) == 5):
+                override = (cfg.get("stat_targets_by_distance") or {}).get(dist)
+            base = list(override) if isinstance(override, list) and len(override) == 5 else list(DEFAULT_TARGETS[dist])
         if cfg.get("disable_stat_targets", False):
             return [STAT_CAP] * 5
         if year == 2:
             return base
-        pct = (cfg.get("classic_milestone_pct", CLASSIC_MILESTONE_PCT) if year == 0
-               else cfg.get("senior_milestone_pct", SENIOR_MILESTONE_PCT)) / 100.0
+        # v2.1: honor the Training Settings milestone sliders
+        # (classic_year_milestone_pct / senior_year_milestone_pct), falling back
+        # to the legacy keys and then the built-in constants. Previously the
+        # engine read classic_milestone_pct / senior_milestone_pct, which the UI
+        # never wrote, so the sliders silently did nothing.
+        if year == 0:
+            pct = cfg.get("classic_year_milestone_pct",
+                          cfg.get("classic_milestone_pct", CLASSIC_MILESTONE_PCT)) / 100.0
+        else:
+            pct = cfg.get("senior_year_milestone_pct",
+                          cfg.get("senior_milestone_pct", SENIOR_MILESTONE_PCT)) / 100.0
         return [max(1, int(t * pct)) for t in base]
 
     def _consecutive_races(self, data, turn):
@@ -602,7 +789,11 @@ class MantTrackblazerCore:
         rca = data.get("race_condition_array") or []
         turn = int(chara.get("turn") or 0)
         try:
-            floor = self.ref._solver_aptitude_floor(preset)
+            # v2.1: the floor resolver lives on the RacePlanner (rp); the owning
+            # MantStrategy (self.ref) has no such method, so the old call always
+            # raised AttributeError and silently fell back to 6, ignoring the
+            # configured min_aptitude_floor.
+            floor = rp._solver_aptitude_floor(preset)
         except Exception:
             floor = 6
         best, best_fans = 0, -1

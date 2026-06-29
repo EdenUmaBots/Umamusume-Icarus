@@ -1,5 +1,263 @@
 # Changelog
 
+## v3.2.3 (2026-06-29)
+
+Adds a **Display** (appearance) panel — scale the whole interface's text size and pick your own fonts — plus a single centralized type-scale config under the hood.
+
+**Added / Changed**
+- New **DISPLAY** button in the top navbar (with a ⚙ gear, like Tempt Fate / Retries) opens an Appearance panel where you can:
+  - Set the interface **font size** — Small / Normal / Large / X-Large — which scales every font at once (handy if the dense UI is hard to read).
+  - Choose separate **Body**, **Heading**, and **Numeric** fonts from a curated list of Google Fonts (including the high-legibility Atkinson Hyperlegible, serif options, and several monospaces).
+  - Switch the **accent theme** (the 6 colours that were previously only reachable by clicking the ICARUS logo).
+  Choices apply instantly and are remembered per device. (Selected fonts download from Google Fonts and need an internet connection; offline, a matching system font is used instead.)
+- Under the hood, every hardcoded font size across the v3 UI was moved into one centralized type-scale config (CSS variables in `styles.css`), so all sizes can be tuned from a single place. Nothing changes size at the "Normal" setting.
+- On the dashboard, the LOGOUT button moved down into the transport bar (next to RUN / PAUSE / STOP), and the new DISPLAY button takes its former spot in the top-right of the navbar.
+- This build also includes the late-game megaphone (Reset Whistle) dump fix and the 3rd/final-climax Master Cleat Hammer display fix described in v3.2.2.
+
+## v3.2.2 (2026-06-29)
+
+Patch release on top of v3.2.1: forced event choices finally persist, smarter energy/recovery-item use, much more aggressive late-game item dumping, functional Discord notifications, and a read-only race win-probability estimate.
+
+**Fixed**
+- Forced event choices were still being silently reset. Saving any settings modal (Training / Racing / Scenario / etc.) re-wrote the whole preset with an empty event-choice list, wiping the choices you forced from the Event Choices panel — so the runner always fell back to Auto and pressed the default option. Event-choice overrides are now stored independently and can only be changed from the Event Choices panel, so they survive every other save and actually apply in-career.
+- Energy / recovery items (Vita, Energy Drink, Royal Kale Juice) were being used on REST turns — a waste, since resting already restores energy. They now fire only when the turn's action is TRAINING and energy is the limiting factor (the late-game dump still empties them).
+- Pre-race energy was being "preemptively" topped up at any energy below ~40 before a race. A race only needs more than 0 energy to avoid punishment, so an energy item is now used before a race ONLY when energy is exactly 0 — same turn, before the race — regardless of the race's position in a consecutive-race chain.
+
+**Added / Changed**
+- Second summer camp (turns 61–64): the bot now TRAINS at neutral mood instead of spending a precious camp turn on Recreation; and once past turn 61 with no Royal Kale Juice left, it releases the held-back cupcake to fix mood on a training turn rather than recreating.
+- Late-game item dumping (after turn 64, when "Save Items Late Game" is OFF) is now far more aggressive: Empowering Megaphones, Ankle Weights, Good-Luck Charms, and the small +5 Energy Drink MAX are spent on essentially every training turn instead of stranding unused at career end. (Ankle weights still only apply to their own stat's training; the "Save Items Late Game" toggle keeps the old conservative behavior.) Also fixed a Reset Whistle turn in the dump window wrongly suppressing the megaphone/anklet that turn (it stranded lower-tier megaphones).
+- Career History now correctly shows the Master Cleat Hammer on the 3rd (final) climax race. The hammer was always used on all three climaxes; the panel just hid it on the last one because that race shares its turn with career finish — a display fix, no behavior change.
+- Discord notifications: the "Notify on career finish / crash / new epithet" toggles are now real per-event switches (previously decorative). A crashed/stuck career routes to the crash toggle, a clean finish to the finish toggle, and a newly earned set-bonus epithet pings the epithet toggle (off by default).
+- Career History now shows a read-only pre-race win-probability estimate per race (~P(win)), computed from the game's own opponent stat data. It is preliminary/uncalibrated and does not affect how the bot plays.
+- Removed a misleading "auto-solve before run" checkbox in Setup that did nothing (smart mode already solves the schedule at career start).
+
+## v3.2.1 (2026-06-28)
+
+Patch release on top of v3.2: forced event choices now actually apply, the Smart Race Solver follows your selected trainee, settings modals warn before discarding unsaved edits, and manually-started careers resume correctly.
+
+**Fixed**
+- Forced event choices were not being applied. Two separate bugs: (1) a choice forced from the Event Choices panel for an event you had not encountered yet was saved under the event's catalog name-key, which the runner never matched against the live in-game event, so the forced choice was ignored; (2) the forced choice was stored as a 0-based position but read as a 1-based game index, so forcing the 2nd (or later) option selected the option before it. Both are fixed — forced choices now resolve by event name and pick exactly the option you chose.
+- The Smart Race Solver's "Character Preset" always showed "Admire Vega" regardless of the trainee selected in Setup. It now follows the active trainee (resolving outfit variants and versioned names) and falls back sensibly when no trainee is selected.
+- Closing a settings modal (Training / Racing / Scenario / Smart Solver / Skills / Custom Deck / Userdata / Discord) after editing it no longer silently discards your changes — a prompt now offers Save Changes or Discard Changes. This applies whether you close via DONE, the dark backdrop, or Esc; dismissing the prompt keeps you in the modal.
+
+**Added / Changed**
+- A career started manually in-game now resumes with its real in-game trainee, parents, deck, and friend support: the live game state overrides the Setup selection whenever an in-progress career is detected.
+- Resuming an in-progress career now fills the Setup PARENT slots with the career's actual inherited parents.
+- Configure Skills modal: removed the redundant in-tier search row; you can now right-click any skill to assign it to a tier, and adding a skill to the Plan auto-opens the tier picker.
+- The dashboard portrait toggle's 3D button is now labeled "Seiun" (the 3D model is Seiun Sky).
+
+## v3.2 (2026-06-28)
+
+Public release on top of v3.0, focused on race-retry (clock) fixes, a skill-purchase overhaul, and several "read what the game already tells us" improvements.
+
+**Fixed**
+- Fixed the bot never burning clocks to retry lost races. A transient "free-continue pool empty" response (server code 2507) was being treated as a permanent "this race cannot be retried" and cached forever in a shared list. Over many career loops that list grew to ban almost every race (every G1, the Junior Make Debut, and the whole finale) from ever retrying, so the bot stopped attempting retries entirely. 2507 is now correctly treated as transient and never cached; only a genuine refusal (code 205) is learned.
+- Fixed the free-continue counter, which read a constant daily cap instead of the live remaining balance. This made the bot always attempt a (doomed) free retry and never spend an actual standard clock. It now reads the live balance and correctly falls back to spending a standard clock when the free pool is empty. (Confirmed live: clock retries now win lost races, e.g. a 13th-place finish retried up to 1st.)
+- Cleared the existing poisoned non-retryable race cache (backed up first) so previously-banned races are retryable again.
+- Fixed a setting interaction where "max retries per race = 0" silently disabled even the career-saving mandatory-race rescue.
+
+**Added / Changed**
+- Rebuilt the Parents search/filter/sort into an in-game-style "Display Settings" popup with Sort and Filter tabs: filter by Attribute / Aptitude / Unique sparks (each with an All / 2-star+ / 3-star-only level and an "Include Sparks from Origin Legacies" toggle), and sort by Rating, Sparks, Skills, Track, Distance, Style, Date Acquired, Name, or Favorites.
+- Cap-aware training: the engine now reads each stat's live ceiling from the game (instead of assuming a fixed 1200) so it stops investing in a stat that has hit its real cap. No change when the live cap is 1200.
+- Races now choose skip (short) vs full mode from the game's own skip-race state instead of always forcing skip, and log the server's race-availability flags. Defaults to skip (the previous behavior) unless the game signals skip is locked.
+- The bot now reads the career's route/finale race list from the game (route id + scheduled route races), surfaces it in the runner status, and includes it in soft-lock diagnostics instead of inferring late-career state from the turn number.
+- A free-continue ("FREE CLK") readout in the navbar showing the live free-retry count plus an estimated daily-refresh countdown when empty.
+- The Action Log now shows the same colored action badges (RACE / REST / TRAIN / REC) used in the Decision Reasoning panel, instead of plain colored text.
+- Added a real-time live API event stream (Server-Sent Events) on the Diag page's "LIVE API" panel, pushing each game-API call the instant it happens instead of polling. Events are compact and contain no secrets.
+- Removed a leftover diagnostic line that printed the career-start deck payload to the console.
+- Skill purchase: added a schedule-aware activation-condition gate that down-weights skills whose running-style/distance conditions can never trigger for the current trainee (so skill points are not wasted on dead skills).
+- Skill purchase: replaced the coarse community tier list with a graded tier built from the full community skill spreadsheet (289 skills), and added a "Skill Optimization Target" dropdown (Career / Team Trials / Champions) that weights skills by the chosen mode's ranking. Career remains the default and preserves fans-first behavior.
+- Skill purchase: skills the game disables during a career run are now hard-dropped in Career mode (wasted SP) but kept and valued under Team Trials / Champions, where they work on the finished trainee.
+
+## v3.0 (2026-06-28)
+
+Cumulative public release covering every change since the v2.1 beta (all beta
+builds 1-13 and the post-beta work).
+
+**Features Added**
+- Introduced the v3 "Command Console" UI: a complete dark-cockpit redesign (vanilla HTML/CSS/JS, no build step) now served as the default at "/" with the legacy UI moved to "/legacy"
+- Added high-resolution character card art extracted from local game assets (512x512), shown in the Setup trainee picker, Career History, and dashboard, via a new /api/card-art endpoint
+- Added a 3D/PNG portrait toggle in the dashboard to switch between the 3D model viewer and flat card art
+- Added per-trainee theme colors that apply each trainee's signature palette during live careers (logo-cycle theme remains the idle fallback)
+- Added a manual race schedule picker with per-turn clickable race selection, a modal listing all available races, and a SMART/MANUAL toggle that round-trips through presets
+- Added a Retries configuration popover with a "use clocks on only G1/Debut races" toggle and a max-retries-per-race input, stored per career request
+- Added a global stat-target option that overrides per-distance targets across all distances
+- Added the Trackblazer engine as the default decision engine, with whole-career race scheduling, live re-planning after losses, and energy/consecutive-race/marquee-race guards
+- Added set-bonus (epithet) chasing so the Smart Race Solver schedules races to complete Triple Crowns and distance/regional/surface sets for their large random-stat rewards (configurable, default off)
+- Added a Live Schedule Re-Planning toggle that re-routes after a race loss (default on)
+- Added Trackblazer RIVAL OVERWRITE races with a multi-select per-turn race picker
+- Added per-race running-style overrides with curated rows for marquee races
+- Added a Stat Focus control: "Balanced" spreads stats evenly, "Capped" concentrates priority stats toward their ceilings
+- Added a Speed dropdown (Safe / Fast / Faster / Ludicrous) whose levels genuinely scale API pacing, replacing the old on/off toggle
+- Added a goal-aware training lookahead toggle that boosts stats behind pace and trims those already ahead (default off)
+- Added a skill-point optimizer toggle that spends SP for maximum total skill value per point (default off)
+- Added manual skill tiers (T1-T5, color-coded, searchable, drag-reorderable) that drive purchases independently of the Skill Point Check plan, with a "don't spend extra skill points" option
+- Added a "skill stop after recommended" toggle and a manual auto-fallback toggle to the Configure Skills modal
+- Added a Shop Purchase Logic settings section with Coin Reserve Override, BBQ Buy Threshold, Fast Learner Shop Boost, and Preemptive Cure Reserve
+- Added item-conservation knobs including a Late Whistle Lackluster Threshold, configurable cupcake/finale-hammer reserves, and a save-items-lategame toggle
+- Added a rainbow attenuation toggle and floor slider that scales down near-cap rainbow training value (default on)
+- Added an Outcome Risk settings section with a toggle and weight slider to tune the learned race-loss penalty
+- Added per-turn skill, fan, and item logging that powers the live monitor event stream and item chips
+- Added item icons and epithet-completion announcements in Decision Reasoning
+- Added a custom deck builder (owned cards only) with search, filters, and per-preset persistence
+- Added a Deck Bonuses panel that sums each effect across the selected deck at real limit-break levels with type chips and a deck-quality score
+- Added Game8 Trackblazer recommended-support builds per trainee with OWNED / NOT OWNED badges
+- Added a Recommended Supports ranking in Library by stat-priority match and rarity
+- Added favorite parents and guests as pinned toggles with star badges
+- Added an MLB label for fully limit-broken support cards, plus per-card outfit names and icons
+- Added per-preset self-contained config (settings, skills, solver, team selection), per-preset event-choice answers, and a LOAD button to revert a preset to its on-disk state
+- Added mid-career settings hot-reload so changes take effect on the next turn
+- Added a What's New popup, a /api/changelog endpoint, and an in-depth rewritten Help page
+- Added career-log redaction of device/network/Steam/credential fields plus a one-click EXPORT LOGS button
+- Added a multi-account TCP-connect health check and an Accounts overview showing live per-account status
+- Added theme persistence across browsers and restarts, cached assets and parallel dashboard startup for faster loads, and an animated loading screen
+- Added friendlier Steam login/2FA error messages, a failed-login cool-down, and resilient escalating backoff that auto-resumes through maintenance and 5xx/394/208 errors
+
+**Major Changes / Reworked Logic**
+- Reworked the event-choice database to source from gametora plus the game's master.mdb (2,500+ events with English skill names), with stat-cap awareness, turn-aware energy valuation, tightened fuzzy matching, and skill-aware choice picking
+- Rebranded the product to Icarus with a navy-and-gold default theme, new logo across login/2FA/Help/What's New, and auto-recognition of legacy userdata folders
+- Renamed the engine to Trackblazer (config keys aliased for backward compatibility) and exposed a Decision Engine selector
+- Wired the v3 dashboard to live APIs across all per-page scripts and fixed guest-parent selection to send the correct run payload
+- Reworked Decision Reasoning into synthesized per-turn labels with stat deltas and placements, colored event keywords, clean card titles, and bulleted breakdowns
+- Reworked the live Monitor dock into a granular event stream (hp_check / action / fan_gain) with real deltas and placements
+- Reworked late-game item usage (turn 60+): megaphone/anklet/whistle/Vita/EDM turn-window rules, cupcake-for-mood and kale summer-lock, finale hammer reservation, and aggressive post-turn-64 dumping
+- Reworked skill purchasing with career-persistent owned-skill tracking, owned-by-name exclusion, stop-after-recommended cutoff, confirmed-purchase reconciliation, and per-row error isolation
+- Reworked marquee G1 matching (Japan Cup, Arima Kinen, Takarazuka Kinen, Tenno Sho) to match by race instance id, closing a large fans gap and running correct races instead of substitutes
+- Enforced the consecutive-race cap at runtime so careers honor the max-races-in-a-row setting
+- Added a marquee-race guard with energy gating that forces marquee races when offered
+- Retuned bond training so off-priority cards build bond and the orange-to-rainbow progression no longer stalls
+- Made manual race selection strict, short-circuiting smart fallbacks and filtering all fallback paths by preferred surfaces
+- Reworked live schedule re-planning to solve once at career start and re-plan only on a loss or unavailable races, with streak seeding across solve boundaries
+- Corrected the summer-camp turn set so the bot no longer trains through late-June marquee races
+- Restricted clocks/retries to Debut, G1, and finale Climax losses
+- Hardened startup: safe-loaded import-time JSON, refactored master-data generation, added a manager max-restart breaker, and made the server import side-effect-free
+- Slimmed career logs from ~44MB to ~2-3MB
+
+**Fixes**
+- Fixed normal careers buying zero skills by flipping the stop-after-recommended default off and no longer discarding all candidates when none matched recommended names
+- Fixed a skill re-buy bug where the partial rotating skill view caused owned skills to be repurchased across a career
+- Fixed a skill-buy silent failure where a 208 envelope masked a stale 205, by refreshing server state before buying and verifying grants with retry
+- Fixed auto-skill buying to hard-filter off-distance exclusive skills and to read both the Configure Skills and legacy blacklists by id and name
+- Fixed set-bonus race selection so a colt Triple Crown schedules Satsuki/Derby/Kikuka instead of the filly set
+- Fixed manual schedules being ignored on summer/finale turns and manual dirt races being dropped by a guide-race heuristic
+- Fixed RIVAL OVERWRITE races not running when the main race was unavailable on a rival turn
+- Fixed Career History sparks so each finished career shows its actually-earned sparks instead of inherited parent sparks
+- Fixed in-race running style so it is sent at the correct step with correct data
+- Fixed the item-use log 1-turn lag and surfaced hammer use in Decision Reasoning
+- Fixed energy items being wasted at year-end races and pre-race energy being burned past turn 71
+- Fixed the Energy Drink MAX value and stopped purchasing items that do nothing (Yummy Cat Food, Energy Drink MAX EX, Reporter's Binoculars, Master Practice Guide)
+- Fixed shop coin hoarding with flush-buy behavior and a finale coin reserve
+- Fixed the glow-stick fan multiplier so it scales correctly before the user threshold
+- Fixed live UI freezes via fetch timeouts and off-thread snapshot reads
+- Fixed the dashboard poll killing its own timer and spamming idle POSTs, and stopped the account strip from wiping the TP-recovery dropdown mid-selection
+- Fixed manual-mode persistence so race picks round-trip through presets
+- Fixed guest parents being misclassified as random umas at login
+- Fixed new runs failing after a non-looped finish with a career self-heal and a FINISH RUN toggle
+- Fixed friend-support duplication on deck start and added deck auto-trim to the legal size
+- Fixed Steam API 394 forcing re-setup by auto-refreshing the session ticket mid-run, plus career-loop recovery from API 102 and Guest Parent API 500
+- Fixed parent rank labels to use the game's real rank ids, the missing Career History trainee icon, and inverted Deck Bonus rarity tables
+- Fixed the Smart Race Solver to use a data-driven roster (~289 trainees with aptitudes), plan from true base aptitudes, and refresh aptitude/threshold buttons instantly
+- Fixed stat-target year milestones (33% by end of Classic, 66% by end of Senior) with auto-migration of existing presets
+- Fixed an empty Decision Reasoning panel and stuck monitor caused by a variable-shadowing regression
+- Fixed multi-account instances showing as offline and the Manager resolving the wrong userdata folder across ports
+- Fixed the Accounts and Diag pages showing fabricated or blank data, now showing real health and an untrained-state banner
+- Fixed Career History not recording in loop mode and showing identical outfits across careers
+- Fixed manual race selection in v3 being dead due to a mismatched click handler, and race banner images failing to serve
+- Fixed senior-year race cells (Early Sep through Early Dec) being unselectable, and Training Settings priorities not saving
+- Fixed Career History overlapping the live monitor, a duplicate "Wit" stat in the stats chart, and a parent-search hover tooltip regression
+- Fixed the dashboard latching to mock data on first failure so it now self-heals to live without a refresh
+- Fixed Tempt Fate/Burn/Loop controls not responding and not restoring their state across page switches
+- Fixed the 3D viewer to be offline-safe and corrected its T-pose, cheek-texture blending, hair cel-shading, and spin animation
+- Fixed washed-out live-mode reasoning cards and per-race style overrides not being cleared on save
+
+**Removals**
+- Removed the Event Outcome Knowledge Base entirely (store, import pipeline, native capture, dashboard card, endpoints, and dataset files)
+- Removed the legacy training scorer; Trackblazer is the single scorer
+- Removed the old game8 event scraper in favor of the gametora + master.mdb pipeline
+- Removed the endpoint-pacing engine and old Bot Speed dropdown, replaced by the genuine Speed levels
+- Removed the preview-mode mock simulator so the UI never shows fabricated data, falling back to an offline banner and empty states
+
+**UI Changes**
+- Made v3 the default at "/" with the legacy UI at "/legacy" and back-compat redirects from "/v3"
+- Reworked the navbar to a balanced 2+2 layout around a wider SETUP button, with lifetime metrics shown as a bordered strip on every page
+- Merged Diagnostics and AI/Misc into one tabbed Diag / AI page and moved the userdata and EXPORT LOGS controls into the userdata modal
+- Made the Library tabbed (Trainees / Parents / Guest Parents / Decks / Friend Supports / Owned Cards) with Deck Bonuses pinned in the Decks tab and the Guest Parents section collapsible
+- Redesigned the Event Choices panel with search, accurate AUTO/FORCED badges, Story/Support filter tabs, an "only my deck's events" checkbox, full pre-run catalog population, and per-choice effect details
+- Made selection order consistent (Trainee, Parent 1, Parent 2, Deck, Friend) across Setup and Library
+- Replaced the Tempt Fate inputs with a modal containing the Speed levels and custom delays, and moved Retries to a floating popover
+- Added the race-schedule UI with real banner images, a SCHEDULED ribbon, an OP-races toggle, selectable senior-year cells, a per-cell modal picker, and a RIVAL +N badge
+- Showed RATING RANK and real per-card outfit icons in Career History with compact thumbnails and a full per-race breakdown
+- Enlarged Library card text and added LB/MLB badges, switched icons to contain (no cropping), and added a deep-space backdrop default with reduced stylesheet size
+- Restored the Live Run Monitor inside Career History with a LIVE badge and no overlap, and showed a What's New popup once per version
+
+## Icarus v2.1 (dev)
+
+Builds on v2.0 with two rounds of gameplay and dashboard fixes (the changes were
+trialed as the Beta 1 and Beta 2 tester builds). Headline: a reworked skill
+purchase system, a smarter shop, and a live dashboard that no longer needs manual
+refreshing.
+
+**Skill purchase system**
+
+- **Manual skill tiers now drive purchases.** Whenever any tier has skills, the
+  bot buys them by tier (T1 first) — no longer gated behind the "Skill Point Check
+  Plan" toggle, which previously made the tier list do nothing under the default.
+  New **"Don't spend extra skill points"** option (on by default) stops buying once
+  your listed skills are purchased, leaving the rest of your SP unspent.
+- **Auto plan no longer buys off-profile skills.** Distance-exclusive skills that
+  don't fit the trainee's distance(s) are hard-filtered (e.g. no more Long-only
+  skills on a Miler); off-style filtering is unchanged. Skills you list manually
+  are still bought even if off-profile — your pick wins.
+- **Skill blacklist fixed.** Now reads the Configure Skills blacklist as well as
+  the legacy list, and matches by skill ID as well as by name.
+
+**Racing**
+
+- **Set-bonus race selection fixed** — forcing a colt crown (Triple Crown, etc.)
+  now schedules the correct races (Satsuki / Tokyo Yushun / Kikuka) instead of
+  substituting the filly set. (Root cause: a race-name alias mismatch.)
+- **Manual race schedule honored on summer/finale turns** — manual mode consults
+  your schedule before force-training, falling back to train/rest/recreation only
+  when the scheduled race isn't available.
+- **Clocks/retries restricted to Debut + G1 + finale Climax** on a loss (including
+  mandatory races of those grades); G2/G3 losses no longer burn clocks.
+
+**Items & Shop**
+
+- **Megaphones** fire only in summer, on strong rainbow turns, or to burn
+  end-of-career excess — and are bought big-only (no small; medium only if short
+  on big for summer).
+- **Whistles** held for summer + end of career instead of random mid-career.
+- **Hammers** reserve exactly 3 for the climax and spend the surplus on regular
+  G1s (no more stranded hammers); their use now **shows** in Decision Reasoning.
+- **No recreation pre-debut** (early bond building comes first).
+- **New "Shop Purchase Logic" settings section** — Coin Reserve Override, BBQ Buy
+  Threshold, Fast Learner Shop Boost, and Preemptive Cure Reserve.
+
+**Dashboard**
+
+- **Live UI no longer freezes** — career status, lifetime metrics, action log,
+  decision reasoning, career history and the live monitor keep auto-updating; hung
+  fetches now time out and the snapshot read no longer blocks the server.
+- **Set bonuses announced** in Decision Reasoning when earned, with the reward
+  (e.g. "🏆 Set bonus earned: Stunning (2 random stats +10)").
+- **Item-use log 1-turn lag fixed** — per-turn item usage reflects the current
+  turn.
+- **Training Scorer removed** — the Trackblazer engine is the single scorer; the
+  redundant scorer score and its UI control are gone.
+- **Diagnostics + AI/Misc merged** into one **Diag / AI** page (tabbed).
+- **Library is now tabbed** — Trainees / Parents / Guest Parents / Decks /
+  Friend Supports / Owned Cards — with Deck Bonuses pinned atop the Decks tab.
+  (Also fixes Guest Parents never rendering.)
+- **Multi-account control** no longer shows a running instance as offline.
+- Career logs **redact** device / network / Steam / credential fields; new
+  one-click **EXPORT LOGS** button; cleaner item labels; "Retry" → "Retries".
+
+**Reference**
+
+- **HARDCODES.md** in the install folder lists the remaining hard-coded gates /
+  thresholds and the config key (if any) that overrides each.
+
 ## Icarus v2.0
 
 The biggest leap since launch. The Trackblazer Engine grows up: it now chases
@@ -285,7 +543,7 @@ finally save *everything*, in-game agenda support, and a stack of fixes.
 - **New loading screen** — an animated character portrait framed in a gold ring
   with a soft glow, replacing the old broom/witch art.
 
-### Rebrand — SweepyCL is now Icarus
+### Rebrand — Pre Icarus is now Icarus
 - New name and identity across the whole dashboard: the **Icarus** logo in the
   navbar and the What's New popup, "Icarus" page/window title, and Icarus naming
   throughout the in-app help and messages.
@@ -312,7 +570,7 @@ finally save *everything*, in-game agenda support, and a stack of fixes.
   dashboard and launches each account on its own port with its own isolated
   login. Added a description and step-by-step how-to in the **Accounts** panel.
 
-## SweepyCLv7.6.3
+## Pre Icarus v7.6.3
 
 Fixes and polish across the dashboard — most importantly, support-card effect
 values are now correct.
@@ -330,7 +588,7 @@ values are now correct.
 
 ### Logo fixed
 
-- The new **SweepyCL** navbar logo now loads (it was missing its server route).
+- The new **Pre Icarus** navbar logo now loads (it was missing its server route).
 
 ### Recommended Supports — cleaner Game8-style layout
 
@@ -352,7 +610,7 @@ values are now correct.
   **Learned Risk / Value**, and **Epithet / Preset Confidence**.
 - The **Event Outcome Knowledge Base** now explains what it is, how it fills up
   (auto-captured from your runs), how it's used, and what a "known outcome" means.
-- Import example paths now reference SweepyCL folders.
+- Import example paths now reference Pre Icarus folders.
 
 ### Event Choices — outcome-data confidence
 
@@ -371,21 +629,19 @@ values are now correct.
 - The **What's New** popup is cleaner and easier to read (accented headings,
   styled bullets).
 
-## SweepyCLv7.6.2
+## Pre Icarus v7.6.2
 
-A batch of dashboard fixes and a big event-data change: SweepyCL now **captures
-event outcomes natively from its own runs** (no Frida/dumper needed), plus a
+A batch of dashboard fixes and a big event-data change: Pre Icarus now **captures
+event outcomes natively from its own runs**, plus a
 deck limit-break fix, a Recommended Supports modal, a new lifetime metric, the
 new logo, and several UI fixes.
 
-### Event outcomes auto-captured from the bot's own runs (no Frida)
+### Event outcomes auto-captured from the bot's own runs
 
-SweepyCL is an API bot — it already receives each event's stat changes before
+Pre Icarus is an API bot — it already receives each event's stat changes before
 and after every choice it makes. It now **records those outcomes into the Event
 Outcome Knowledge Base automatically as you run careers**, so event-choice
-scoring (and the AI Dataset / LLM context) improves on its own. This needs no
-Frida, no separate dumper app, and no game-memory access — the data the external
-dumper hooks the game to get, the bot already has. Observed outcomes are keyed by
+scoring (and the AI Dataset / LLM context) improves on its own. Observed outcomes are keyed by
 story id and take precedence over imported/static data for events you've actually
 played. A new **Auto-capture** toggle (on by default) sits in the Event Outcome
 Knowledge Base card; the manual import and Dumper Watcher remain for seeding
@@ -425,9 +681,9 @@ current career — alongside the lifetime totals.
 - The **What's New** topics were removed from the in-app Help (the popup already
   covers release notes); fixed two stale Help references (USERDATA button,
   energy-control locations).
-- New **SweepyCL logo** in the top-left of the navbar.
+- New **Pre Icarus logo** in the top-left of the navbar.
 
-## SweepyCLv7.6.1
+## Pre Icarus v7.6.1
 
 A reliability fix for **career looping**: the bot now recovers from a "career
 already in progress" error (API 102) on career start instead of giving up.
@@ -444,7 +700,7 @@ the **career loop** (the feature that auto-starts the next career when one
 finishes) treated it as a failure — it would retry into the same 102 a few times
 and then **stop the loop entirely.**
 
-Now a 102 on start triggers automatic recovery: SweepyCL refreshes account
+Now a 102 on start triggers automatic recovery: Pre Icarus refreshes account
 state, then **resumes the in-progress career** (`single_mode_free/load`) and
 hands it to the runner exactly like a fresh start. The runner finishes that
 career and the loop proceeds to the next one — no manual intervention, the loop
@@ -454,7 +710,7 @@ the original error is still surfaced (so unrelated 102s aren't masked). New
 `uma_api/career_recovery.py`; regression-tested
 (`tests/test_v761_loop_start_102_recovery.py`).
 
-## SweepyCLv7.6
+## Pre Icarus v7.6
 
 A large batch: a top-priority race-selection fix, a custom deck builder, a deck
 bonuses panel, Game8-scraped recommended supports, event-effect backfill, skill
@@ -531,7 +787,7 @@ remains reachable from the USERDATA button.
 
 - The "Omitted OCR-only Detection" section in Training Settings.
 
-## SweepyCLv7.4
+## Pre Icarus v7.4
 
 Three dashboard improvements: a cleaner **Event Choices** window with search and
 a fixed auto/forced indicator, **Recommended Supports** for the selected trainee
@@ -612,7 +868,7 @@ key) and is served by a new `GET /api/changelog` endpoint that parses this file.
 - `public/styles.css` — styling for the event-choice badges/search/rows,
   recommended-support cards, and the changelog modal.
 
-## SweepyCLv7.3
+## Pre Icarus v7.3
 
 Adds **Manual Skill Tiers** to the Configure Skills modal — a tier-based
 skill selector that drives skill purchases when **Enable Skill Point
@@ -695,7 +951,7 @@ this:
 All v7.2 fixes (strict manual race mode, smart-solver gating, hot-reload,
 responsive top nav, parent search hover) are preserved unchanged.
 
-## SweepyCLv7.2
+## Pre Icarus v7.2
 
 Large release. Audit-driven fixes for manual race selection, surface
 preference enforcement, smart-solver scope, top-nav responsive layout,
@@ -825,11 +1081,11 @@ Fix:
 ### What didn't change
 
 - v7.1.x userdata-folder popup and resolver, Dumper Watcher (v6.7.26),
-  screenshot-driven solver fixes, project rename to SweepyCL —
+  screenshot-driven solver fixes, project rename to Pre Icarus —
   all preserved.
 - Existing presets and settings remain compatible. No migration needed.
 
-## SweepyCLv7.1.2
+## Pre Icarus v7.1.2
 
 Bug fix: the userdata popup was firing on `DOMContentLoaded`, which runs
 before authentication. That meant it appeared on top of the Steam auth
@@ -863,7 +1119,7 @@ is already wired and the auto-open is instant.
   detection warnings, or via the USERDATA top-bar button / Diagnostics
   card).
 
-## SweepyCLv7.1.1
+## Pre Icarus v7.1.1
 
 Bug fixes for the userdata popup from v7.1:
 
@@ -900,7 +1156,7 @@ Bug fixes for the userdata popup from v7.1:
 - All v6.7.x and v7.0/7.1 carryovers (Bot Speed, Dumper Watcher, the
   rename, etc) are unchanged.
 
-## SweepyCLv7.1
+## Pre Icarus v7.1
 
 Adds a first-load **Userdata folder** popup that walks users through
 setting up a stable, version-independent location for settings, presets,
@@ -928,7 +1184,7 @@ the new install can't see the old userdata.
 
 New resolver step: a pointer file at `~/.sweepycl/userdata_pointer.json`
 (or `%USERPROFILE%/.sweepycl/userdata_pointer.json` on Windows). Lives
-outside the build folder so a fresh install of any future SweepyCL
+outside the build folder so a fresh install of any future Pre Icarus
 version automatically picks up where the user told a previous version
 their data lives. The resolution order is now:
 
@@ -949,8 +1205,8 @@ their data lives. The resolution order is now:
 - **No userdata configured at all** — "Settings will be saved inside
   the build folder, which means they'll be lost when you upgrade to a
   new version unless you overwrite the install."
-- **Using a legacy SweepyClaude path** — informational only; still
-  works, but the popup offers to migrate to a SweepyCL path cleanly.
+- **Using a legacy Pre Icarus path** — informational only; still
+  works, but the popup offers to migrate to a Pre Icarus path cleanly.
 - **Path change pending a restart** — after applying a new path in this
   session, the popup notes that some consumers of the path are cached
   and a restart is needed for the new location to take full effect.
@@ -961,7 +1217,7 @@ their data lives. The resolution order is now:
 consumers (preset_store, settings reads, accounts.json, auth, the
 active-selection file, etc). Hot-swapping it mid-session would risk
 inconsistent reads/writes. The popup writes the pointer file
-immediately and explicitly tells the user to restart SweepyCL — much
+immediately and explicitly tells the user to restart Pre Icarus — much
 safer than trying to invalidate every cache live.
 
 ### What didn't change
@@ -989,28 +1245,28 @@ safer than trying to invalidate every cache live.
   dashboard from booting.
 - `public/styles.css` — modal styling.
 
-## SweepyCLv7.0
+## Pre Icarus v7.0
 
-**Project renamed: SweepyClaude → SweepyCL.** Major version bump to mark
+**Project renamed: Pre Icarus → Pre Icarus.** Major version bump to mark
 the rename cleanly. No new features — this is purely a rebrand release.
 The functional behavior of v6.7.27 is preserved exactly, including the
 Bot Speed dropdown, Dumper Watcher, screenshot-driven solver fix, and
 everything else from the v6.7.x series.
 
-Future releases follow `SweepyCLv7.x` for new features and `SweepyCLv7.x.y`
+Future releases follow `Pre Icarus v7.x` for new features and `Pre Icarus v7.x.y`
 for patches. Historical changelog entries below keep their original
-`SweepyClaudev6.7.x` and `SweepyModvX.x` names because those releases
+`Pre Icarus v6.7.x` and `Pre Icarus vX.x` names because those releases
 shipped under those names — rewriting the history would just be
 confusing.
 
 ### What changed
 
 - **User-facing UI**: help modal title, footer, in-app documentation, and
-  Discord webhook identity all now say "SweepyCL" instead of
-  "SweepyClaude" / "SweepyMod".
+  Discord webhook identity all now say "Pre Icarus" instead of
+  "Pre Icarus" / "Pre Icarus".
 - **Active code**: docstrings, comments, version label constants (e.g.
   AI dataset version stamps for newly-written rows), and the build_version
-  string written into freshly-rebuilt AI datasets all use "SweepyCL".
+  string written into freshly-rebuilt AI datasets all use "Pre Icarus".
 - **INSTALL.md**: rebranded throughout.
 
 ### What did NOT change (and why)
@@ -1021,18 +1277,18 @@ confusing.
   `$SWEEPYCLAUDE_USERDATA_DIR` env var if the new ones aren't present.
   Existing v6.7.x installs upgrade without any data migration required.
   Brand-new installs use the new names.
-- **The "paste an old SweepyMod folder" import dialog** still says
-  "SweepyMod" because that text describes folder names that exist on
-  users' disks from the original SweepyMod era. Renaming the prompt
+- **The "paste an old Pre Icarus folder" import dialog** still says
+  "Pre Icarus" because that text describes folder names that exist on
+  users' disks from the original Pre Icarus era. Renaming the prompt
   would just be misleading — those folders are still called what they're
   called.
 - **Test file names** like `test_sweepymodv544_event_outcomes.py` and
   archive docs under `docs/` keep their original names. They document
-  features introduced under the SweepyMod name; renaming them serves no
+  features introduced under the Pre Icarus name; renaming them serves no
   purpose.
 - **Historical version stamps** already written into past data files
-  (`SweepyModv5.40AI` build_version, `SweepyMod Event Outcome KB v1`
-  label that's been replaced with `SweepyCL` for new exports but
+  (`Pre Icarus v5.40AI` build_version, `Pre Icarus Event Outcome KB v1`
+  label that's been replaced with `Pre Icarus` for new exports but
   recognized as legacy when reading old files) are not retroactively
   rewritten in existing user data.
 
@@ -1043,7 +1299,7 @@ folder will continue to be picked up automatically. If you want to rename
 it to `SweepyCL_userdata` to match the new convention you may, but it's
 optional — both names work.
 
-## SweepyClaudev6.7.27
+## Pre Icarus v6.7.27
 
 Adds a **Bot Speed** preset selector that actually makes the bot fast. The
 existing **Tempt Fate** button only zeroes the between-turn pause; it does
@@ -1106,7 +1362,7 @@ Defaults to 1.0 (realistic); the user has to explicitly choose faster.
    speed. Fast + Tempt Fate is the recommended setting for the ~6 min
    target.
 
-## SweepyClaudev6.7.26
+## Pre Icarus v6.7.26
 
 Adds **Dumper Watcher** — a background poller that auto-imports event
 outcome data from the community dumper tool's `outcomes.json` into an
@@ -1130,7 +1386,7 @@ behavior. Verified with a smoke test against the dumper's
 ### How to use it
 
 1. Run the community dumper as you normally would.
-2. In SweepyClaude, open **AI LEARNING** → **Dumper Watcher**.
+2. In Pre Icarus, open **AI LEARNING** → **Dumper Watcher**.
 3. Paste the path to the dumper's `outcomes.json`, set a poll interval
    (default 30 s), check **Enable**, click **SAVE**. The watcher will
    re-import in the background whenever the file's mtime changes.
@@ -1178,7 +1434,7 @@ a while before promoting, and spot-check `event_outcomes_staging.json`
 for entries with implausibly tiny deltas or uniformly large gains
 before clicking PROMOTE.
 
-## SweepyClaudev6.7.25
+## Pre Icarus v6.7.25
 
 UI bug-fix and feature pass. Six items: the Event Choices panel finally lets
 you actually pick a choice, the panel gets a one-click bulk Reset to Auto,
@@ -1295,7 +1551,7 @@ selection: `state.reasonSelectionLocked` is cleared, the highlight is
 removed, and the panel re-pins to the bottom so it resumes tail-following
 as new turns arrive. No need to scroll back to the bottom by hand.
 
-## SweepyClaudev6.7.24
+## Pre Icarus v6.7.24
 
 Groundwork for race win-probability analysis. This release adds data and an
 offline analysis tool ONLY — it changes nothing about how the bot plays. The
@@ -1336,7 +1592,7 @@ estimate into the solver as an optional, gated race-preference nudge (prefer
 winnable races, skip unwinnable ones), defaulting off and validated before
 becoming a default — same posture as the LPA and event-driven toggles.
 
-## SweepyClaudev6.7.23
+## Pre Icarus v6.7.23
 
 UI and documentation pass: a full per-race history in Career History, a much
 clearer Event Choices panel, an overhauled Help section (now covering the
@@ -1388,7 +1644,7 @@ The Decision Reasoning panel follows the live run again: while scrolled to the
 bottom it stays pinned as new turns arrive; scrolling up pauses it; scrolling
 back to the bottom resumes following. Focusing a specific turn still works.
 
-## SweepyClaudev6.7.22
+## Pre Icarus v6.7.22
 
 The big one: aligns the re-planning model with the reference bot and fixes the
 "raced 12 in a row with Max Streak 5" bug. Two changes that share one root
@@ -1440,7 +1696,7 @@ the streak blowout, the high-value-race drops (v6.7.17), and run-to-run plan
 churn. The v6.7.20 beam-fallback guard and v6.7.21 loss toggle both still
 apply and compose with this.
 
-## SweepyClaudev6.7.21
+## Pre Icarus v6.7.21
 
 Adds a **Disable Schedule Re-Plan Upon Race Loss** option to the Smart Race
 Solver page, mirroring the feature the reference bot shipped in
@@ -1482,7 +1738,7 @@ shows up in the settings banner. This pairs naturally with v6.7.20's
 beam-fallback guard: together they keep a good plan stable rather than
 churning it after a loss.
 
-## SweepyClaudev6.7.20
+## Pre Icarus v6.7.20
 
 Diagnoses and guards against the run-to-run race-count / fan swings (some
 careers hit 40 races and 700K+ fans, others stall at 32 races and ~360K).
@@ -1532,7 +1788,7 @@ the remaining diagnosis into a single look rather than guesswork. The
 immediate workaround of locking the key G1s via Manual selection still
 applies and guarantees they run regardless of the re-solve.
 
-## SweepyClaudev6.7.19
+## Pre Icarus v6.7.19
 
 Adds an in-app Help & Documentation page so the bot is approachable to
 new users without external notes.
@@ -1599,9 +1855,9 @@ tradeoff, realistic race targets); and a Troubleshooting / FAQ.
 
 Curated regression set: 339/339 tests pass (17 new + 322 baseline).
 
-``main.py`` build_version bumped to ``SweepyClaudev6.7.19``.
+``main.py`` build_version bumped to ``Pre Icarus v6.7.19``.
 
-## SweepyClaudev6.7.18
+## Pre Icarus v6.7.18
 
 Fixes Steam headless-bypass auth not surviving version upgrades -- you
 had to re-authenticate (manual Steam launch) after every update, even
@@ -1652,7 +1908,7 @@ it into userdata automatically -- so you may not need to re-auth at all.
 This change only moves the SAME already-obfuscated ``auth_config.json``
 that was already being written to the build folder. It does not change
 what is stored or how it's protected; it just also stores it in the
-userdata location so it isn't lost on upgrade. SweepyClaude continues to
+userdata location so it isn't lost on upgrade. Pre Icarus continues to
 never store credentials in plain text.
 
 ### Files touched
@@ -1672,9 +1928,9 @@ never store credentials in plain text.
 
 Curated regression set: 322/322 tests pass (6 new + 316 baseline).
 
-``main.py`` build_version bumped to ``SweepyClaudev6.7.18``.
+``main.py`` build_version bumped to ``Pre Icarus v6.7.18``.
 
-## SweepyClaudev6.7.17
+## Pre Icarus v6.7.17
 
 Fixes a confusing display mismatch: the Decision Reasoning panel showed
 a different stat priority order than the Training Settings panel.
@@ -1751,9 +2007,9 @@ mismatch -- the one flagged -- is fixed here.
 
 Curated regression set: 316/316 tests pass (5 new + 311 baseline).
 
-``main.py`` build_version bumped to ``SweepyClaudev6.7.17``.
+``main.py`` build_version bumped to ``Pre Icarus v6.7.17``.
 
-## SweepyClaudev6.7.16
+## Pre Icarus v6.7.16
 
 **This is the real root cause of the persistent low race count.** Every
 fix since v6.7.11 was correct but incomplete -- they patched the
@@ -1859,9 +2115,9 @@ rise substantially once race count climbs toward 41.
 
 Curated regression set: 311/311 tests pass (10 new + 301 baseline).
 
-``main.py`` build_version bumped to ``SweepyClaudev6.7.16``.
+``main.py`` build_version bumped to ``Pre Icarus v6.7.16``.
 
-## SweepyClaudev6.7.15
+## Pre Icarus v6.7.15
 
 Corrects an over-correction in v6.7.14. The training-target distance is
 now derived from the races the solver ACTUALLY SCHEDULES, not from the
@@ -1940,9 +2196,9 @@ exists.
 
 Curated regression set: 301/301 tests pass (10 new + 291 baseline).
 
-``main.py`` build_version bumped to ``SweepyClaudev6.7.15``.
+``main.py`` build_version bumped to ``Pre Icarus v6.7.15``.
 
-## SweepyClaudev6.7.14
+## Pre Icarus v6.7.14
 
 Three stat-build and finale-handling fixes found by analyzing a
 completed v6.7.12 career. The career finished cleanly (the v6.7.12
@@ -2035,9 +2291,9 @@ both race wins and completed-race count.
 
 Curated regression set: 291/291 tests pass (9 new + 282 baseline).
 
-``main.py`` build_version bumped to ``SweepyClaudev6.7.14``.
+``main.py`` build_version bumped to ``Pre Icarus v6.7.14``.
 
-## SweepyClaudev6.7.13
+## Pre Icarus v6.7.13
 
 Fixes the Character Profile panel showing "default" between runs. This
 is the same class of issue as v6.7.9 tried to address, but v6.7.9's fix
@@ -2116,9 +2372,9 @@ affected. But it was confusing, so it's now fixed properly.
 
 Curated regression set: 282/282 tests pass (11 new + 271 baseline).
 
-``main.py`` build_version bumped to ``SweepyClaudev6.7.13``.
+``main.py`` build_version bumped to ``Pre Icarus v6.7.13``.
 
-## SweepyClaudev6.7.12
+## Pre Icarus v6.7.12
 
 The v6.7.11 solver fix worked -- the bot now plans 42 races (up from 36).
 This release fixes the crash you hit and the underlying stat-build problem
@@ -2248,9 +2504,9 @@ count closer to the high-30s/40.
 
 Curated regression set: 271/271 tests pass (10 new + 261 baseline).
 
-``main.py`` build_version bumped to ``SweepyClaudev6.7.12``.
+``main.py`` build_version bumped to ``Pre Icarus v6.7.12``.
 
-## SweepyClaudev6.7.11
+## Pre Icarus v6.7.11
 
 **This release fixes the actual root cause of the persistent low-race-count
 issue.** Every Smart Race Solver Settings UI knob has been silently doing
@@ -2388,9 +2644,9 @@ linked from README under "Other topics").
 
 Curated regression set: 261/261 tests pass (16 new + 245 baseline).
 
-``main.py`` build_version bumped to ``SweepyClaudev6.7.11``.
+``main.py`` build_version bumped to ``Pre Icarus v6.7.11``.
 
-## SweepyClaudev6.7.10
+## Pre Icarus v6.7.10
 
 Four user-requested changes addressing dashboard UX clarity and a
 real retry-policy bug.  Oguri profile recommendation: stays in
@@ -2533,9 +2789,9 @@ override frequency can use the v6.7.9 margin gate config:
 
 Curated regression set: 245/245 tests pass (14 new + 231 baseline).
 
-`main.py` build_version bumped to `SweepyClaudev6.7.10`.
+`main.py` build_version bumped to `Pre Icarus v6.7.10`.
 
-## SweepyClaudev6.7.9
+## Pre Icarus v6.7.9
 
 Four targeted fixes addressing user-reported issues with the dashboard
 and runtime behavior.  No solver-weight changes; race-count tuning is
@@ -2678,7 +2934,7 @@ trainee picked once survives both server restarts AND version upgrades.
 
 Curated regression set: 231/231 tests pass (8 new + 223 baseline).
 
-`main.py` build_version bumped to `SweepyClaudev6.7.9`.
+`main.py` build_version bumped to `Pre Icarus v6.7.9`.
 
 ### Recommended user action for race-count tuning (no code change)
 
@@ -2696,7 +2952,7 @@ races whose fan value would otherwise not justify the cost.  Other
 levers in the same panel: `targetOptionalRaceCount` (default 36),
 `lateSeniorRacePressure` (default 12.0).
 
-## SweepyClaudev6.7.8
+## Pre Icarus v6.7.8
 
 ### Live Policy Assistance recommendation now gates on shadow-mode precision
 
@@ -2776,7 +3032,7 @@ silently skipped when no shadow data is available.
 
 Curated regression set: 223/223 tests pass (8 new + 215 baseline).
 
-`main.py` build_version bumped to `SweepyClaudev6.7.8`.
+`main.py` build_version bumped to `Pre Icarus v6.7.8`.
 
 ### What this changes for you in practice
 
@@ -2790,7 +3046,7 @@ LPA itself is unaffected since you have it off.  When you eventually
 collect enough diverse career data to push precision above 60%, the
 dashboard will correctly flip to ENABLE on its own.
 
-## SweepyClaudev6.7.7
+## Pre Icarus v6.7.7
 
 Single targeted revert per user request, plus documentation.
 
@@ -2856,7 +3112,7 @@ limit when HP is low; toggle the HP behavior separately.
 
 Curated regression set: 215/215 tests pass.
 
-`main.py` build_version bumped to `SweepyClaudev6.7.7`.
+`main.py` build_version bumped to `Pre Icarus v6.7.7`.
 
 
 
@@ -2919,7 +3175,7 @@ without any signature bias, which often produces more total races.
 ### 3. External user-data folder so presets / settings / steam auth persist across upgrades
 
 Per user request: presets and steam auth tokens used to live inside the
-SweepyClaudevX.Y.Z folder, which meant version upgrades wiped them.
+Pre Icarus vX.Y.Z folder, which meant version upgrades wiped them.
 v6.7.6 adds a sibling-folder convention so a single `SweepyClaude_userdata`
 folder next to the build folder owns the persistent state.
 
@@ -2948,7 +3204,7 @@ overwrite existing userdata files (the user's customizations win).
 
 ```
 C:\Umamusume API Bot Claude\
-    SweepyClaudev6.7.6\          (the build folder, replaceable)
+    Pre Icarus v6.7.6\          (the build folder, replaceable)
         main.py, career_bot/, public/, data/, ...
     SweepyClaude_userdata\       (created by user, persists across upgrades)
         accounts.json
@@ -3036,9 +3292,9 @@ default flip:
 
 Curated regression set: 215 tests pass (7 new + 208 baseline).
 
-`main.py` build_version bumped to `SweepyClaudev6.7.6`.
+`main.py` build_version bumped to `Pre Icarus v6.7.6`.
 
-## SweepyClaudev6.7.5
+## Pre Icarus v6.7.5
 
 ### Authoritative scorer override was being thrown away (dashboard contradiction fix)
 
@@ -3080,9 +3336,9 @@ If a profile is in `authoritative` mode AND the override actually swaps the comm
 
 Curated regression set: 208 tests pass (4 new + 11 epithet + 8 race-chain + 185 baseline).
 
-`main.py` build_version bumped to `SweepyClaudev6.7.5`.
+`main.py` build_version bumped to `Pre Icarus v6.7.5`.
 
-## SweepyClaudev6.7.4
+## Pre Icarus v6.7.4
 
 ### Audit findings from the user's uma_runtime + epithet protection fix
 
@@ -3134,9 +3390,9 @@ I extracted the user's uma_runtime and audited the latest career log (`career_lo
 
 Curated regression set (204 tests, including 11 epithet + 8 race-chain + 185 baseline): all pass.
 
-`main.py` build_version bumped to `SweepyClaudev6.7.4`.
+`main.py` build_version bumped to `Pre Icarus v6.7.4`.
 
-## SweepyClaudev6.7.3
+## Pre Icarus v6.7.3
 
 ### Race-chain HP safety fix (user-reported 6-race streak at HP=0)
 
@@ -3183,9 +3439,9 @@ Below ``legacy_target`` (2 prior races) the function still returns None on the f
 
 Curated regression set (193 tests, including the 8 new ones): all pass.
 
-`main.py` build_version bumped to `SweepyClaudev6.7.3`.
+`main.py` build_version bumped to `Pre Icarus v6.7.3`.
 
-## SweepyClaudev6.7.2
+## Pre Icarus v6.7.2
 
 ### Decision Reasoning cleanup + diagnosis of the actual race-drop mechanism
 
@@ -3234,9 +3490,9 @@ The backtest script's `COMMAND_TO_STAT` had wrong mappings -- assumed 102=Stamin
 #### 4. Tests + housekeeping
 
 - 185 tests pass.  test_backtest's command_id test updated to reflect the corrected mapping.
-- `main.py` build_version bumped to `SweepyClaudev6.7.2`.
+- `main.py` build_version bumped to `Pre Icarus v6.7.2`.
 
-## SweepyClaudev6.7.1
+## Pre Icarus v6.7.1
 
 ### Hotfix: `/api/character-profile/active` was raising `NameError` ("name 'runner' is not defined")
 
@@ -3246,7 +3502,7 @@ The endpoint I introduced in v6.5 referenced a non-existent global `runner`.  Th
 - `resolved_from` payload gains a `source` field with values `"runner"` / `"selection"` / `"default"` so the dashboard can show why this particular profile was resolved.
 - No other changes.  All 185 tests still pass.
 
-`main.py` build_version bumped to `SweepyClaudev6.7.1`.
+`main.py` build_version bumped to `Pre Icarus v6.7.1`.
 
 #### Verified states after the fix
 
@@ -3258,7 +3514,7 @@ Smoke test against the actual profile resolver returns:
 
 So the CHARACTER PROFILE tab will now load and render correctly whether or not a career is actively running.
 
-## SweepyClaudev6.7
+## Pre Icarus v6.7
 
 ### Character Profile relocated to a tab on the Decision Reasoning pane
 
@@ -3270,13 +3526,13 @@ v6.5 added a CHARACTER PROFILE section as a sidebar-style collapsible between Sm
 - No backend changes -- the v6.5 endpoints (`/api/character-profile/active`, `/list`, `/mode`, `/epithets`) all still serve the same data.
 - 185 tests still pass (the change is UI-only).
 
-`main.py` build_version bumped to `SweepyClaudev6.7`.
+`main.py` build_version bumped to `Pre Icarus v6.7`.
 
 #### What you'll see now
 
 Open the main dashboard.  The DECISION REASONING panel is the same one you've always had on the right side, but the header now has two clickable pill buttons.  Click **CHARACTER PROFILE** to swap the pane content: profile pills (display name, derivation, matched-via, scenario), training-scorer-mode dropdown with Save button, stat priority row, per-distance stat targets table, scenario-tuned solver overrides, the auto-picked / effective epithet targets, and the character-filtered catalog picker.  Click **DECISION REASONING** to swap back.  No collapse, no scrolling around to find it.
 
-## SweepyClaudev6.6
+## Pre Icarus v6.6
 
 ### Critical: silent profile-override drop fixed (+ Oguri profile retuned, decision reasoning enriched)
 
@@ -3339,9 +3595,9 @@ With v6.6 the profile overrides actually take effect.  Combined with the more ag
 
 Run a fresh Oguri career after installing and compare against the 358K/27-race / 339K/26-race baseline from your screenshot.  If race count climbs into the mid-30s or higher, the bug fix is doing the work.  If it doesn't, the next investigation target is the solver's beam-search algorithm parameters vs the reference implementation.
 
-`main.py` build_version bumped to `SweepyClaudev6.6`.
+`main.py` build_version bumped to `Pre Icarus v6.6`.
 
-## SweepyClaudev6.5
+## Pre Icarus v6.5
 
 ### Dashboard Character Profile panel, promotion-mode toggle, three new hand-curated profiles, backtest tool
 
@@ -3360,7 +3616,7 @@ Closes out all four next-session candidates from v6.4 in one release.  The dashb
   - `POST /api/character-profile/epithets` -- writes explicit `target_epithets` / `forced_epithets` to a profile JSON (body: `{profile_id, target_epithets, forced_epithets}`).
 - **`scripts/backtest_training_scorer.py`** -- new CLI tool.  Reads career_log_*.json files (single file or directory), extracts the training command executed at each turn (from api_calls `exec_command` REQs with `payload.command_type == 1`), tallies per-stat, resolves the active character profile, and compares the actual distribution against the v6.1 scorer's stat priority.  Outputs per-run alignment scores and an aggregate report grouped by profile.  `--csv` flag emits a spreadsheet-ready file.  `--trainee` / `--scenario` flags filter.  Practical use: run against your bot_logs directory before flipping any profile to authoritative.
 - **Tests**: 19 new tests covering the three new profiles (Sakura Bakushin O, Daiwa Scarlet, Tokai Teio), the cross-profile signature epithet auto-pick regression, and the backtest script's extraction/distribution/alignment logic.  181 tests pass across the full suite.
-- `main.py` build_version bumped to `SweepyClaudev6.5`.
+- `main.py` build_version bumped to `Pre Icarus v6.5`.
 
 #### What the new panel looks like
 
@@ -3374,7 +3630,7 @@ The epithet picker checkboxes are character-filtered -- pick Oguri Cap and the p
 
 For the two career_logs available in my smoke test, both showed Speed and Wit consistently over-trained vs the default Speed/Stamina/Power/Guts/Wit priority -- which is the diagnostic signal that those runs were on the default profile but the trainee benefited from different priorities.  Once the runs use a hand-curated or auto-derived profile, the alignment should climb.
 
-## SweepyClaudev6.4
+## Pre Icarus v6.4
 
 ### Auto-pick signature epithets with full user-override precedence
 
@@ -3393,11 +3649,11 @@ User override still wins at every layer.  The precedence chain is::
 - **`career_bot/races.py` live-replan call site** uses the same effective-targets path.
 - Both the hand-curated and v6.3 auto-derived profile resolution paths now populate ``auto_picked_epithets`` from the bundled smart-race epithet catalog (or the v6.3 ported ``data/character_data/epithets.json``).  Each of the 59 character-tagged signature epithets in the catalog -- Oguri's "Ideal Idol", Mejiro McQueen's "Best Actress", Special Week's "Showbiz Idol", etc. -- becomes a sensible per-character default.
 - 10 new tests in `tests/test_character_profiles.py::AutoPickEpithetsTests` covering the explicit-wins precedence chain, per-scenario opt-out, default-True behavior, missing-catalog fallback, and shipped-catalog regressions for Oguri Cap, Special Week, and Mejiro McQueen (auto-derived).  162 tests pass across the full suite.
-- `main.py` build_version bumped to `SweepyClaudev6.4`.
+- `main.py` build_version bumped to `Pre Icarus v6.4`.
 
 #### Background: where the data lives
 
-Worth noting since it came up in design discussion: SweepyClaude has been pulling its Trackblazer epithet, race, and debut-race data from the `daftuyda/umamusume_trackblazer_scheduler` GitHub repo since well before v6.0 -- the same source repo behind the [race.daftuyda.moe](https://race.daftuyda.moe/) web scheduler.  The reference bot does *not* pull from there; they ship their own copy.  v6.3 added a parallel copy at `data/character_data/epithets.json` for the auto-derivation name lookup, but the solver-side canonical catalog at the bundled smart-race epithet catalog (217 entries, 59 character-tagged) has been there all along and is what v6.4's auto-pick uses.
+Worth noting since it came up in design discussion: Pre Icarus has been pulling its Trackblazer epithet, race, and debut-race data from the `daftuyda/umamusume_trackblazer_scheduler` GitHub repo since well before v6.0 -- the same source repo behind the [race.daftuyda.moe](https://race.daftuyda.moe/) web scheduler.  The reference bot does *not* pull from there; they ship their own copy.  v6.3 added a parallel copy at `data/character_data/epithets.json` for the auto-derivation name lookup, but the solver-side canonical catalog at the bundled smart-race epithet catalog (217 entries, 59 character-tagged) has been there all along and is what v6.4's auto-pick uses.
 
 #### Disabling auto-pick
 
@@ -3413,7 +3669,7 @@ To disable per-scenario only::
 
 The signature epithet will still show up in ``suggested_epithets`` for the dashboard picker, but it won't be promoted into the solver's target list.
 
-## SweepyClaudev6.3
+## Pre Icarus v6.3
 
 ### Auto-derived profiles for every trainee, character + epithet catalogs, authoritative-mode wire-in, Special Week profile
 
@@ -3426,7 +3682,7 @@ Where v6.2 introduced the profile system but only shipped a hand-curated profile
 - **Authoritative-mode wire-in.**  `_apply_authoritative_scorer_override` runs immediately before training-command execution.  When the active profile has `training_scorer_mode == "authoritative"` AND the strategy engine's chosen command is a training, the v6.1 scorer is consulted and its top pick replaces the strategy's pick if it beats the strategy's score by a configurable margin.  Override events are logged to `status.last_scorer_override` for dashboard rendering.  `hint` mode profiles are unaffected (still publish to the hint payload, strategy engine still decides).
 - **Resolved profile gains `derivation` and `suggested_epithets` fields.**  `derivation` is `"hand_curated"`, `"auto_derived"`, or `"default"` -- the dashboard can show users which path resolved their active profile.  `suggested_epithets` is a list of epithet rows tagged with the active character; it's read-only and never auto-promotes into `target_epithets`.
 - 28 new tests across `tests/test_character_data.py` (catalog loaders, name matching, missing-file fallback) and the expanded `tests/test_character_profiles.py` (auto-derivation for stayer / miler / sprinter, stamina-floor scaling, per-distance target scaling, letter-grade aptitude handling, hand-curated profiles still winning over auto, missing-aptitude default fallback, suggested-epithet lookup, Special Week regression).  152 tests pass across the full suite.
-- `main.py` build_version bumped to `SweepyClaudev6.3`.
+- `main.py` build_version bumped to `Pre Icarus v6.3`.
 
 #### What changes the next time you run a non-Oguri character
 
@@ -3434,7 +3690,7 @@ Every trainee now gets character-tuned defaults the first time they're run -- no
 
 To promote a profile to authoritative mode, flip its `training_scorer_mode` from `"hint"` to `"authoritative"` in the JSON file (or under a `scenarios.<id>` block to promote only for a specific scenario).  The override only triggers on training commands and only when the scorer's pick beats the strategy's by a clear margin -- noise-level disagreements still defer to the strategy engine.
 
-## SweepyClaudev6.2
+## Pre Icarus v6.2
 
 ### Per-character preset profiles + Trackblazer-tuned Oguri Cap profile
 
@@ -3446,13 +3702,13 @@ Where v6.1 built the native training scorer, v6.2 plugs it (and the existing Tra
 - **`career_bot/runner.py`** v6.1 training-scorer hint now resolves the active profile and passes its ``TrainingScorerConfig`` into ``score_trainings``.  Hint payload gains ``profile_id``, ``profile_display_name``, ``matched_via``, and ``mode`` fields so the dashboard can show which profile is active and how it matched.
 - **`career_bot/runner.py`** and **`career_bot/races.py`** Trackblazer solver call sites both layer `profile.solver_weight_overrides()` under the preset weights and fall back to the profile's `target_epithets` / `forced_epithets` / `preferred_distances` when the preset doesn't supply them.  Preset values still win when set -- the profile is the default, the preset is the user override.
 - 27 new tests in `tests/test_character_profiles.py` covering every lookup path (card_id, chara_id, preset, default fallback, missing-file graceful fallback), per-scenario override semantics (dict shallow-merge, list replacement), `TrainingScorerConfig` round-trip with unknown-key tolerance, mode normalization, and end-to-end resolution against the shipped Oguri Cap profile.
-- `main.py` build_version bumped to `SweepyClaudev6.2`.
+- `main.py` build_version bumped to `Pre Icarus v6.2`.
 
 #### Promoting the training scorer to authoritative
 
 Each profile's `training_scorer_mode` defaults to `"hint"` (v6.1 behavior: scorer publishes to the dashboard but the strategy engine still decides).  Flipping a profile's mode to `"authoritative"` will let the v6.1 scorer drive that profile's training decisions while leaving other profiles unchanged -- the wire-in for that path lives in the strategy engine and lands as a follow-up patch when you're ready to evaluate the scorer's picks against the live decision over a few real runs.
 
-## SweepyClaudev6.1
+## Pre Icarus v6.1
 
 ### Training scorer (native), measurement fix, style adaptation enabled
 
@@ -3463,9 +3719,9 @@ This release closes most of the gameplay gap identified in the performance audit
 - `pre_summer_action(turn, energy, mood)` helper for the June-Late prep decision (rest / recover / train_wit) on turns 24 and 48.
 - Scorer wired into `runner._track_turn_scores` as a **hint**: published to `status.training_scorer_hint` and `status.training_scorer_history` so the dashboard can show what the new scorer thinks alongside the strategy engine's pick.  The strategy engine remains authoritative for the live decision in v6.1; promotion to authoritative is planned for v6.2 once the scorer has been validated against a few real runs.
 - 29 new tests in `tests/test_training_scorer.py` covering every component (stat efficiency, relationship, misc, rainbow detection both real and anticipatory, level multiplier, per-context priorities, per-distance targets), filter gates (failure_too_high, stat_capped), edge cases (no partners, malformed entries, the older flat-field payload layout), the pre-summer helper, and a regression test using the exact API shape we observed in real run data.
-- `main.py` build_version constants bumped to `SweepyClaudev6.1`.
+- `main.py` build_version constants bumped to `Pre Icarus v6.1`.
 
-## SweepyClaudev6.0.1
+## Pre Icarus v6.0.1
 
 ### Career-summary measurement fix + style adaptation out of shadow mode
 
@@ -3474,11 +3730,11 @@ Two narrow fixes that don't change runtime behavior but fix the diagnostic plumb
 - **Career summary measurement fix.**  `career_bot/ai_dataset.py::career_summary_record` was looking for `fans` inside `final_chara.stats` (the nested stats sub-dict containing speed/stamina/etc.), but `runner._compact_final_chara` writes `fans`, `rating`, `rank`, `card_id`, and `title` at the top level of `final_chara`.  Every completed run in `career_summaries.jsonl` therefore recorded `final_fans: 0` even though the dashboard had the right number all along (it reads from the per-turn `bot_logs/career_log_*.json` files directly).  Now the summary cascade pulls `fans` / `rating` / `rank` / `card_id` / `chara_title` from `report.final_chara` -> `status_snapshot.final_chara` -> `status_snapshot`, first non-empty value wins.  Adds `final_fans`, `final_rating`, `final_rank`, `card_id`, and `chara_title` to the JSONL schema.  Impact: the Bayesian advisor and any future Q-learning over career outcomes finally gets reward signal for whole-career fan/rating performance instead of always seeing zero.
 - **Style adaptation out of shadow mode.**  `career_bot/style_adaptation.py` DEFAULT_CONFIG `style_adaptation_mode` flipped from `"shadow"` to `"recommend"`.  Shadow mode logged style recommendations but never applied them; with 0.99 confidence on the vast majority of decisions across many runs of validation, it's safe to let the recommendation actually drive race style when the existing confidence and aptitude gates allow.
 
-## SweepyClaudev6.0
+## Pre Icarus v6.0
 
 ### Merge release — modeling improvements + upstream v5.44 features in one build
 
-This release combines the v5.43AI/v5.43.1AI Bayesian advisor modeling track with the upstream developer's v5.43 Local LLM Advisor and v5.44 Event Outcome Knowledge Base.  Both lineages were independently within the same "log-based learning, no memory tooling" design constraint, so the merge is additive across the board.
+This release combines the v5.43AI/v5.43.1AI Bayesian advisor modeling track with the upstream developer's v5.43 Local LLM Advisor and v5.44 Event Outcome Knowledge Base.  The merge is additive across the board.
 
 - Brought forward from v5.43AI: Beta-Binomial posteriors over race-program win rate, hierarchical context-aware pooling, `policy_guards.safe_apply` with KL-divergence drift detection, and the calibration module (`calibration.py`) with reliability diagrams, ECE/Brier, and an isotonic recalibrator.
 - Brought forward from v5.43.1AI: live calibrator wire-in.  `race_program_hint` and `hierarchical_race_program_hint` apply the persisted isotonic calibrator automatically; `fit_calibrator(base_dir)` returns a dashboard-friendly payload; `calibration_summary` surfaces ECE + reliability diagram + plain-English interpretation under `post_run_advice`.
@@ -3486,11 +3742,10 @@ This release combines the v5.43AI/v5.43.1AI Bayesian advisor modeling track with
 - Brought forward from upstream v5.44: Event Outcome Knowledge Base (`career_bot/event_outcomes.py`, bundled `data/dumper_outcomes_import.json` merged into `data/event_outcomes.json`).  Event-name matching, normalized stat deltas / energy / vital / motivation / skill points / skill hints / conditions / confidence metadata, AI Dataset event outcome rows in `event_outcome_rows.jsonl`, `/api/events/outcome-kb` endpoints, AI Learning dashboard card.
 - `career_bot/ai_dataset.py` registers the upstream's `event_outcome_rows.jsonl` path in `DATASET_FILES` while keeping the v5.43AI hierarchical bucket logic in `rebuild_advisor_stats`.
 - `career_bot/ai_advisor.py` is the v5.43.1AI version (Bayesian math + calibration wire-in) preserved unchanged through the merge; upstream did not modify the functions involved.
-- `main.py` build_version constants set to `SweepyClaudev6.0`.
+- `main.py` build_version constants set to `Pre Icarus v6.0`.
 - Test coverage carried forward: 68 modeling tests (Sprint 1 / Sprint 2 / Sprint 1.4.3.1) plus upstream's regression tests for event outcome import / scoring / LLM context.
-- This build does not include Frida/live traffic interception, packet capture, memory dumping, memory scanning, or memory writes — same boundary maintained by both lineages.
 
-## SweepyModv5.44
+## Pre Icarus v5.44
 
 ### Event Outcome Knowledge Base + Dumper Outcome Importer
 
@@ -3503,9 +3758,8 @@ This release combines the v5.43AI/v5.43.1AI Bayesian advisor modeling track with
 - Added an AI Learning **Event Outcome Knowledge Base** card with coverage stats and bundled import/refresh controls.
 - Local LLM post-run analysis and shadow review prompts now receive compact known-event-outcome context.
 - Added documentation in `docs/event-outcome-kb-v544.md` and regression tests for import, scoring, and LLM context.
-- This build does not include Frida/live traffic interception, packet capture, memory dumping, memory scanning, or memory writes.
 
-## SweepyModv5.43.1AI
+## Pre Icarus v5.43.1AI
 
 - Wired the v5.43 calibration module into the live race advisor. When an isotonic calibrator is fitted, both `race_program_hint` and `hierarchical_race_program_hint` now apply it to the posterior mean and LCB before producing `adjustment`, so the live decision path uses the corrected estimate instead of just exposing the calibrator as a tool.
 - Added `ai_advisor.fit_calibrator(base_dir)` -- reads `turn_decisions.jsonl`, extracts race predictions, fits an isotonic calibrator, and persists it atomically to `uma_runtime/ai/isotonic_calibrator.json`. Returns a `{success, reason, message, ece_before, ece_after, brier_before, brier_after, predictions}` payload designed for direct rendering on a dashboard button.
@@ -3517,9 +3771,9 @@ This release combines the v5.43AI/v5.43.1AI Bayesian advisor modeling track with
 - `fit_calibrator` returns friendly status messages instead of raising for the common failure modes: no `turn_decisions.jsonl` yet, fewer than `MIN_PREDICTIONS_FOR_CALIBRATION` (30) predictions logged, isotonic fit failure on degenerate input.
 - Atomic file write (tempfile + rename) on persistence so an interrupted save can never leave a half-written calibrator that the loader would silently nullify on next startup.
 - Added 13 unit tests in `tests/test_ai_sprint143_1.py` covering: cold-start no-op behavior, hierarchical wire-in, the four `fit_calibrator` outcome paths, ECE-improvement verification on synthetic miscalibrated data, mtime-cache invalidation on re-fit, and the three lifecycle stages of `calibration_summary`.
-- Build version bumped in `main.py` to `SweepyModv5.43.1AI`.
+- Build version bumped in `main.py` to `Pre Icarus v5.43.1AI`.
 
-## SweepyModv5.43AI
+## Pre Icarus v5.43AI
 
 - Replaced the AI advisor's point-estimate `win_rate` and `-8.0` magic-number penalty with a Beta-Binomial posterior over race-program win rate, prior centred on the user's global program base rate. Adjustments are now `avg_reward * lower_credible_bound`, smooth across the full `win_rate` range with no discontinuity at 0.5.
 - Added `career_bot/ai_modeling.py` with `BetaPosterior` (prior construction, Bayesian update, mean/variance/mode, lower/upper credible bounds, credible interval, Thompson sampling, round-trip serialization), `posterior_from_stats_bucket`, `global_base_rate`, `hierarchical_posterior` with parent-discounted shrinkage, and `score_program`.
@@ -3535,16 +3789,16 @@ This release combines the v5.43AI/v5.43.1AI Bayesian advisor modeling track with
 - Added 51 unit tests across `tests/test_ai_sprint1.py` and `tests/test_ai_sprint2.py` covering Beta posterior math, hierarchical pooling behavior, calibration metrics, isotonic recalibration (with and without scikit-learn), policy guard branches, drift detection, hierarchical bucket builder semantics, and full backward-compat contract tests for `race_program_hint` and `hierarchical_race_program_hint`.
 - Added documentation in `docs/ai-modeling-bayesian-v543AI.md`.
 
-## SweepyModv5.43
+## Pre Icarus v5.43
 
-### SweepyModv5.43 Local LLM Parser Cleanup
+### Pre Icarus v5.43 Local LLM Parser Cleanup
 
 - Improved Local LLM response parsing so JSON wrapped inside `analysis`, `advice`, `result`, `response`, or `raw_text` envelopes is unwrapped into clean structured fields.
 - Added support for fenced JSON, double-encoded JSON strings, trailing-comma cleanup, and common alias normalization such as `patterns` → `key_patterns` and `suggested_rules` → `repeatable_rules`.
 - Updated the AI Learning Local LLM output card to show key patterns, risks, and repeatable rules instead of only `Analysis saved.` when structured data is available.
 - Added regression tests for enveloped/raw-text model replies.
 
-### SweepyModv5.43 Local LLM Analysis Fix
+### Pre Icarus v5.43 Local LLM Analysis Fix
 
 - Fixed Local LLM post-run analysis requests that could trigger LM Studio `HTTP 400 Bad Request` errors when completed career logs produced prompts larger than the loaded model context.
 - Added prompt budgeting for Analyze Last Run so recent turns are automatically trimmed/slimmed before sending to the local model.
@@ -3562,9 +3816,9 @@ This release combines the v5.43AI/v5.43.1AI Bayesian advisor modeling track with
 - Fixed the Local LLM Advisor form so dashboard refreshes no longer overwrite unsaved edits, checkbox changes, model text, or API key typing.
 - Fixed Local LLM config saving so leaving the API key field blank preserves the previously saved key instead of erasing it.
 
-## SweepyModv5.42AI
+## Pre Icarus v5.42AI
 
-- Added conservative Racing Style Adaptation telemetry and model scaffolding for SweepyModAI.
+- Added conservative Racing Style Adaptation telemetry and model scaffolding for Pre Icarus AI.
 - Added append-only `style_adaptation_experiences.jsonl` rows for every race style decision, observation, and outcome.
 - Logs now include selected Racing Settings style, shadow recommendation, applied style, current stats, style/distance/surface aptitudes, owned skill summaries, clock usage, clean vs clock-rescued wins, and opponent style counts when exposed after race entry.
 - Added `career_bot/style_adaptation.py` with Shadow Only, Recommend Only, and safety-gated Auto Apply modes.
@@ -3574,7 +3828,7 @@ This release combines the v5.43AI/v5.43.1AI Bayesian advisor modeling track with
 - Added source labels for `official_table_data`, `api_observed_data`, `empirical_estimate`, and `unknown_hidden_formula` in style-adaptation artifacts.
 - Added documentation in `docs/style-adaptation-v542AI.md`.
 
-## SweepyModv5.41AI
+## Pre Icarus v5.41AI
 
 - Added live turn-by-turn Smart Race Solver re-planning so smart schedules are rebuilt from current stats, runner context, previous race results, clock policy, and current race history before each race decision.
 - Smart solver routes now pass current trainee/preset identity into race-risk lookup so learned penalties can use per-preset/per-trainee history before falling back to global race outcomes.
@@ -3583,7 +3837,7 @@ This release combines the v5.43AI/v5.43.1AI Bayesian advisor modeling track with
 - Runner context now exposes live race history, runtime support, clock policy, and latest re-plan metadata to decision systems and logs.
 - Added regression coverage for live smart re-planning, profile-specific learned race risk, and smart Train-turn fallback suppression.
 
-## SweepyModv5.40AI
+## Pre Icarus v5.40AI
 
 - Added clock-aware race retry telemetry to career logs, race outcome aggregates, and AI turn-decision exports.
 - Logs now distinguish clean wins from wins rescued by clocks, including initial rank, final rank, clocks used, retry attempts, and whether Burn Clocks was enabled by the user.
@@ -3593,7 +3847,7 @@ This release combines the v5.43AI/v5.43.1AI Bayesian advisor modeling track with
 - Added AI health/dashboard fields for clock retry rows and clock-policy-enabled race rows.
 - Added documentation in `docs/clock-aware-ai-logs-v540AI.md` and regression tests for clock-aware AI logging/model behavior.
 
-## SweepyModv5.39AI
+## Pre Icarus v5.39AI
 
 - Added a Live Policy Assistance toggle inside the AI Learning dashboard.
 - Added visible recommendation text showing whether the current AI model recommends enabling Live Policy Assistance or keeping it disabled.
@@ -3602,7 +3856,7 @@ This release combines the v5.43AI/v5.43.1AI Bayesian advisor modeling track with
 - Live Policy remains safety-gated and only adjusts legal Smart Race Solver candidate scores.
 - Added documentation in `docs/ai-live-policy-toggle-v539AI.md`.
 
-## SweepyModv5.38AI
+## Pre Icarus v5.38AI
 
 - Extended AI Learning import to also import settings presets from previous builds.
 - Importer now accepts `data/settings_presets.json` and legacy `data/presets/*.json` files.
@@ -3611,13 +3865,13 @@ This release combines the v5.43AI/v5.43.1AI Bayesian advisor modeling track with
 - Added documentation in `docs/ai-log-preset-import-v538AI.md`.
 - Packaged release with root files directly in the zip to avoid nested duplicate folders when extracting.
 
-## SweepyModv5.37AI
+## Pre Icarus v5.37AI
 - Added AI Learning import controls so previous build folders, `uma_runtime` folders, `bot_logs` folders, or zip files can be imported into the current AI dataset.
 - Added `/api/ai/import-logs` with duplicate-safe career log importing, race outcome merging, event history merging, automatic dataset rebuild, and optional training.
 - Added `import_manifest.json` so repeated imports do not duplicate old career logs.
 - Added UI guidance for the easier long-term approach: keep/copy `uma_runtime/default` between builds or import it from the AI Learning modal.
 
-## SweepyModv5.36AI
+## Pre Icarus v5.36AI
 - Fixed the dedicated AI Learning modal so its dashboard content is visible instead of being hidden by the old Diagnostics CSS rule.
 - Added an AI Training Dashboard artifact and UI cards for model confidence, learned records, race-result coverage, Shadow Mode, backtesting, learned risk/value summaries, config suggestions, epithet confidence, and per-preset/per-trainee confidence.
 - Added Shadow Mode reports that compare learned race-risk hints against historical outcomes without changing live gameplay decisions.
@@ -3626,14 +3880,14 @@ This release combines the v5.43AI/v5.43.1AI Bayesian advisor modeling track with
 - Added AI dashboard, shadow report, backtest report, and config-suggestion API endpoints.
 - Updated safe AI debug bundles to include the new dashboard, shadow, backtest, epithet, and confidence artifacts.
 
-## SweepyModv5.35AI
+## Pre Icarus v5.35AI
 - Added Smart Race Solver help text explaining Strict, Balanced, and Loose distance preference modes.
 - Centralized running-style conversion so Pace Chaser maps to game style 2 and Late Surger maps to game style 3 consistently.
 - Updated weighted skill purchasing to block style-exclusive skills that contradict the selected Racing Settings strategy.
 - Moved AI Learning controls from Diagnostics into a dedicated top-level AI Learning modal.
 - Reworked the top navigation layout to prevent Runs, Theme, Logout, Delay, and account/status pills from overlapping.
 
-## SweepyModv5.34AI
+## Pre Icarus v5.34AI
 
 - Repaired AI race-result extraction from `single_mode_free/race_end` API response logs.
 - Fixed AI race outcome training so missing results are not counted as losses.
@@ -3644,7 +3898,7 @@ This release combines the v5.43AI/v5.43.1AI Bayesian advisor modeling track with
 - Added a safe AI debug bundle endpoint and Diagnostics health display.
 
 
-## SweepyModv5.33AI
+## Pre Icarus v5.33AI
 
 - Added automatic local AI training that runs after completed career exports and on a timer while the runner is idle.
 - Added Phase 2 local analytics tables: race outcomes, item effectiveness, event outcomes, and automatic post-run reports.
@@ -3655,7 +3909,7 @@ This release combines the v5.43AI/v5.43.1AI Bayesian advisor modeling track with
 - Added API endpoints for AI auto-training status/config, manual training, latest post-run report, and model artifact downloads.
 - Added unit tests for auto-training, analytics table generation, learned policy hints, and post-career training scheduling.
 
-## SweepyModv5.30
+## Pre Icarus v5.30
 
 - Replaced the Smart Race Solver route core with a local purpose-built architecture: exact MILP first, history-aware beam fallback, local structured epithet matchers, and RaceHistory/EpithetTracker-style projected completions.
 - Added distance preference modes for Smart Race Solver: Strict, Balanced, and Loose. Strict mode blocks off-preference races unless needed for forced epithets.
@@ -3666,7 +3920,7 @@ This release combines the v5.43AI/v5.43.1AI Bayesian advisor modeling track with
 - Renamed nav currency labels and TP recovery labels from Jewels to Carrots.
 
 
-## SweepyModv5.29
+## Pre Icarus v5.29
 
 - Fixed Action Log historical-click behavior so Decision Reasoning stays focused on the clicked turn instead of snapping back to the latest turn during polling refreshes.
 - Hid the live footer turn ticker while the runner is active to prevent `Turn / action / step` text from appearing behind Run/Stop/Pause controls; pause/error messages still display.
@@ -3675,7 +3929,7 @@ This release combines the v5.43AI/v5.43.1AI Bayesian advisor modeling track with
 - Expanded training candidate traces with main gain, target completion, energy delta, and reason flags for clearer Decision Reasoning.
 - Added regression tests for reasoning selection lock, footer overlap cleanup, and Wit/target-pressure scoring helpers.
 
-## SweepyModv5.28
+## Pre Icarus v5.28
 
 - Fixed Career History Major Wins by freezing per-run history snapshots instead of allowing entries to depend on live runner data.
 - Settings presets now save and restore the selected deck, friend support, trainee, own parents, and guest parent.
@@ -3684,7 +3938,7 @@ This release combines the v5.43AI/v5.43.1AI Bayesian advisor modeling track with
 - Renamed top-bar labels to `TP POTIONS` and `JEWELS` while keeping backend field names stable.
 - Kept Configure Skills, skill configuration, and weighted skill purchase behavior unchanged.
 
-## SweepyModv5.27
+## Pre Icarus v5.27
 
 - Replaced the bundled legacy settings presets with one neutral `Default` preset.
 - Added runtime sanitization so existing installs stop loading `Fan Farming`, `Maru Fan Farming`, `Oguri`, `Parent Farming`, `xguri`, and `xguri parent`.
@@ -3693,7 +3947,7 @@ This release combines the v5.43AI/v5.43.1AI Bayesian advisor modeling track with
 - Fixed the Crash Trace route by importing `runtime_output_root` into `main.py`.
 - Renamed Smart Race Solver `Optimization Mode` to `Optimization Weight Preset` and clarified that it is a UI weight macro.
 
-## SweepyModv5.26
+## Pre Icarus v5.26
 
 - Added true Pause/Resume runner controls that pause only at safe automation checkpoints.
 - Added explicit run counts: 1 for single career, N for bounded loops, and 0 for until-stopped loops.
@@ -3702,14 +3956,14 @@ This release combines the v5.43AI/v5.43.1AI Bayesian advisor modeling track with
 - Added simple Discord webhook save/test setup using the existing Discord telemetry logger configuration.
 - Added regression coverage for pause/resume, loop info snapshots, runtime event overrides, and seen-event logging.
 
-## SweepyModv5.25
+## Pre Icarus v5.25
 
 - Ported Umabot's iterative 205/208 API retry loop with independent counters, exponential 208 backoff, and HTTP 500 retry support.
 - Added runner safeguards for API responses missing `data.chara_info` and reconciled race-entry 205/208 responses before rejecting races.
 - Added stale-race-state detection, `/api/career/rescue`, traversal-safe public asset paths, modular shell CSS, hardened monitor module, and UI contract tests.
 - Expanded regression coverage with Umabot-style crash, stale race, TP recovery, race-entry reconciliation, and UI contract tests.
 
-## SweepyModv5.24 TP Recovery Replacement
+## Pre Icarus v5.24 TP Recovery Replacement
 
 - Replaced the active Toughness/Carats TP Restore flow with Umabot-style TP recovery modes: `potion_first`, `potion_only`, and `jewels_only`.
 - Added `/api/settings/tp-recovery` GET/POST endpoints backed by `settings.json`.
@@ -3718,22 +3972,22 @@ This release combines the v5.43AI/v5.43.1AI Bayesian advisor modeling track with
 - Preserved unrelated v5.24 selective improvements, including the theme selector, decision reasoning feed, and career-history aptitude fix.
 
 
-## SweepyModv5.24
+## Pre Icarus v5.24
 
-- Reverted the dashboard UI to the SweepyModv5.22 layout.
+- Reverted the dashboard UI to the Pre Icarus v5.22 layout.
 - Kept the persisted Neon Cockpit / Clean Dark theme selector.
 - Kept the turn-by-turn Decision Reasoning feed backed by `/api/career/decision-trace/latest?limit=160`.
 - Fixed Career History aptitude labels to use the actual 1=G through 8=S aptitude scale.
 
-## SweepyModv5.22
+## Pre Icarus v5.22
 
-- Ported useful Umabot improvements without replacing SweepyMod's Trackblazer solver stack.
+- Ported useful Umabot improvements without replacing Pre Icarus's Trackblazer solver stack.
 - Fixed Toughness 30 TP restore to use `item/use_recovery_item`, while Carats continue using `user/recovery_trainer_point`.
 - Added modular parent spark filtering and safe preview-first recent-parent cleanup.
 - Added a bottom Career Monitor drawer with live log filters, crash trace display, and current-run stat charting.
 - Added `/api/career/live_history`, `/api/career/crash_trace`, `/api/parents/remove`, and `/api/parents/remove-recent`.
 
-## SweepyModv5.21
+## Pre Icarus v5.21
 
 - Fixed finished-career setup locks where the cockpit showed no active career but Friend Supports still said `ACTIVE CAREER, ENDPOINT BLOCKED`.
 - Clears stale dashboard/backend career state and setup selection after a finished runner stop, while preserving loop-mode reuse between automatic careers.
@@ -3743,14 +3997,14 @@ This release combines the v5.43AI/v5.43.1AI Bayesian advisor modeling track with
 - Added regression coverage for setup unlock and manual race priority.
 - Added documentation in `docs/setup-unlock-manual-races-v521.md`.
 
-## SweepyModv5.20
+## Pre Icarus v5.20
 
 - Retries temporary HTTP 502/503/504 gateway/server responses inside the API client instead of crashing immediately.
 - Marks HTTP 502/503/504 and Gateway Timeout errors as recoverable in the career runner, so `single_mode_free/check_event` timeouts can reload state and continue.
 - Added regression coverage for HTTP 504 retry success, retry-budget exhaustion, and runner recoverability.
 - Added documentation in `docs/http-gateway-recovery-v520.md`.
 
-## SweepyModv5.19
+## Pre Icarus v5.19
 
 - Fixed guest-parent loop starts after a completed career by refreshing the selected rental parent against a fresh pre-start guest list before every new start.
 - Stops the loop cleanly when a selected guest parent is no longer available instead of retrying `single_mode_free/start` and producing repeated API 501 errors.
@@ -3758,7 +4012,7 @@ This release combines the v5.43AI/v5.43.1AI Bayesian advisor modeling track with
 - Caches Toughness 30 API 213 rejections for 30 minutes in the current process, so looped runs no longer repeatedly hit the rejected item-backed TP restore call before falling back to Carats.
 - Added regression coverage for looped guest-parent starts, fatal start handling, and cached Toughness 30 restore rejection handling.
 
-## SweepyModv5.18
+## Pre Icarus v5.18
 
 - Fixed guest parent cards not appearing in the top Parent 2 setup slot.
 - Fixed own + guest parent career start payloads to use `rental_succession_trained_chara` instead of sending the guest as `succession_trained_chara_id_2`.
@@ -3766,7 +4020,7 @@ This release combines the v5.43AI/v5.43.1AI Bayesian advisor modeling track with
 - Added backend validation for the supported parent combinations: 2 owned parents, or 1 owned parent + 1 guest parent.
 - Added regression coverage for guest-parent slot display, start payload fields, and backend rental fields.
 
-## SweepyModv5.17
+## Pre Icarus v5.17
 
 - Fixed Toughness 30 detection being overridden by stale configured item IDs from older builds.
 - Validates configured Toughness IDs against authoritative master-data IDs before use.
@@ -3776,10 +4030,10 @@ This release combines the v5.43AI/v5.43.1AI Bayesian advisor modeling track with
 
 All notable changes to this project are documented in this file.
 
-This project now uses the exact build naming format `SweepyModvx.x`, where `x.x` is a major/minor version number. Entries are sorted newest first. Older source notes that did not record a release date are marked as `Date not recorded` instead of inventing one.
+This project now uses the exact build naming format `Pre Icarus vx.x`, where `x.x` is a major/minor version number. Entries are sorted newest first. Older source notes that did not record a release date are marked as `Date not recorded` instead of inventing one.
 
 
-## [SweepyModv5.16] - 2026-06-11
+## [Pre Icarus v5.16] - 2026-06-11
 
 ### Fixed
 - TP restore safety: selecting Toughness 30 no longer silently falls back to Carats after an API 213/item-backed restore rejection.
@@ -3790,7 +4044,7 @@ This project now uses the exact build naming format `SweepyModvx.x`, where `x.x`
 - Dashboard checkbox: **Use Carats if Toughness 30 fails**. It is disabled by default and sent as `tp_restore_allow_carats_fallback`.
 - Documentation: `docs/tp-restore-safety-v516.md`.
 
-## [SweepyModv5.15] - 2026-06-11
+## [Pre Icarus v5.15] - 2026-06-11
 
 ### Added
 
@@ -3810,7 +4064,7 @@ This project now uses the exact build naming format `SweepyModvx.x`, where `x.x`
 - Master-data generation now extracts the P3 parent/spark, career progression, and event display tables.
 
 
-## [SweepyModv5.14] - 2026-06-11
+## [Pre Icarus v5.14] - 2026-06-11
 
 ### Added
 
@@ -3828,7 +4082,7 @@ This project now uses the exact build naming format `SweepyModvx.x`, where `x.x`
 - Skill preview/scoring traces can now explain official support and trainee skill sources through reasons such as `support_sources:N` and `trainee_sources:N`.
 - Master-data generation now extracts the official skill/source/support tables used by the P2 skill and support intelligence pass.
 
-## [SweepyModv5.13] - 2026-06-11
+## [Pre Icarus v5.13] - 2026-06-11
 
 ### Added
 
@@ -3846,7 +4100,7 @@ This project now uses the exact build naming format `SweepyModvx.x`, where `x.x`
 - Smart Race Solver summer filtering now reads official scenario calendar metadata when available, falling back to the previous hardcoded summer turns only if the export is missing.
 
 
-## [SweepyModv5.12] - 2026-06-11
+## [Pre Icarus v5.12] - 2026-06-11
 
 ### Added
 
@@ -3863,7 +4117,7 @@ This project now uses the exact build naming format `SweepyModvx.x`, where `x.x`
 - RacePlanner Trackblazer race sorting now considers official Trackblazer reward value after grade and fan reward.
 - Master-data generation now extracts the official route, rival, reward, and performance-rate tables used by the P0 Trackblazer planning pass.
 
-## [SweepyModv5.11] - 2026-06-11
+## [Pre Icarus v5.11] - 2026-06-11
 
 ### Added
 
@@ -3886,7 +4140,7 @@ This project now uses the exact build naming format `SweepyModvx.x`, where `x.x`
 - Fixed direct major-win summary lookup treating win-saddle IDs as flat race-map IDs.
 - Fixed rating-to-rank display using stale hardcoded thresholds when master.mdb rank thresholds are available.
 
-## [SweepyModv5.10] - 2026-06-11
+## [Pre Icarus v5.10] - 2026-06-11
 
 ### Added
 
@@ -3907,7 +4161,7 @@ This project now uses the exact build naming format `SweepyModvx.x`, where `x.x`
 - Fixed major wins showing `Unknown` for runs that have race result data but no `win_saddle_id_array` in the final payload.
 - Fixed TP restore fallback messaging so it clearly explains when Toughness 30 cannot be used because item IDs are missing or no copies are owned.
 
-## [SweepyModv5.9] - 2026-06-11
+## [Pre Icarus v5.9] - 2026-06-11
 
 ### Added
 
@@ -3940,7 +4194,7 @@ This project now uses the exact build naming format `SweepyModvx.x`, where `x.x`
 - Removed old skill tier/blacklist editor DOM from the Skill Configuration modal.
 - Removed Min Skill Pt from the old preset area; it now belongs to Configure Skills.
 
-## [SweepyModv5.8] - 2026-06-11
+## [Pre Icarus v5.8] - 2026-06-11
 
 ### Added
 
@@ -3956,7 +4210,7 @@ This project now uses the exact build naming format `SweepyModvx.x`, where `x.x`
 - Career completion snapshots now preserve final skill, factor, and win arrays when the game payload provides them.
 - Replaced the old Career History table with desktop cards; no mobile variant is included.
 
-## [SweepyModv5.7] - 2026-06-11
+## [Pre Icarus v5.7] - 2026-06-11
 
 ### Added
 
@@ -3989,7 +4243,7 @@ This project now uses the exact build naming format `SweepyModvx.x`, where `x.x`
 
 - Removed the redundant Smart Race Solver enable/disable toggle from the Smart Race Solver Settings modal.
 
-## [SweepyModv5.6] - 2026-06-11
+## [Pre Icarus v5.6] - 2026-06-11
 
 ### Added
 
@@ -4008,7 +4262,7 @@ This project now uses the exact build naming format `SweepyModvx.x`, where `x.x`
 
 
 
-## [SweepyModv5.5] - 2026-06-11
+## [Pre Icarus v5.5] - 2026-06-11
 
 ### Fixed
 
@@ -4016,7 +4270,7 @@ This project now uses the exact build naming format `SweepyModvx.x`, where `x.x`
 - Added responsive setup-workspace grid rules so the buttons preserve their existing appearance and behavior on desktop and stack cleanly on smaller screens.
 
 
-## [SweepyModv5.4] - 2026-06-11
+## [Pre Icarus v5.4] - 2026-06-11
 
 ### Added
 
@@ -4035,7 +4289,7 @@ This project now uses the exact build naming format `SweepyModvx.x`, where `x.x`
 - Fixed event-drain recovery to avoid recursively draining the same stuck event queue after a forced state refresh.
 - Removed a duplicate unreachable mandatory-race failure raise in `_race()`.
 
-## [SweepyModv5.3] - 2026-06-11
+## [Pre Icarus v5.3] - 2026-06-11
 
 ### Added
 
@@ -4054,7 +4308,7 @@ This project now uses the exact build naming format `SweepyModvx.x`, where `x.x`
 - Removed a duplicate unreachable `return out` in the race runner.
 
 
-## [SweepyModv5.2] - 2026-06-11
+## [Pre Icarus v5.2] - 2026-06-11
 
 ### Fixed
 
@@ -4068,7 +4322,7 @@ This project now uses the exact build naming format `SweepyModvx.x`, where `x.x`
 - Added regression tests for API 214 recovery during race-out event handling.
 - Added documentation for recoverable API error handling.
 
-## [SweepyModv5.1] - 2026-06-10
+## [Pre Icarus v5.1] - 2026-06-10
 
 ### Added
 
@@ -4085,7 +4339,7 @@ This project now uses the exact build naming format `SweepyModvx.x`, where `x.x`
 
 - Removed legacy root-level changelog/release-note fragments after their contents were consolidated.
 
-## [SweepyModv5.0] - Date not recorded
+## [Pre Icarus v5.0] - Date not recorded
 
 ### Added
 
@@ -4112,14 +4366,14 @@ This project now uses the exact build naming format `SweepyModvx.x`, where `x.x`
 
 - Removed the old Running Style dropdown from Preset Configuration.
 - Removed the duplicate Running Style control from Skill Configuration.
-- Omitted OCR-only Training Analysis Validation and YOLO Stat Detection controls because SweepyMod uses native game payloads, not OCR/screen detection.
+- Omitted OCR-only Training Analysis Validation and YOLO Stat Detection controls because Pre Icarus uses native game payloads, not OCR/screen detection.
 
 ### Fixed
 
 - Fixed settings persistence for `mant_config` values.
 - Fixed environment-sensitive Smart Race Solver test behavior when SciPy selects the MILP backend.
 
-## [SweepyModv4.9] - Date not recorded
+## [Pre Icarus v4.9] - Date not recorded
 
 ### Fixed
 
@@ -4127,7 +4381,7 @@ This project now uses the exact build naming format `SweepyModvx.x`, where `x.x`
 - Updated skill profile matching to safely accept list, tuple, set, string, scalar, or missing card ID values.
 - Added unit coverage for scalar card ID profile matching.
 
-## [SweepyModv4.8] - Date not recorded
+## [Pre Icarus v4.8] - Date not recorded
 
 ### Added
 
@@ -4143,7 +4397,7 @@ This project now uses the exact build naming format `SweepyModvx.x`, where `x.x`
 
 - Epithet variables and full matcher constraints were noted as future work in the original source note.
 
-## [SweepyModv4.7] - Date not recorded
+## [Pre Icarus v4.7] - Date not recorded
 
 ### Added
 
@@ -4156,7 +4410,7 @@ This project now uses the exact build naming format `SweepyModvx.x`, where `x.x`
 
 - Ported the useful reference solver behavior into `career_bot/trackblazer.py` without external automation APIs or screen automation dependencies.
 
-## [SweepyModv4.6] - Date not recorded
+## [Pre Icarus v4.6] - Date not recorded
 
 ### Fixed
 
@@ -4165,7 +4419,7 @@ This project now uses the exact build naming format `SweepyModvx.x`, where `x.x`
 - Added fallback popup content when guest entries have basic character data but no factor data.
 - Removed pure friend support card rows from guest-parent results.
 
-## [SweepyModv4.5] - Date not recorded
+## [Pre Icarus v4.5] - Date not recorded
 
 ### Added
 
@@ -4176,7 +4430,7 @@ This project now uses the exact build naming format `SweepyModvx.x`, where `x.x`
 
 - Reused existing viewport-safe tooltip positioning and popup styling instead of creating a separate popup system.
 
-## [SweepyModv4.4] - Date not recorded
+## [Pre Icarus v4.4] - Date not recorded
 
 ### Added
 
@@ -4194,7 +4448,7 @@ This project now uses the exact build naming format `SweepyModvx.x`, where `x.x`
 - Fixed Career History button binding with a more robust DOM lookup.
 - Improved guest-parent normalization by collapsing duplicate API paths, filtering likely owned/veteran trained characters, and ignoring unrelated directory/scenario arrays.
 
-## [SweepyModv4.3] - Date not recorded
+## [Pre Icarus v4.3] - Date not recorded
 
 ### Added
 
@@ -4211,7 +4465,7 @@ This project now uses the exact build naming format `SweepyModvx.x`, where `x.x`
 
 - Career History is stored in process memory only and clears when `python main.py` is closed or restarted.
 
-## [SweepyModv4.2] - Date not recorded
+## [Pre Icarus v4.2] - Date not recorded
 
 ### Added
 
@@ -4242,6 +4496,6 @@ This project now uses the exact build naming format `SweepyModvx.x`, where `x.x`
 - Master-data exports are additive and remain backward compatible with legacy generated files.
 - Missing master-data tables are skipped instead of failing generation.
 
-### SweepyModv5.43 Local LLM enable-state hotfix
+### Pre Icarus v5.43 Local LLM enable-state hotfix
 - Fixed Local LLM Enable checkbox appearing to undo itself after saving.
 - The Local LLM card now hydrates only from `/api/ai/local-llm/latest` instead of stale AI dashboard snapshots generated during previous training runs.

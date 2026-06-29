@@ -1,6 +1,6 @@
-# SweepyModv5.36 AI Dashboard & Shadow Evaluation
+# Pre Icarus v5.36 AI Dashboard & Shadow Evaluation
 
-SweepyModv5.36 promotes the AI learning layer from hidden artifacts into a visible AI Learning dashboard. The dashboard remains local-first and deterministic: it reports what the learned models think, but live gameplay still flows through SweepyMod's normal safety gates.
+Pre Icarus v5.36 promotes the AI learning layer from hidden artifacts into a visible AI Learning dashboard. The dashboard remains local-first and deterministic: it reports what the learned models think, but live gameplay still flows through Pre Icarus's normal safety gates.
 
 ## Added artifacts
 

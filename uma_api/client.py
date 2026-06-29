@@ -16,7 +16,8 @@ import socket
 import shutil
 from datetime import datetime
 from pathlib import Path
-from career_bot.delay import dna_sleep, dna_uniform, dna_gauss, dna_randint
+from career_bot.delay import dna_sleep, dna_uniform, dna_gauss
+from career_bot import event_bus
 
 class StateRecoveryError(Exception):
     pass
@@ -132,6 +133,31 @@ def redact_for_console(value, key=""):
     return value
 
 
+# Credential / device-identity fields that must NEVER be persisted to the on-disk
+# trace log, even when tracing is explicitly enabled for debugging. The key is
+# kept (so the protocol structure stays debuggable) but the value is masked.
+# Mirrors SENSITIVE_ERROR_KEYS + report._REDACT_KEYS; viewer_id is intentionally
+# NOT redacted (it's a non-secret identifier used throughout debugging).
+TRACE_REDACT_KEYS = {
+    "auth_key", "steam_session_ticket", "steam_ticket", "sid", "udid",
+    "device_id", "device_name", "graphics_device_name", "ip_address",
+    "steam_id", "dmm_viewer_id", "dmm_onetime_token", "credential",
+    "password", "steam_password_seed", "keychain",
+}
+
+
+def _redact_for_trace(obj):
+    """Structure-preserving redaction for trace files: masks the VALUE of any
+    credential/identity key (at any depth) while keeping every other field intact
+    (no truncation), and never mutates the input."""
+    if isinstance(obj, dict):
+        return {k: ("<redacted>" if k in TRACE_REDACT_KEYS else _redact_for_trace(v))
+                for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [_redact_for_trace(item) for item in obj]
+    return obj
+
+
 def format_api_error(ep, rc, res):
     details = {
         "endpoint": ep,
@@ -234,36 +260,88 @@ def get_ip():
     s.close()
     return ip
 
+def _read_smbios_identity():
+    """Return (system_product_name, board_manufacturer) from SMBIOS.
+
+    Reads whichever source is available -- they all expose the SAME firmware
+    data, so the derived device_name / device_id is identical regardless of which
+    one answers:
+      1. HARDWARE\DESCRIPTION\System\BIOS         (volatile hive; absent on some Windows builds)
+      2. SYSTEM\CurrentControlSet\Control\SystemInformation  (persistent)
+      3. WMI (Win32_ComputerSystemProduct / Win32_BaseBoard)
+    Returns ("", "") only if every source fails.
+    """
+    import winreg
+
+    def _qv(key, name):
+        try:
+            return str(winreg.QueryValueEx(key, name)[0]).strip()
+        except OSError:
+            return ""
+
+    # 1) Volatile BIOS hive (the original source).
+    try:
+        with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, r"HARDWARE\DESCRIPTION\System\BIOS") as k:
+            name = _qv(k, "SystemProductName")
+            if name:
+                return name, _qv(k, "BaseBoardManufacturer")
+    except OSError:
+        pass
+
+    # 2) Persistent SystemInformation key (same SMBIOS values).
+    try:
+        with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, r"SYSTEM\CurrentControlSet\Control\SystemInformation") as k:
+            name = _qv(k, "SystemProductName")
+            if name:
+                # BaseBoardManufacturer is often blank here; SystemManufacturer
+                # carries the value the BIOS hive exposes as the board maker.
+                return name, (_qv(k, "BaseBoardManufacturer") or _qv(k, "SystemManufacturer"))
+    except OSError:
+        pass
+
+    # 3) WMI fallback (same firmware data, different access path).
+    try:
+        out = subprocess.check_output(
+            ["powershell", "-NoProfile", "-NonInteractive", "-Command",
+             "$p=Get-CimInstance Win32_ComputerSystemProduct;"
+             "$b=Get-CimInstance Win32_BaseBoard;"
+             "Write-Output $p.Name; Write-Output $b.Manufacturer"],
+            stderr=subprocess.DEVNULL, text=True, timeout=20,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+        )
+        lines = [ln.strip() for ln in out.splitlines() if ln.strip()]
+        if lines:
+            return lines[0], (lines[1] if len(lines) > 1 else "")
+    except Exception:
+        pass
+
+    return "", ""
+
+
 def get_hwid(seed_string="default"):
     guid = str(uuid.uuid4()).lower()
-    
+
     if platform.system() != "Windows":
         raise RuntimeError(f"Unsupported OS: {platform.system()}. Only Windows is supported for HWID consistency.")
-    
+
+    # v2.1: read system identity from whichever SMBIOS source is available
+    # (BIOS hive -> SystemInformation -> WMI). All expose the same firmware data,
+    # so device_name -- and therefore device_id -- is identical regardless of
+    # which one answers; the bot no longer refuses to start when the volatile
+    # HARDWARE\DESCRIPTION\System\BIOS key is missing on newer Windows builds.
+    device_name, board_mfg = _read_smbios_identity()
+    if board_mfg:
+        device_name = f"{device_name} ({board_mfg})"
+    if not device_name:
+        raise RuntimeError("Failed to fetch system product name from registry or WMI. Refusing to start.")
+
+    machine_guid = ""
     try:
         import winreg
-
-        with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, r"HARDWARE\DESCRIPTION\System\BIOS") as bios_key:
-            device_name, _ = winreg.QueryValueEx(bios_key, "SystemProductName")
-            device_name = str(device_name).strip()
-            try:
-                board_mfg, _ = winreg.QueryValueEx(bios_key, "BaseBoardManufacturer")
-                if board_mfg:
-                    device_name = f"{device_name} ({str(board_mfg).strip()})"
-            except OSError:
-                pass
-        if not device_name:
-            raise RuntimeError("System product name returned empty. Refusing to start.")
-            
-        machine_guid = ""
-        try:
-            with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\Microsoft\Cryptography") as crypto_key:
-                machine_guid, _ = winreg.QueryValueEx(crypto_key, "MachineGuid")
-        except OSError:
-            pass
-            
-    except Exception as e:
-        raise RuntimeError(f"Failed to fetch system product name: {e}. Refusing to start.")
+        with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\Microsoft\Cryptography") as crypto_key:
+            machine_guid, _ = winreg.QueryValueEx(crypto_key, "MachineGuid")
+    except OSError:
+        pass
 
     hardware_string = f"{device_name}_{machine_guid}_{seed_string}"
     device_id = hashlib.sha1(hardware_string.encode()).hexdigest()
@@ -359,7 +437,7 @@ def get_ticket(u, p, c=''):
 
 class UmaClient:
 
-    def __init__(self, cfg, trace_enabled=True):
+    def __init__(self, cfg, trace_enabled=False):
         profile = get_hwid(cfg.get('steam_password_seed', 'default'))
 
         self.viewer_id = cfg.get('viewer_id', 0)
@@ -390,11 +468,15 @@ class UmaClient:
              pass
 
         self.sid = bytes(16)
-        self.cached_load_data = {}
         self.tp_info = {}
         self.coin_info = {}
         self.item_map = {}
         self.current_scenario_id = None
+        # Last full response payloads, cached so the local /api/latent route can
+        # surface under-used fields with NO extra game call (API capability map).
+        self.last_account_data = {}    # load/index `data`
+        self.last_career_data = {}     # single_mode_free/{load,start} `data`
+        self.last_data_headers = {}    # data_headers (server_time / maintenance flag)
         self.session = requests.Session()
         self.update_headers()
         self.api_jitter = dna_uniform(-0.02, 0.02)
@@ -430,7 +512,20 @@ class UmaClient:
                 self.on_api_log(direction, ep, data, req_id)
             except Exception:
                 pass
-        
+
+        # Publish a compact, SECRET-FREE event to the live stream bus (SSE
+        # /api/stream). Independent of on_api_log so it survives the runner owning
+        # that slot. Never the request payload (which carries the steam ticket).
+        try:
+            evt = {"ts": log_entry["ts"], "dir": direction, "ep": ep, "req_id": req_id}
+            if direction == "RES" and isinstance(data, dict):
+                evt["rc"] = (data.get("data_headers") or {}).get("result_code")
+            elif direction == "ERR" and isinstance(data, dict):
+                evt["err"] = data.get("http_status") or data.get("error") or True
+            event_bus.publish(evt)
+        except Exception:
+            pass
+
         if self.trace_file:
             try:
                 def _json_default(obj):
@@ -439,71 +534,12 @@ class UmaClient:
                     return str(obj)
 
                 with open(self.trace_file, "a", encoding="utf-8") as f:
-                    f.write(json.dumps(log_entry, ensure_ascii=False, default=_json_default) + "\n")
+                    f.write(json.dumps(_redact_for_trace(log_entry), ensure_ascii=False, default=_json_default) + "\n")
             except Exception as e:
                 print(f"Error writing to log: {e}")
 
-    def api_payload_summary(self, ep, payload):
-        payload = payload or {}
-        summary = {"current_turn": payload.get("current_turn")}
-        if ep == "single_mode_free/gain_skills":
-            summary["gain_skill_info_array"] = payload.get("gain_skill_info_array") or []
-        elif ep == "single_mode_free/multi_item_exchange":
-            summary["exchange_item_info_array"] = payload.get("exchange_item_info_array") or []
-        elif ep == "single_mode_free/multi_item_use":
-            summary["use_item_info_array"] = payload.get("use_item_info_array") or []
-        return summary
 
-    def safe_payload(self, payload):
-        return dict(payload or {})
 
-    def response_summary(self, res):
-        data = res.get("data") or {}
-        headers = res.get("data_headers") or {}
-        chara = data.get("chara_info") or data.get("single_mode_chara_light") or {}
-        home = data.get("home_info") or {}
-        events = data.get("unchecked_event_array") or []
-        race = data.get("race_start_info") or {}
-        summary = {
-            "result_code": headers.get("result_code"),
-            "keys": list(data.keys()),
-        }
-        if chara:
-            summary["chara"] = {
-                "turn": chara.get("turn"),
-                "vital": chara.get("vital"),
-                "max_vital": chara.get("max_vital"),
-                "skill_point": chara.get("skill_point"),
-                "fans": chara.get("fans"),
-                "playing_state": chara.get("playing_state"),
-            }
-        if home:
-            summary["commands"] = [
-                {
-                    "type": item.get("command_type"),
-                    "id": item.get("command_id"),
-                    "group": item.get("command_group_id"),
-                    "enable": item.get("is_enable"),
-                    "fail": item.get("failure_rate"),
-                }
-                for item in home.get("command_info_array") or []
-            ]
-        if events:
-            summary["events"] = [
-                {
-                    "event_id": item.get("event_id"),
-                    "chara_id": item.get("chara_id"),
-                    "choices": len(((item.get("event_contents_info") or {}).get("choice_array") or [])),
-                }
-                for item in events
-            ]
-        if race:
-            summary["race_start_info"] = {
-                "program_id": race.get("program_id"),
-                "race_instance_id": race.get("race_instance_id"),
-                "is_short": race.get("is_short"),
-            }
-        return summary
 
     def auth_bytes(self):
         if not self.auth_key_hex or self.auth_key_hex == 'YOUR_AUTH_KEY_HERE':
@@ -564,7 +600,6 @@ class UmaClient:
     def refresh_cached_account_state(self, data):
         if not data:
             return
-        self.cached_load_data.update(data)
         if data.get('tp_info'):
             self.tp_info = data['tp_info']
         if data.get('coin_info'):
@@ -572,6 +607,62 @@ class UmaClient:
 
         item_list = data.get('user_item') or data.get('user_item_array') or data.get('item_list')
         self._refresh_item_map(item_list)
+
+    def _cache_response(self, ep, res):
+        """Stash the last full response data so /api/latent can read it without a
+        new game call. data_headers (server_time / maintenance) is kept for every
+        endpoint; the heavy `data` blocks only for the account/career loads."""
+        if not isinstance(res, dict):
+            return
+        dh = res.get('data_headers')
+        if isinstance(dh, dict):
+            self.last_data_headers = dh
+        data = res.get('data')
+        if not isinstance(data, dict):
+            return
+        if ep == 'load/index':
+            self.last_account_data = data
+        elif ep in ('single_mode_free/load', 'single_mode_free/start'):
+            self.last_career_data = data
+
+    # --- Out-of-career endpoints not previously wrapped (API capability map). The
+    # payloads marked INFERRED are derived by analogy to wrapped calls / community
+    # knowledge; verify against a live capture before relying on a write succeeding.
+    # They are exposed only via the dev-only debug action routes, never auto-called.
+    def home_index(self):
+        """Load the out-of-career home screen (read)."""
+        return self.call('home/index', {})
+
+    def item_use(self, item_id, item_num=1, client_own_num=None):
+        """Use a consumable OUTSIDE a career (item/use). INFERRED payload (mirrors
+        item/use_recovery_item's {item_id, client_own_num, item_num})."""
+        if client_own_num is None:
+            client_own_num = int(getattr(self, 'item_map', {}).get(int(item_id), 0) or 0)
+        return self.call('item/use', {
+            'item_id': int(item_id), 'item_num': int(item_num), 'client_own_num': int(client_own_num),
+        })
+
+    def support_card_enhance(self, support_card_id, use_item_info_array=None):
+        """Enhance / limit-break a support card (support_card/enhance). INFERRED payload."""
+        return self.call('support_card/enhance', {
+            'support_card_id': int(support_card_id),
+            'use_item_info_array': use_item_info_array or [],
+        })
+
+    def chara_talent(self, trained_chara_id, rank_up_target_rank=None, use_item_info_array=None):
+        """Raise a trained chara's talent / awakening (chara/talent). INFERRED payload."""
+        payload = {'trained_chara_id': int(trained_chara_id)}
+        if rank_up_target_rank is not None:
+            payload['rank_up_target_rank'] = int(rank_up_target_rank)
+        if use_item_info_array is not None:
+            payload['use_item_info_array'] = use_item_info_array
+        return self.call('chara/talent', payload)
+
+    def chara_nickname(self, trained_chara_id, nickname_id):
+        """Set a chara's epithet / title (chara/nickname). INFERRED payload."""
+        return self.call('chara/nickname', {
+            'trained_chara_id': int(trained_chara_id), 'nickname_id': int(nickname_id),
+        })
 
     def regen_sid(self):
         self.sid = make_sid(self.viewer_id, self.udid_str)
@@ -709,6 +800,7 @@ class UmaClient:
             rc = dh.get('result_code', 0)
 
             self.api_log("RES", ep, res, req_id)
+            self._cache_response(ep, res)
 
             data = res.get('data', {})
             if isinstance(data, dict):

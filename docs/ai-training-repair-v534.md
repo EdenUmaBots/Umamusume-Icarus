@@ -1,4 +1,4 @@
-# SweepyModv5.34 AI Training Repair & Validation
+# Pre Icarus v5.34 AI Training Repair & Validation
 
 This build repairs the v5.33 AI dataset/trainer pipeline after real runtime logs showed that the live policy layer could become unsafe when race results were not extracted from raw API call logs.
 

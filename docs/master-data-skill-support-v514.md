@@ -1,8 +1,8 @@
-# Master Data Skill and Support Intelligence (SweepyModv5.14)
+# Master Data Skill and Support Intelligence (Pre Icarus v5.14)
 
 ## Purpose
 
-SweepyModv5.14 adds the P2 master-data pass for skill and support intelligence. The goal is to give Configure Skills, weighted skill buying, and future support/deck tools richer official metadata from `master.mdb` without replacing the existing runtime payload logic.
+Pre Icarus v5.14 adds the P2 master-data pass for skill and support intelligence. The goal is to give Configure Skills, weighted skill buying, and future support/deck tools richer official metadata from `master.mdb` without replacing the existing runtime payload logic.
 
 ## New generated files
 
