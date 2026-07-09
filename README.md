@@ -1,293 +1,77 @@
-# Our development team is working on porting the bot to the lastest game update, join discord for latest updates.
+# Umamusume Icarus
 
-<img width="1230" height="785" alt="image" src="https://github.com/user-attachments/assets/8ad36af1-f239-4ebb-994a-b2365f8e9d3f" />
+Full-auto training, dailies, and scheduling for Umamusume Pretty Derby on Steam — all from one local dashboard.
 
-# Icarus 3.0
+## Download & run
 
-> The most advanced automation and career optimization engine for Umamusume: Pretty Derby.
+No installation, no terminal, no build tools.
 
-![Version](https://img.shields.io/badge/version-v3.0.0-blue)
-![Python](https://img.shields.io/badge/Python-3.12+-green)
-![License](https://img.shields.io/badge/license-MIT-orange)
+1. Download the latest **Icarus.zip** from the [Releases](https://github.com/EdenUmaBots/Umamusume-Icarus/releases) page.
+2. Extract the zip anywhere you like.
+3. Double-click **Icarus.exe**.
 
----
+Python, Node.js, and every dependency are bundled inside the app. The control center opens in your browser automatically.
 
-# About
+## Features
 
-# See below for written installation and video guide.
+### Career automation
+- **Three scenarios, one bot:** URA Finals, Make a New Track (MANT), and the team-based Unity Cup.
+- **Smart training decisions** for stronger, more consistent career results.
+- **Skill management** with searchable available, selected (with priority), and banned lists.
+- **Run-history dashboard** summarizing your past careers with grades, fans, and stats.
+- **Rides out game patches:** routine game data updates are adopted automatically so the bot keeps going. For larger updates, Icarus stays running so you can simply re-login from the dashboard, instead of the app closing on you.
 
-Icarus is a next-generation automation platform for **Umamusume: Pretty Derby**, designed to maximize career performance through intelligent decision making rather than simple scripted automation.
+### Dailies
+A dedicated Dailies page clears your routine content on autopilot:
+- **Team Trials** — races until your RP is spent.
+- **Daily Races** — up to the daily cap.
+- **Legend Races** — you pick the boss.
+- **Daily Shop buyout** — spends within your gold balance.
 
-Unlike traditional bots, Icarus connects to the game's API and talks directly to the game servers. Icarus evaluates an entire career as one optimization problem, dynamically balancing:
+### Scheduler
+Set a day and time and Icarus kicks off on its own: it runs your dailies, then a number of career runs you choose, then goes idle or shuts down. It reuses your last setup or resumes a career already in progress.
 
-- Training
-- Racing
-- Energy
-- Shop economy
-- Event outcomes
-- Skill acquisition
-- Set bonuses (Epithets)
-- Long-term career planning
+> The scheduler triggers automation inside Icarus while the app is running. Fully unattended, hands-off sessions require your Steam credentials to be saved so the bot can log in on its own.
 
-The result is significantly higher consistency, improved stat growth, smarter race scheduling, and reduced manual configuration.
+### Runs like a human
+Designed to make activity look less robotic:
+- Randomized **5–30 minute breaks** every few careers.
+- Randomized **2–5 second delays** between actions.
+- **Pause and Resume** on a live career without cancelling the run.
 
----
+### Management & quality of life
+- **All-new control center:** a sleek matte-black dashboard with a redesigned layout and a fresh loading screen, built to make long sessions easy to watch at a glance.
+- **Live resource HUD** across the top bar shows TP, RP, Carrots, Gold, and Clocks.
+- **Veterans manager:** review and delete stored trained characters at a glance. Locked favorites are protected, so you can't remove them by accident.
+- **Live logs console:** searchable, filterable by level/module/time, with one-click export to a shareable zip — ideal for checking on a run or reporting an issue.
+- **Discord webhook** sends rich run-complete embeds, with a one-click **Test Webhook** button to confirm your setup.
+- **Steam Guard sign-in** via a bundled login helper works with either the mobile authenticator or email codes.
+- **Self-updating** (see below).
 
-# Highlights
+## Requirements
 
-## Trackblazer Engine
+- **Windows.**
+- The **Umamusume (Steam)** client installed and running when you log in for the first time.
+- **Internet** on first run (to fetch game data) and for updates.
+- Nothing else — everything the app needs is bundled inside.
 
-The flagship decision engine.
+One game per device (single instance).
 
-Instead of evaluating one turn at a time, Trackblazer plans the entire career from start to finish.
+## Using it
 
-Features include:
+1. Download **Icarus.zip** from Releases, extract it, and run **Icarus.exe**.
+2. The control center opens in your browser.
+3. Make sure the Umamusume Steam client is installed and running, then sign in to Steam through Icarus (mobile authenticator or email code).
+4. Configure your run: pick a scenario, character, skills, and options.
+5. Start a career or dailies, or set the scheduler for a hands-off session.
+6. Watch progress from the dashboard, resource HUD, and logs console. Optionally hook up a Discord webhook for run-complete notifications.
 
-- Whole-career race optimization
-- Dynamic route replanning
-- Smart training decisions
-- Intelligent energy management
-- Risk-aware racing
-- Scenario-aware optimization
+## Updating
 
----
+Icarus can update itself from the dashboard. When a newer release is published, it offers to download the new build, close, swap itself in, and relaunch — preserving your config, presets, and data.
 
-## Smart Race Solver
+## Notes
 
-The race planner now:
-
-- Pursues achievable Set Bonuses (Epithets)
-- Optimizes fan gain
-- Maximizes stat rewards
-- Avoids unnecessary races
-- Automatically replans after losses
-- Supports exact optimization with heuristic fallback
-
----
-
-## Intelligent Shop AI
-
-Purchases are no longer static.
-
-Icarus automatically evaluates:
-
-- Current economy
-- Priority stats
-- Upcoming races
-- Finale preparation
-- Energy requirements
-
-Items are purchased only when they provide meaningful value.
-
----
-
-## Event Intelligence
-
-Icarus includes one of the largest event databases available.
-
-Features:
-
-- 3,600+ event outcomes
-- Intelligent fallback scoring
-- Stat-cap awareness
-- Context-aware energy valuation
-- Improved event matching
-
----
-
-## Dashboard
-
-Live dashboard includes:
-
-- Career statistics
-- Decision reasoning
-- Race schedule
-- Item usage
-- Shop purchases
-- Skill planning
-- Real-time diagnostics
-
----
-
-# Features
-
-- Intelligent career optimization
-- Trackblazer Solver
-- Smart Race Solver
-- Dynamic route replanning
-- Adaptive training logic
-- Intelligent shop purchasing
-- Event database integration
-- Skill optimization
-- Character profiles
-- Recommended stat builds
-- Race intelligence
-- Career analytics
-- Detailed decision explanations
-- Modern web dashboard
-
----
-
-# Installation
-
-Clone the repository:
-
-```bash
-git clone https://github.com/EdenUmaBots/Umamusume-Icarus.git
-```
-
-Install dependencies:
-
-```bash
-pip install -r requirements.txt
-```
-
-```cmd
-winget install -e --id OpenJS.NodeJS
-```
-
-Run:
-
-```bash
-python main.py
-```
-
----
-
-# Requirements
-
-- Latest version of Python
-- PC Steam client 
-- Windows 10 / 11
-
----
-
-# Releases
-
-Current Release:
-
-**Icarus 3.0**
-
-See the Releases page for previous versions and release notes.
-
----
-
-# Roadmap
-
-Planned improvements include:
-
-- Better AI planning
-- Additional scenario support
-- Improved race prediction
-- Expanded event database
-- Enhanced dashboard
-- Improved character modeling
-- More optimization tools
-- Ported to new API (whenever that will be) + Port to JP version.
-
----
-
-# Disclaimer
-
-This project is intended for educational and research purposes.
-
-Use at your own discretion.
-
----
-
-# Credits
-
-Special thanks to our bot developers, bot testers, club members, club leads, and supporters.
-
----
-
-# License
-
-MIT License
-
--------------
-
-## Join our discord: https://discord.gg/wpbd3hTBDc
-
--------------
-
-# ! Written installation guide, video below.
-
-You will need the latest version of python and C++ Build Tools:
-
-https://www.python.org/downloads/
-
-https://visualstudio.microsoft.com/visual-cpp-build-tools/
-
-For C++ Tools, this is what you need, just check that box. <img width="1221" height="625" alt="image" src="https://github.com/user-attachments/assets/28610cb3-650d-43c9-bf09-4505a62272de" />
-
-# First time instalation:
-
-Step 1: Download bot directly from this repo, unzip file
-
-Step 2: Open the bot folder (usually second one) in cmd like this, please note, this is an example link, yours will be different.
-
-```cmd
-cd C:\Users\yourusernamehere\Downloads\Umamusume-Icarus\Icarus-main
-```
-Step 3: Paste the following lines in order. 
-
-```cmd
-winget install -e --id OpenJS.NodeJS
-```
-Accept terms, then:
-
-```cmd
-npm i
-```
-Disregard the error you might have here, then:
-
-```cmd
-pip install -r requirements.txt 
-```
-Once the above it done, paste or type:
-
-```cmd
-python main.py
-```
-
-The bot will launch steam and umamusume then promptly close the game shortly before fully loading in, you will be given a web address, please paste this into your browser, you will be promted to log into your steam account, (it is recommended to use an alt). Web UI will request a steamguard code, once provided, you're in! Everything from here should be self explanitory. 
-
-# Video Guide: https://www.youtube.com/watch?v=SkBItJYJMeE
-
-# Regular use:
-
-
-```cmd
-cd C:\Users\yourusernamehere\Downloads\Umamusume-API-Bot-main\Umamusume-API-Bot-main
-```
-
-```cmd
-python main.py
-```
-
-
-# Running multiple bots!
-
-Ensure you have multiple seperate folders and keep track. Each bot must have it's own port number, this is located in main.py, line 186, change it to something else, default is 1200, so second bot could be 1201. Each bot needs its own steam account.
-
-Launch first bot until you're in web UI, switch steam accounts, repeat the process. Turn on each bot simoultaneously. First bot acts as an anchor, if this crashes, all bots will crash. We found that we were able to comfortably run 3 accounts at the same time, could try more.
-
-Daily reset will cause the bots to crash, you must set everything up manually then. 
-
-# Future updates.
-
-We will be working towards updating the bot as we see fit and will be porting it over to new scenarios, if you would like to contribute, get in touch with us though discord. Clank responsibly and thank you all. 
-
-
-
-
-
-
-
-
-
-
-
-
-
+- **First-launch SmartScreen prompt:** Windows may show an "unknown publisher" warning on first run. The app is code-signed as *Icarus Network*, but not through a public certificate authority, so Windows doesn't recognize it yet. Click **More info**, then **Run anyway**.
+- **Everything stays local:** the control panel is served on **localhost only**. Nothing leaves your machine.
+- **Disclaimer:** automating the game is against Cygames' Terms of Service and carries account risk. Use in moderation, at your own risk. The human-like pacing features reduce, but do not eliminate, detectability.

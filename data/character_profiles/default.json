@@ -1,9 +1,0 @@
-{
-  "display_name": "Default",
-  "_comment": "Empty override bundle. Loading this profile produces the same behavior as v6.1 (TrainingScorerConfig defaults, solver defaults, hint-mode scorer). Used as the fallback whenever the active trainee_id doesn't match anything in index.json.",
-  "solver_overrides": {},
-  "target_epithets": [],
-  "forced_epithets": [],
-  "preferred_distances": [],
-  "scenarios": {}
-}

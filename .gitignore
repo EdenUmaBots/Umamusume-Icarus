@@ -1,6 +1,23 @@
+# Release artifacts — these ship as GitHub Release assets, never in the repo
+Icarus.zip
+*.zip
+build_out/
+main.dist/
+main.build/
+
+# Runtime / bundled deps (large, regenerable, or machine-specific)
+node/
+node_modules/
+.venv/
+venv/
+uma_runtime/
+logs/
+__pycache__/
 *.pyc
-/node_modules
-/uma_runtime
-/tools
-/scraped game logs
-career_bot/.timing_dna
+
+# Local/user state & credentials — must never be published
+config.json
+settings.json
+session.json
+schema.json
+*.jsonl

@@ -1,4 +1,0 @@
-{
-  "item_ids": [],
-  "note": "Fill this with the item_id(s) for Toughness 30 / TP restore items from your region/master.mdb. You may also set UMA_TOUGHNESS_ITEM_IDS=\"123,456\"."
-}
